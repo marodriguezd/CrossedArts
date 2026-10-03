@@ -2,6 +2,7 @@ import initSqlJs from 'sql.js';
 import type { Database } from 'sql.js';
 import { SCHEMA_SQL, KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL } from './schema.ts';
 import { SEED_SQL } from './seedDemo.ts';
+import { resolveSqliteWasmUrl, deployedSqliteWasmFilename } from './sqliteWasmUrl.ts';
 
 const DB_STORE_NAME = 'crossedarts_sqlite_store';
 const DB_KEY = 'current_database_bytes';
@@ -214,8 +215,19 @@ class SQLiteBridge {
   }
 
   private async getSqlJsOptions(): Promise<any> {
+    // En el navegador resolvemos el WASM contra la base REAL del documento
+    // desplegado (`document.baseURI`), no contra una ruta relativa al bundle.
+    // Así, en GitHub Pages bajo `/CrossedArts/`, la petición es
+    // `https://.../CrossedArts/sql-wasm.wasm` sin codificar el nombre del
+    // repositorio y sigue siendo portable a cualquier base estática.
+    //
+    // Además normalizamos el nombre al fichero que realmente desplegamos: Vite
+    // resuelve `sql.js` por su condición `browser`, cuya build pide
+    // `sql-wasm-browser.wasm` (inexistente en `public/`). Ambos binarios son
+    // idénticos, así que apuntar a `sql-wasm.wasm` es correcto y determinista.
     let initOptions: any = {
-      locateFile: (file: string) => `./${file}`
+      locateFile: (file: string) =>
+        resolveSqliteWasmUrl(deployedSqliteWasmFilename(file), document.baseURI)
     };
 
     // Soporte para entornos Node.js / CLI tests sin red (0 web access)
