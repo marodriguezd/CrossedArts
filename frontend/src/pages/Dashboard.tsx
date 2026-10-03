@@ -131,6 +131,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ kpis, courses, books, rece
                     <p className="font-semibold text-slate-200 truncate">
                       {session.resource_title || 'Estudio general'}
                     </p>
+                    {/* El ámbito de lección solo se muestra cuando existe realmente. */}
+                    {session.lesson_id && (
+                      <p className="text-[10px] text-purple-300/90 truncate">
+                        Lección: {session.lesson_title || session.lesson_id}
+                      </p>
+                    )}
                     <p className="text-[10px] text-slate-500">
                       {session.cards_reviewed} tarjetas · {session.questions_answered} preguntas
                     </p>

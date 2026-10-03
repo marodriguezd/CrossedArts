@@ -269,7 +269,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
           feedbackMsg.type === 'success'
             ? 'bg-emerald-950/60 border border-emerald-800/60 text-emerald-300'
             : 'bg-rose-950/60 border border-rose-800/60 text-rose-300'
-        }`} role="status">
+        }`} role="status" aria-live="polite">
           {feedbackMsg.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
           <span>{feedbackMsg.text}</span>
         </div>

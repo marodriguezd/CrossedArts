@@ -175,7 +175,7 @@ CrossedArts/
 │   │   ├── lib/                  # Motores de IA local, embeddings, RAG híbrido e ingestión
 │   │   ├── pages/                # Vistas: Dashboard, Biblioteca, Repaso, Grafo, etc.
 │   │   └── types/                # Modelos de datos TypeScript (models.ts)
-│   └── tests/                    # Flota de pruebas de integración Zero-Web-Access (143 tests)
+│   └── tests/                    # Flota de pruebas de integración Zero-Web-Access (148 tests)
 ├── backend/                      # Servidor API complementario opcional (Python / FastAPI)
 │   ├── alembic/                  # Migraciones de base de datos relacional
 │   ├── app/
@@ -217,7 +217,7 @@ npm run dev
 La aplicación estará disponible inmediatamente en `http://localhost:5173`.
 
 ### Ejecutar Pruebas (Flota Zero-Web-Access)
-El proyecto incluye 143 pruebas de integridad que validan la inicialización de SQLite sin red, el algoritmo SM-2, las sesiones de estudio unificadas, el espacio de trabajo de la lección (edición de contenido, ordenación, progreso, continuación), la integridad y migración del grafo de conocimiento, la organización y el detalle de recursos, el estudio con ámbito de lección, las confirmaciones accesibles, los volcados binarios/JSON, la IA local, el RAG híbrido, la ingestión de documentos y la generación de estudio fundamentada:
+El proyecto incluye 148 pruebas de integridad que validan la inicialización de SQLite sin red, el algoritmo SM-2, las sesiones de estudio unificadas, el espacio de trabajo de la lección (edición de contenido, ordenación, progreso, continuación), la integridad y migración del grafo de conocimiento, la organización y el detalle de recursos, el estudio con ámbito de lección (aislamiento de notas por lección y ámbito del historial), la integridad relacional (activación de claves foráneas, comportamiento `ON DELETE`, migración de índices del grafo), las confirmaciones accesibles, los volcados binarios/JSON, la IA local, el RAG híbrido, la ingestión de documentos y la generación de estudio fundamentada:
 
 ```bash
 cd frontend

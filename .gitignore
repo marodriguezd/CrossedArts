@@ -14,8 +14,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anclados a la raíz: protegen los artefactos de empaquetado de Python sin
+# tragarse fuentes reales como frontend/src/lib/ (reglas heredadas de plantilla
+# Python que antes ignoraban el motor local RAG/LLM/embeddings completo).
+/lib/
+/lib64/
 parts/
 sdist/
 var/

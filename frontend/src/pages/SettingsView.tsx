@@ -11,6 +11,7 @@ import { embeddingCache } from '../lib/localEmbeddings/cache.ts';
 import { createSemanticChunksFromResourcesAsync } from '../lib/localEmbeddings/chunking.ts';
 import { EMBEDDING_MODELS_REGISTRY } from '../lib/localEmbeddings/registry.ts';
 import { dao } from '../db/dao.ts';
+import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 
 interface SettingsViewProps {
   onDataReset: () => void;
@@ -126,6 +127,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   const [storageReport, setStorageReport] = useState(dbBridge.getStorageReport());
   const [lastExported, setLastExported] = useState<string | null>(null);
+  const [dbFeedback, setDbFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pendingImport, setPendingImport] = useState<File | null>(null);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
   useEffect(() => {
     const unsubStorage = dbBridge.subscribeStorage((rep) => {
@@ -135,42 +139,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   }, []);
 
   const handleExport = async () => {
+    setDbFeedback(null);
     try {
       const filename = await exportSqliteFile();
       setLastExported(filename);
+      setDbFeedback({ type: 'success', text: `Respaldo .sqlite descargado: ${filename}` });
     } catch (err: any) {
-      alert('Error exportando base de datos: ' + err.message);
+      setDbFeedback({ type: 'error', text: 'Error exportando base de datos: ' + (err?.message || 'desconocido') });
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // La confirmación destructiva se gestiona con ConfirmDialog (accesible), no con confirm() nativo.
+    e.target.value = '';
     if (!file) return;
+    setDbFeedback(null);
+    setPendingImport(file);
+  };
 
-    const confirmed = confirm(
-      `¿Deseas restaurar la base de datos desde "${file.name}"?\n\n` +
-      `ADVERTENCIA: Esta acción reemplazará completamente tus datos locales actuales. Asegúrate de haber realizado un respaldo previo si deseas conservarlos.`
-    );
-    if (!confirmed) {
-      e.target.value = '';
-      return;
-    }
-
+  const executeImport = async () => {
+    const file = pendingImport;
+    setPendingImport(null);
+    if (!file) return;
     try {
       await importSqliteFile(file);
-      alert('¡Base de datos restaurada exitosamente!');
+      setDbFeedback({ type: 'success', text: `Base de datos restaurada desde "${file.name}".` });
       onDataReset();
     } catch (err: any) {
-      alert('Error importando base de datos: ' + err.message);
-    } finally {
-      e.target.value = '';
+      setDbFeedback({ type: 'error', text: 'Error importando base de datos: ' + (err?.message || 'desconocido') });
     }
   };
 
-  const handleResetDemo = async () => {
-    if (confirm('¿Restablecer datos a la versión de demostración inicial? Los cambios actuales se sobreescribirán.')) {
+  const executeResetDemo = async () => {
+    setIsResetConfirmOpen(false);
+    setDbFeedback(null);
+    try {
       await dbBridge.resetDemo();
+      setDbFeedback({ type: 'success', text: 'Datos restablecidos al dataset de demostración.' });
       onDataReset();
+    } catch (err: any) {
+      setDbFeedback({ type: 'error', text: 'Error restableciendo los datos: ' + (err?.message || 'desconocido') });
     }
   };
 
@@ -255,6 +264,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
           </p>
         )}
 
+        {dbFeedback && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
+              dbFeedback.type === 'success'
+                ? 'bg-emerald-950/60 border border-emerald-800/60 text-emerald-300'
+                : 'bg-rose-950/60 border border-rose-800/60 text-rose-300'
+            }`}
+          >
+            {dbFeedback.type === 'success' ? <Check size={14} /> : <AlertTriangle size={14} />}
+            <span>{dbFeedback.text}</span>
+          </div>
+        )}
+
         {/* Nota informativa de dominios de almacenamiento */}
         <div className="flex items-start gap-2 p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 text-[11px] text-slate-400">
           <Info size={16} className="text-purple-400 shrink-0 mt-0.5" />
@@ -265,13 +289,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
         <div className="pt-2">
           <button
-            onClick={handleResetDemo}
+            onClick={() => setIsResetConfirmOpen(true)}
             className="flex items-center gap-2 text-xs text-rose-400 hover:text-rose-300 font-medium"
           >
             <RotateCcw size={13} /> Reiniciar datos al dataset de demostración
           </button>
         </div>
       </div>
+
+      {/* Confirmación accesible de acciones destructivas de datos (reemplaza confirm() nativo) */}
+      <ConfirmDialog
+        isOpen={!!pendingImport}
+        title="Restaurar base de datos"
+        consequence={`Esta acción reemplazará por completo tus datos locales actuales con el contenido de "${pendingImport?.name || ''}". Asegúrate de haber realizado un respaldo previo si deseas conservarlos.`}
+        confirmLabel="Restaurar"
+        onCancel={() => setPendingImport(null)}
+        onConfirm={executeImport}
+      />
+
+      <ConfirmDialog
+        isOpen={isResetConfirmOpen}
+        title="Reiniciar datos de demostración"
+        consequence="Se eliminarán tus datos actuales y se restaurará el dataset de demostración inicial. Esta acción no se puede deshacer."
+        confirmLabel="Reiniciar"
+        onCancel={() => setIsResetConfirmOpen(false)}
+        onConfirm={executeResetDemo}
+      />
 
       {/* IA & LLM Provider Configuration */}
       <form onSubmit={handleSaveAi} className="p-6 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-4">

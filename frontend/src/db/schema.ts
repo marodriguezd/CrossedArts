@@ -100,4 +100,21 @@ CREATE TABLE IF NOT EXISTS knowledge_connection (
   connection_type TEXT DEFAULT 'related_to',
   weight REAL DEFAULT 1.0
 );
+
+-- knowledge_connection es polimorfica (los extremos pueden ser conceptos,
+-- recursos, cursos, módulos, lecciones o notas), por lo que NO se fuerzan
+-- claves foráneas. La integridad de existencia se valida en la aplicación; el
+-- índice único de tripleta evita duplicados exactos y los índices de extremos
+-- aceleran el podado de conexiones huérfanas.
+CREATE INDEX IF NOT EXISTS idx_knowledge_connection_source ON knowledge_connection(source_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_connection_target ON knowledge_connection(target_id);
 `;
+
+/**
+ * Índice único determinista de tripletas (source_id, target_id, connection_type).
+ * Se crea en una migración explícita (no en el DDL base) para poder deduplicar
+ * primero bases de datos existentes sin romper la inicialización.
+ */
+export const KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL =
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_connection_triple ON knowledge_connection(source_id, target_id, connection_type);';
+

@@ -1,6 +1,6 @@
 import initSqlJs from 'sql.js';
 import type { Database } from 'sql.js';
-import { SCHEMA_SQL } from './schema.ts';
+import { SCHEMA_SQL, KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL } from './schema.ts';
 import { SEED_SQL } from './seedDemo.ts';
 
 const DB_STORE_NAME = 'crossedarts_sqlite_store';
@@ -153,7 +153,8 @@ class SQLiteBridge {
         // Migraciones idempotentes para bases de datos existentes
         const migratedSession = this.migrateLearningSession(this.db);
         const migratedLesson = this.migrateLessonContent(this.db);
-        migrated = migratedSession || migratedLesson;
+        const migratedGraph = this.migrateKnowledgeConnectionIndex(this.db);
+        migrated = migratedSession || migratedLesson || migratedGraph;
       } catch (e: any) {
         console.warn('Error cargando SQLite previo, creando nueva BD:', e);
         this.setStorageState('corrupt-storage', e?.message || 'Corrupción en base de datos');
@@ -180,6 +181,7 @@ class SQLiteBridge {
       this.db.run('PRAGMA foreign_keys = ON;');
       this.db.run(SCHEMA_SQL);
       this.db.run(SEED_SQL);
+      this.db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
       this.setStorageState('ready');
       await this.persist();
     }
@@ -253,6 +255,7 @@ class SQLiteBridge {
     this.db.run('PRAGMA foreign_keys = ON;');
     this.migrateLearningSession(this.db);
     this.migrateLessonContent(this.db);
+    this.migrateKnowledgeConnectionIndex(this.db);
     this.isInitialized = true;
     await this.persist();
   }
@@ -269,6 +272,52 @@ class SQLiteBridge {
     const hasContent = info[0].values.some((row) => String(row[1]) === 'content');
     if (hasContent) return false;
     db.run('ALTER TABLE lesson ADD COLUMN content TEXT;');
+    return true;
+  }
+
+  /**
+   * Migración idempotente del índice único de conexiones del grafo.
+   * Deduplica primero las tripletas exactas (conservando la fila más antigua por
+   * id determinista) y después crea el índice único. Es seguro sobre datos
+   * existentes y no impone claves foráneas (los extremos siguen siendo
+   * polimórficos).
+   * @returns true si se creó el índice o se deduplicó algo.
+   */
+  private migrateKnowledgeConnectionIndex(db: Database): boolean {
+    const info = db.exec('PRAGMA table_info(knowledge_connection)');
+    if (!info.length || !info[0].values.length) return false;
+
+    // ¿Existe ya el índice único? Si existe, los tres índices ya se crearon antes.
+    const existing = db.exec("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_knowledge_connection_triple'");
+    if (existing.length && existing[0].values.length) return false;
+
+    // Deduplicar tripletas exactas ANTES de crear el índice único, conservando
+    // de forma determinista la fila con el `id` menor.
+    const dupes = db.exec(`
+      SELECT source_id, target_id, connection_type, COUNT(*) AS c
+      FROM knowledge_connection
+      GROUP BY source_id, target_id, connection_type
+      HAVING c > 1
+    `);
+    if (dupes.length) {
+      for (const row of dupes[0].values) {
+        const [sourceId, targetId, connectionType] = row;
+        const rows = db.exec(
+          'SELECT id FROM knowledge_connection WHERE source_id = ? AND target_id = ? AND connection_type = ? ORDER BY id ASC',
+          [sourceId, targetId, connectionType]
+        );
+        if (rows.length) {
+          for (let i = 1; i < rows[0].values.length; i++) {
+            db.run('DELETE FROM knowledge_connection WHERE id = ?', [rows[0].values[i][0]]);
+          }
+        }
+      }
+    }
+
+    // Índices de extremos (aceleran el podado) + índice único de tripleta.
+    db.run('CREATE INDEX IF NOT EXISTS idx_knowledge_connection_source ON knowledge_connection(source_id);');
+    db.run('CREATE INDEX IF NOT EXISTS idx_knowledge_connection_target ON knowledge_connection(target_id);');
+    db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
     return true;
   }
 
@@ -351,6 +400,7 @@ class SQLiteBridge {
     this.db.run('PRAGMA foreign_keys = ON;');
     this.db.run(SCHEMA_SQL);
     this.db.run(SEED_SQL);
+    this.db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
     this.isInitialized = true;
     await this.persist();
   }

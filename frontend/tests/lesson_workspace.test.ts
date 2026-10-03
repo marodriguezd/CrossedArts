@@ -349,3 +349,55 @@ test('15.14 CourseDetail hosts the LessonWorkspace without duplicating lesson de
   assert.ok(workspace.includes('Aprendizaje relacionado'), 'Debe incluir el panel de aprendizaje relacionado');
   assert.ok(workspace.includes('Continuar'), 'Debe incluir la acción de continuación');
 });
+
+test('15.15 Lesson workspace notes and progress stay isolated per lesson (regression)', async () => {
+  await dbBridge.init();
+  const created = await dao.createCourse({ title: 'Curso Aislamiento 15', category: 'Test' });
+  const courseId = created.id!;
+  const mod = await dao.createModule({ courseId, title: 'Módulo Aislamiento' });
+  const lessonA = await dao.createLesson({ moduleId: mod.id!, title: 'Lección Aislamiento A' });
+  const lessonB = await dao.createLesson({ moduleId: mod.id!, title: 'Lección Aislamiento B' });
+  const lessonC = await dao.createLesson({ moduleId: mod.id!, title: 'Lección Aislamiento C' });
+
+  await dao.addNote({ title: 'Nota de A', content: 'contenido A', resource_id: courseId, lesson_id: lessonA.id });
+  await dao.addNote({ title: 'Nota de B', content: 'contenido B', resource_id: courseId, lesson_id: lessonB.id });
+  await dao.addNote({ title: 'Nota del curso', content: 'contenido curso', resource_id: courseId });
+
+  // Cada lección solo ve SUS notas: ni las de lecciones hermanas (mismo
+  // resource_id) ni la nota general del curso.
+  const wsA = await dao.getLessonWorkspace(lessonA.id!);
+  assert.equal(wsA!.notes.length, 1, 'La lección A solo ve su propia nota');
+  assert.equal(wsA!.notes[0].title, 'Nota de A');
+
+  const wsB = await dao.getLessonWorkspace(lessonB.id!);
+  assert.equal(wsB!.notes.length, 1, 'La lección B solo ve su propia nota');
+  assert.equal(wsB!.notes[0].title, 'Nota de B');
+
+  // Regresión del defecto confirmado: la nota de una lección hermana o la nota
+  // del curso NO pueden marcar progreso en una lección sin actividad propia.
+  const wsC = await dao.getLessonWorkspace(lessonC.id!);
+  assert.equal(wsC!.notes.length, 0, 'La lección C no hereda notas ajenas');
+  assert.equal(wsC!.progress, 'NOT_STARTED', 'El progreso no puede contarse con notas de otras lecciones');
+
+  // La propia nota sí activa el estado legítimo de la lección A.
+  assert.equal(wsA!.progress, 'IN_PROGRESS', 'La nota propia de A cuenta como actividad propia');
+
+  // Consultas de nota: acotado estricto por lección cuando se especifica ámbito.
+  const scopedA = await dao.getNotesForResource(courseId, lessonA.id!);
+  assert.equal(scopedA.length, 1, 'getNotesForResource con ámbito de lección no debe filtrar por resource_id');
+  assert.equal(scopedA[0].title, 'Nota de A');
+
+  const onlyLessonA = await dao.getNotesForLesson(lessonA.id!);
+  assert.equal(onlyLessonA.length, 1);
+  assert.equal(onlyLessonA[0].title, 'Nota de A');
+
+  // Sin ámbito de lección el listado por recurso sigue siendo el alcance del curso.
+  const courseScoped = await dao.getNotesForResource(courseId);
+  assert.equal(courseScoped.length, 3, 'El listado a nivel de recurso conserva su alcance de curso');
+
+  // Limpieza explícita para no dejar notas huérfanas en otras pruebas.
+  const db = dbBridge.getDatabase();
+  db.run('DELETE FROM note WHERE title IN (?, ?, ?)', ['Nota de A', 'Nota de B', 'Nota del curso']);
+  await dbBridge.persist();
+  await cleanupCourse(courseId);
+});

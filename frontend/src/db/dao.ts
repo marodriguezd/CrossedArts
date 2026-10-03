@@ -1020,7 +1020,10 @@ export const dao = {
       flashcardCount = fcRes.length ? Number(fcRes[0].values[0][0]) || 0 : 0;
     }
 
-    const notes = await this.getNotesForResource(module?.course_id || '', lessonId);
+    // Las notas del espacio de trabajo deben pertenecer estrictamente a ESTA
+    // lección. Reutilizar `getNotesForResource(courseId, lessonId)` mezclaría
+    // notas de otras lecciones del mismo curso (comparten `resource_id`).
+    const notes = await this.getNotesForLesson(lessonId);
     const related = await this.getRelatedKnowledge(lessonId);
 
     const resources = related.filter(r => r.type === 'resource' || r.type === 'book' || r.type === 'course' || r.type === 'lesson' || r.type === 'module');
@@ -1150,9 +1153,30 @@ export const dao = {
 
   async getNotesForResource(resourceId: string, lessonId?: string): Promise<Note[]> {
     const db = dbBridge.getDatabase();
+    // Cuando se especifica una lección, el resultado se acota estrictamente a esa
+    // lección. El antiguo `resource_id = ? OR lesson_id = ?` devolvía notas de
+    // OTRAS lecciones del mismo curso (que comparten `resource_id`), lo que
+    // contaminaba el espacio de trabajo de la lección y su estado de progreso.
     const res = lessonId
-      ? db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE resource_id = ? OR lesson_id = ? ORDER BY updated_at DESC', [resourceId, lessonId])
+      ? db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE lesson_id = ? ORDER BY updated_at DESC', [lessonId])
       : db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE resource_id = ? ORDER BY updated_at DESC', [resourceId]);
+    if (!res.length) return [];
+    return res[0].values.map((r: any[]) => ({
+      id: r[0], resource_id: r[1], lesson_id: r[2], title: r[3], content: r[4], tags: r[5], created_at: r[6], updated_at: r[7]
+    }));
+  },
+
+  /**
+   * Notas asociadas EXCLUSIVAMENTE a una lección (`lesson_id = ?`). Query precisa
+   * y sin ambigüedad usada por el espacio de trabajo de la lección, de modo que
+   * nunca hereda notas de otras lecciones del mismo curso.
+   */
+  async getNotesForLesson(lessonId: string): Promise<Note[]> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(
+      'SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE lesson_id = ? ORDER BY updated_at DESC',
+      [lessonId]
+    );
     if (!res.length) return [];
     return res[0].values.map((r: any[]) => ({
       id: r[0], resource_id: r[1], lesson_id: r[2], title: r[3], content: r[4], tags: r[5], created_at: r[6], updated_at: r[7]

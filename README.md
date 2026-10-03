@@ -169,7 +169,7 @@ CrossedArts/
 │   │   ├── lib/                  # Local LLM, embeddings, hybrid RAG & ingestion
 │   │   ├── pages/                # Views: Dashboard, Library, ReviewCenter, Graph, etc.
 │   │   └── types/                # TypeScript domain models (models.ts)
-│   └── tests/                    # Zero-Web-Access test fleet (143 integrity tests)
+│   └── tests/                    # Zero-Web-Access test fleet (148 integrity tests)
 ├── backend/                      # Optional Python Backend Companion (FastAPI)
 │   ├── alembic/                  # Relational database migration scripts
 │   ├── app/
@@ -211,7 +211,7 @@ npm run dev
 Open `http://localhost:5173` in your browser.
 
 ### Run Integrity Tests (Zero-Web-Access Test Fleet)
-The project includes 143 tests verifying offline SQLite initialization, SM-2 math, unified study sessions, the lesson workspace (content editing, ordering, progress, continuation), knowledge graph integrity and migrations, resource organization and detail views, lesson-scoped study, accessible confirmations, binary/JSON exports, local AI, hybrid RAG, document ingestion, and grounded study generation:
+The project includes 148 tests verifying offline SQLite initialization, SM-2 math, unified study sessions, the lesson workspace (content editing, ordering, progress, continuation), knowledge graph integrity and migrations, resource organization and detail views, lesson-scoped study with note isolation and study-history lesson scope, relational integrity (foreign key enforcement, ON DELETE behaviour, graph index migration), accessible confirmations, binary/JSON exports, local AI, hybrid RAG, document ingestion, and grounded study generation:
 
 ```bash
 cd frontend

@@ -333,3 +333,59 @@ test('13.13 Study session operations in local mode make zero network requests', 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('13.15 Study history preserves the lesson scope and exposes it to the Dashboard', async () => {
+  await dbBridge.init();
+  const db = dbBridge.getDatabase();
+
+  const created = await dao.createCourse({ title: 'Curso Ámbito 13', category: 'Test' });
+  const courseId = created.id!;
+  const mod = await dao.createModule({ courseId, title: 'Módulo Ámbito' });
+  const lessonA = await dao.createLesson({ moduleId: mod.id!, title: 'Lección Ámbito A' });
+  const lessonB = await dao.createLesson({ moduleId: mod.id!, title: 'Lección Ámbito B' });
+
+  // Sesión con ámbito de lección A (con actividad real -> completed).
+  const sidA = await dao.startStudySession({ mode: 'flashcards', resourceId: courseId, lessonId: lessonA.id });
+  await dao.recordStudyFlashcardReview(sidA);
+  assert.equal(await dao.finalizeStudySession(sidA), 'completed');
+
+  // Sesión con ámbito de lección B.
+  const sidB = await dao.startStudySession({ mode: 'mixed', resourceId: courseId, lessonId: lessonB.id });
+  await dao.recordStudyQuestionAnswer(sidB, true);
+  assert.equal(await dao.finalizeStudySession(sidB), 'completed');
+
+  // Sesión a nivel de curso (sin lección): el historial NO debe inventar un ámbito.
+  const sidC = await dao.startStudySession({ mode: 'flashcards', resourceId: courseId });
+  await dao.recordStudyFlashcardReview(sidC);
+  assert.equal(await dao.finalizeStudySession(sidC), 'completed');
+
+  const recent = await dao.getRecentStudySessions(20);
+  const byId = (id: string) => recent.find(s => s.id === id);
+
+  const sessA = byId(sidA);
+  assert.ok(sessA, 'La sesión de la lección A debe aparecer en el historial reciente');
+  assert.equal(sessA!.lesson_id, lessonA.id, 'El historial conserva el ámbito de lección');
+  assert.equal(sessA!.lesson_title, 'Lección Ámbito A', 'El Dashboard puede mostrar el título de la lección');
+  assert.equal(sessA!.resource_title, 'Curso Ámbito 13');
+
+  const sessB = byId(sidB);
+  assert.ok(sessB);
+  assert.equal(sessB!.lesson_id, lessonB.id, 'Cada sesión mantiene SU lección, sin mezclar ámbitos');
+  assert.equal(sessB!.lesson_title, 'Lección Ámbito B');
+
+  const sessC = byId(sidC);
+  assert.ok(sessC, 'La sesión de curso también entra en el historial');
+  assert.equal(sessC!.lesson_id, undefined, 'Una sesión de curso no debe mostrar lección inventada');
+  assert.equal(sessC!.lesson_title, undefined);
+
+  // Persistencia: el ámbito sobrevive a una nueva lectura desde SQLite.
+  const reloaded = await dao.getStudySessionById(sidA);
+  assert.equal(reloaded!.lesson_id, lessonA.id);
+
+  await removeSession(sidA);
+  await removeSession(sidB);
+  await removeSession(sidC);
+  db.run('DELETE FROM knowledge_connection WHERE source_id = ? OR target_id = ?', [courseId, courseId]);
+  db.run('DELETE FROM learning_resource WHERE id = ?', [courseId]);
+  await dbBridge.persist();
+});

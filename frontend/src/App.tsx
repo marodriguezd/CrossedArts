@@ -11,7 +11,7 @@ import { SettingsView } from './pages/SettingsView.tsx';
 import { AIAssistantDrawer } from './components/ai/AIAssistantDrawer.tsx';
 import { localMediaService } from './services/localMediaService.ts';
 import { useAppData } from './hooks/useAppData.ts';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, X } from 'lucide-react';
 
 const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph.tsx').then(m => ({ default: m.KnowledgeGraph })));
 
@@ -28,6 +28,7 @@ export const App: React.FC = () => {
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [scanReport, setScanReport] = useState<any>(null);
   const [graphVersion, setGraphVersion] = useState(0);
+  const [appNotice, setAppNotice] = useState<string | null>(null);
 
   const {
     loading,
@@ -139,7 +140,8 @@ export const App: React.FC = () => {
 
   const handleMountLocalFolder = async () => {
     if (!localMediaService.isSupported()) {
-      alert('Tu navegador no soporta File System Access API de forma nativa. Usa navegadores basados en Chromium (Chrome, Edge, Brave) para conceder acceso a carpetas locales.');
+      // Aviso de capacidad del navegador mostrado en la propia interfaz (no con alert() nativo).
+      setAppNotice('Tu navegador no soporta File System Access API de forma nativa. Usa navegadores basados en Chromium (Chrome, Edge, Brave) para conceder acceso a carpetas locales.');
       return;
     }
 
@@ -190,6 +192,24 @@ export const App: React.FC = () => {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {appNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2"
+          >
+            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+            <span className="flex-1">{appNotice}</span>
+            <button
+              onClick={() => setAppNotice(null)}
+              className="shrink-0 text-amber-200 hover:text-white"
+              aria-label="Cerrar aviso"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {currentTab === 'dashboard' && (
           <Dashboard
             kpis={kpis}
