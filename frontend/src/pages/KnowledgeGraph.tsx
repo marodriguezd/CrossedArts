@@ -37,34 +37,109 @@ interface KnowledgeGraphProps {
 type ThemeMode = 'light' | 'dark';
 
 /**
- * Paletas suaves por tema: los nodos usan tonos desaturados y las aristas se
- * mantienen discretas. El mapa nunca es más ruido que la información que porta.
+ * vis-network dibuja sobre <canvas> y NO puede consumir variables CSS, así que
+ * necesita colores concretos. Para que el lienzo nunca se desincronice del tema,
+ * los valores se LEEN de los tokens reales de `index.css` en tiempo de ejecución
+ * en lugar de duplicar la paleta en código: una única fuente de verdad.
  */
-const NODE_PALETTES: Record<ThemeMode, Record<GraphNodeType, { background: string; border: string }>> = {
-  light: {
-    course: { background: '#E8E4F1', border: '#8B7FB5' },
-    book: { background: '#E3EAF1', border: '#7B93AD' },
-    module: { background: '#EDE7F3', border: '#9B87BE' },
-    lesson: { background: '#E0EEF0', border: '#6FA3A8' },
-    note: { background: '#E6EFE8', border: '#7BA085' },
-    concept: { background: '#F1E9F2', border: '#A98BB0' },
-    resource: { background: '#F2EADA', border: '#B49A66' }
-  },
-  dark: {
-    course: { background: '#34304A', border: '#7D74A8' },
-    book: { background: '#2C3644', border: '#6E8CAD' },
-    module: { background: '#3A3350', border: '#8E7FB8' },
-    lesson: { background: '#26383C', border: '#5E9298' },
-    note: { background: '#2A3A31', border: '#6F9B7E' },
-    concept: { background: '#3E3145', border: '#9C7FA6' },
-    resource: { background: '#3E3626', border: '#A8905C' }
-  }
+interface GraphTokens {
+  ink: string;
+  faint: string;
+  accent: string;
+  accentSoft: string;
+  /** Tono apagado para las aristas derivadas (relaciones de claves foráneas). */
+  derived: string;
+}
+
+const FALLBACK_TOKENS: Record<ThemeMode, GraphTokens> = {
+  light: { ink: '#252220', faint: '#6C6559', accent: '#5E4B8B', accentSoft: '#ECE6F4', derived: '#9C968A' },
+  dark: { ink: '#E7E2D9', faint: '#A29B91', accent: '#A794CE', accentSoft: '#322C42', derived: '#57544E' }
 };
 
-const THEME_TOKENS: Record<ThemeMode, { ink: string; faint: string; surface: string; accent: string; accentSoft: string; line: string }> = {
-  light: { ink: '#252220', faint: '#6C6559', surface: '#FAF7EF', accent: '#5E4B8B', accentSoft: '#ECE6F4', line: '#E3DCCC' },
-  dark: { ink: '#E7E2D9', faint: '#A29B91', surface: '#22211F', accent: '#A794CE', accentSoft: '#322C42', line: '#393735' }
+/**
+ * Mezcla un color con blanco/negro por proporción para derivar los bordes de
+ * los nodos a partir de su relleno. Evita inventar tonos nuevos: los bordes
+ * nacen del propio token de acento de cada tipo.
+ */
+function shade(hex: string, amount: number): string {
+  const m = hex.trim().replace('#', '');
+  const full = m.length === 3 ? m.split('').map(c => c + c).join('') : m;
+  const num = parseInt(full, 16);
+  if (Number.isNaN(num) || full.length !== 6) return hex;
+  const to = amount > 0 ? 255 : 0;
+  const ratio = Math.abs(amount);
+  const channel = (c: number) => Math.round(c + (to - c) * ratio);
+  const r = channel((num >> 16) & 255);
+  const g = channel((num >> 8) & 255);
+  const b = channel(num & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * Relleno translúcido del nodo: el color de acento atenuado sobre el lienzo.
+ * Se expresa en `rgba` porque vis-network compone el nodo sobre el fondo.
+ */
+function translucent(hex: string, alpha: number): string {
+  const m = hex.trim().replace('#', '');
+  const full = m.length === 3 ? m.split('').map(c => c + c).join('') : m;
+  const num = parseInt(full, 16);
+  if (Number.isNaN(num) || full.length !== 6) return hex;
+  return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
+}
+
+/** Lee un token RGB (`R G B`) de `index.css` y lo devuelve como `#rrggbb`. */
+function readToken(varName: string, fallback: string): string {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return fallback;
+  const raw = window
+    .getComputedStyle(document.documentElement)
+    .getPropertyValue(varName)
+    .trim();
+  if (!raw) return fallback;
+  if (raw.startsWith('#')) return raw;
+  const parts = raw.split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 3) return fallback;
+  const [r, g, b] = parts;
+  const toHex = (v: string) => Number(v).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+/** Resuelve la paleta del grafo desde los tokens vivos del tema activo. */
+function resolveGraphTokens(theme: ThemeMode): GraphTokens {
+  const fb = FALLBACK_TOKENS[theme];
+  return {
+    ink: readToken('--c-ink', fb.ink),
+    faint: readToken('--c-muted', fb.faint),
+    accent: readToken('--c-accent', fb.accent),
+    accentSoft: readToken('--c-accent-soft', fb.accentSoft),
+    derived: readToken('--c-faint', fb.derived)
+  };
+}
+
+/**
+ * Acento por tipo de nodo. Los siete tipos comparten la misma familia ciruela
+ * del producto para que el mapa se lea como una sola paleta y no como siete
+ * colores nuevos; el fondo translúcido mantiene el lienzo siempre legible.
+ */
+const NODE_ACCENT_VAR: Record<GraphNodeType, string> = {
+  course: '--c-accent',
+  module: '--c-accent',
+  concept: '--c-accent',
+  book: '--c-info',
+  lesson: '--c-info',
+  note: '--c-success',
+  resource: '--c-warning'
 };
+
+/** Relleno y borde de un nodo, derivados del token de acento de su tipo. */
+function nodeColors(type: GraphNodeType, theme: ThemeMode): { background: string; border: string } {
+  const base = readToken(NODE_ACCENT_VAR[type], FALLBACK_TOKENS[theme].accent);
+  const isDark = theme === 'dark';
+  // En oscuro el relleno se apoya hacia el negro; en claro, hacia el papel.
+  return {
+    background: translucent(base, isDark ? 0.22 : 0.14),
+    border: shade(base, isDark ? 0.12 : -0.12)
+  };
+}
 
 const NODE_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; className?: string }>> = {
   course: GraduationCap,
@@ -79,7 +154,7 @@ const NODE_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; cla
 const FILTER_ORDER: GraphNodeType[] = ['course', 'book', 'module', 'lesson', 'note', 'concept', 'resource'];
 
 function buildNetworkOptions(theme: ThemeMode): Options {
-  const t = THEME_TOKENS[theme];
+  const t = resolveGraphTokens(theme);
   return {
     nodes: {
       shape: 'box',
@@ -195,12 +270,11 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       return;
     }
 
-    const palette = NODE_PALETTES[theme];
-    const t = THEME_TOKENS[theme];
+    const t = resolveGraphTokens(theme);
 
     const visNodes: Node[] = visibleGraph.nodes.map(n => {
       const type = n.node_type || 'resource';
-      const colors = palette[type];
+      const colors = nodeColors(type, theme);
       return {
         id: n.id,
         label: n.name,
@@ -208,7 +282,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
         color: {
           background: colors.background,
           border: colors.border,
-          highlight: { background: t.accent, border: t.accentSoft }
+          highlight: { background: t.accentSoft, border: t.accent }
         },
         font: { color: t.ink }
       };
@@ -220,7 +294,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       label: (GRAPH_RELATION_LABELS as Record<string, string>)[e.connection_type] || e.connection_type,
       dashes: !!e.derived,
       arrows: 'to',
-      color: { color: e.derived ? (theme === 'dark' ? '#57544E' : '#9C968A') : t.accent },
+      color: { color: e.derived ? t.derived : t.accent },
       font: { color: t.faint }
     }));
 

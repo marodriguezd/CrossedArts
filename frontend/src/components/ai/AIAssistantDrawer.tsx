@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle } from 'lucide-react';
 import { aiService, AIChatMessage, AssistantResponse } from '../../ai/aiService.ts';
 import { cn } from '../ui/index.tsx';
@@ -37,6 +37,19 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const currentSettings = aiService.getSettings();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Accesibilidad del cajón: es un diálogo modal, así que Escape lo cierra y el
+  // foco entra en el campo de escritura al abrirse.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    inputRef.current?.focus();
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -85,7 +98,12 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-full animate-slide-left flex-col border-l border-line bg-surface shadow-pop sm:w-[440px]">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Tutor pedagógico"
+      className="fixed inset-y-0 right-0 z-50 flex w-full animate-slide-left flex-col border-l border-line bg-surface shadow-pop sm:w-[440px]"
+    >
       {/* Cabecera */}
       <div className="flex items-center justify-between border-b border-line bg-raised p-4">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -249,6 +267,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
         </label>
         <input
           id="ai-chat-input"
+          ref={inputRef}
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}

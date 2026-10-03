@@ -234,7 +234,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
             <article className="space-y-4">
               {/* Cabecera documental de la nota */}
               <header className="border-b border-line pb-4">
-                <h2 className="font-serif text-title font-bold text-ink">{selectedNote.title}</h2>
+                <h2 className="type-title text-ink">{selectedNote.title}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-3">
                   <span className="text-meta">Fecha: {selectedNote.created_at}</span>
                   {selectedNote.tags && <Badge tone="accent">{selectedNote.tags}</Badge>}
@@ -258,7 +258,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                 )}
               </header>
               {/* Contenido con tipografía de lectura */}
-              <div className="max-w-[68ch] whitespace-pre-wrap break-words text-body text-ink" style={{ lineHeight: 1.75 }}>
+              <div className="type-prose whitespace-pre-wrap break-words">
                 {selectedNote.content}
               </div>
             </article>

@@ -115,6 +115,21 @@ export const Library: React.FC<LibraryProps> = ({
     return () => { cancelled = true; };
   }, [query, courses, books]);
 
+  // Accesibilidad de teclado: Escape cierra el diálogo superior activo
+  // (previsualización, visor de origen o alta de curso).
+  useEffect(() => {
+    const anyOpen = !!previewDoc || sourceViewerMeta.isOpen || isCreateCourseOpen;
+    if (!anyOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (previewDoc) setPreviewDoc(null);
+      else if (sourceViewerMeta.isOpen) setSourceViewerMeta({ isOpen: false });
+      else if (isCreateCourseOpen) setIsCreateCourseOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewDoc, sourceViewerMeta.isOpen, isCreateCourseOpen]);
+
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     setCourseError(null);

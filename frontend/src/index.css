@@ -62,6 +62,9 @@
   --motion-fast: 140ms;
   --motion-base: 220ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* --- Medida de lectura (editorial) --- */
+  --measure: 68ch;
 }
 
 [data-theme='dark'] {
@@ -208,6 +211,20 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: rgb(var(--c-faint));
+  }
+
+  /*
+   * Tipografía de lectura larga (contenido de lección, cuerpo de nota).
+   * Una sola definición para medida, ritmo y tamaño: el texto es el objeto
+   * principal del producto, no un bloque decorativo dentro de una tarjeta.
+   */
+  .type-prose {
+    font-family: var(--font-ui);
+    font-size: 1rem;
+    line-height: 1.75;
+    color: rgb(var(--c-ink));
+    /* Medida cómoda para lectura sostenida. */
+    max-width: var(--measure, 68ch);
   }
 }
 

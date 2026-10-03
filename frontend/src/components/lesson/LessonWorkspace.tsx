@@ -419,7 +419,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </div>
         ) : lesson.content && lesson.content.trim() ? (
           /* Tipografía de lectura: medida cómoda, ritmo vertical y sin ruido. */
-          <article className="max-w-[68ch] whitespace-pre-wrap break-words text-body text-ink" style={{ lineHeight: 1.75 }}>
+          <article className="type-prose whitespace-pre-wrap break-words">
             {lesson.content}
           </article>
         ) : (
