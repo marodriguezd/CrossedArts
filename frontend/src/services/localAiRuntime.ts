@@ -393,6 +393,20 @@ export class LocalAiRuntime {
   /* ------------------------------------------------------------------ */
 
   public async ensureSemanticIndexReady(): Promise<SemanticStatus> {
+    // La preparación semántica puede requerir descargar el modelo de embeddings.
+    // No se inicia ningún recurso nuevo hasta que el usuario haya aceptado la
+    // activación de la IA local.
+    if (!this.hasConsent()) {
+      return this.setSemanticStatus({
+        stage: 'idle',
+        progress: 0,
+        indexed: 0,
+        total: 0,
+        message: 'La búsqueda semántica se preparará al activar la IA local.',
+        errorCategory: undefined
+      });
+    }
+
     if (this.inFlightSemantic) return this.inFlightSemantic;
 
     this.inFlightSemantic = this.prepareSemantic()
