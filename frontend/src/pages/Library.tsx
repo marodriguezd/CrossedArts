@@ -858,7 +858,7 @@ export const Library: React.FC<LibraryProps> = ({
       {/* Modal de previsualización de documento antes de persistir */}
       {previewDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-labelledby="preview-title" className="w-full max-w-lg animate-fade-in space-y-4 rounded-xl border border-line bg-raised p-6 shadow-pop">
+          <div role="dialog" aria-modal="true" aria-labelledby="preview-title" className="max-h-[90vh] w-full max-w-lg animate-fade-in space-y-4 overflow-y-auto rounded-xl border border-line bg-raised p-6 shadow-pop">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <h3 id="preview-title" className="type-section flex items-center gap-2 text-ink">
                 <FileUp size={17} className="text-accent" aria-hidden="true" /> Previsualización de importación
@@ -1019,7 +1019,7 @@ export const Library: React.FC<LibraryProps> = ({
       {/* Modal de creación de curso */}
       {isCreateCourseOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
-          <form onSubmit={handleCreateCourse} role="dialog" aria-modal="true" aria-labelledby="create-course-title" className="w-full max-w-md animate-fade-in space-y-4 rounded-xl border border-line bg-raised p-6 shadow-pop">
+          <form onSubmit={handleCreateCourse} role="dialog" aria-modal="true" aria-labelledby="create-course-title" className="max-h-[90vh] w-full max-w-md animate-fade-in space-y-4 overflow-y-auto rounded-xl border border-line bg-raised p-6 shadow-pop">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <h3 id="create-course-title" className="type-section flex items-center gap-2 text-ink">
                 <GraduationCap size={17} className="text-accent" aria-hidden="true" /> Crear curso
