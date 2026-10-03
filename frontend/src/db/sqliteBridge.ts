@@ -67,7 +67,7 @@ const INIT_FAILURE_MESSAGES: Record<DbInitFailureCode, { message: string; retrya
     retryable: true
   },
   'corrupt-storage': {
-    message: 'Los datos guardados no se han podido leer y la aplicación ha iniciado con una base de datos nueva y vacía. Tus datos anteriores siguen intactos en el almacenamiento: restáuralos desde Ajustes.',
+    message: 'La base de datos local guardada no se puede abrir de forma segura. Tus datos persistidos se han conservado intactos; restaura una copia compatible antes de continuar.',
     retryable: false
   },
   'schema-invalid': {
@@ -391,7 +391,10 @@ class SQLiteBridge {
       this.initState = 'failed';
       this.initFailure =
         err instanceof DatabaseInitializationError ? err.failure : classifyInitError(err);
-      this.setStorageState('storage-unavailable', this.initFailure.detail || this.initFailure.message);
+      this.setStorageState(
+        this.initFailure.code === 'corrupt-storage' ? 'corrupt-storage' : 'storage-unavailable',
+        this.initFailure.detail || this.initFailure.message
+      );
       console.error('[CrossedArts DB] Fallo de inicialización:', this.initFailure.detail || this.initFailure.message);
       throw err instanceof DatabaseInitializationError
         ? err
