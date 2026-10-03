@@ -78,10 +78,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
     isLocalProvider && ['preparing', 'downloading', 'compiling'].includes(runtimeStatus.stage);
   const needsConsent = isLocalProvider && runtimeStatus.stage === 'consent-required';
   const localUnavailable = isLocalProvider && runtimeStatus.stage === 'unsupported';
-  // Durante la preparación el envío permanece disponible: la petición comparte
-  // la preparación en vuelo y continúa automáticamente cuando termina.
-  // Solo se bloquea mientras falta una decisión explícita sobre la primera descarga.
-  const sendBlocked = needsConsent && !consentDismissed;
+  const sendBlocked = preparingLocal || (needsConsent && !consentDismissed);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
