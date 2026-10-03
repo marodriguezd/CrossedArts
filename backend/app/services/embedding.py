@@ -44,6 +44,7 @@ class EmbeddingService:
     
     _embeddings: Optional[Embeddings] = None
     _initialized: bool = False
+    _provider_error: Optional[str] = None
 
     @classmethod
     def initialize(cls) -> None:
@@ -51,6 +52,7 @@ class EmbeddingService:
         if cls._initialized:
             return
             
+        cls._provider_error = None
         provider = settings.embedding_provider
         
         if provider == "openai" and settings.openai_api_key:
@@ -62,8 +64,8 @@ class EmbeddingService:
                     openai_api_base=settings.openai_api_base,
                 )
             except ImportError:
-                print("[CrossedArts] langchain-openai not installed. Using mock embeddings.")
-                cls._embeddings = MockEmbeddingProvider()
+                cls._provider_error = "El proveedor OpenAI de embeddings está configurado pero langchain-openai no está instalado."
+                cls._embeddings = None
         elif provider == "ollama":
             try:
                 try:
@@ -76,8 +78,8 @@ class EmbeddingService:
                     base_url=base_url,
                 )
             except ImportError:
-                print("[CrossedArts] langchain-ollama/langchain-community not installed. Using mock embeddings.")
-                cls._embeddings = MockEmbeddingProvider()
+                cls._provider_error = "Ollama está configurado para embeddings pero no hay una integración compatible instalada."
+                cls._embeddings = None
         elif provider == "huggingface":
             try:
                 try:
@@ -88,13 +90,16 @@ class EmbeddingService:
                     model_name=settings.huggingface_embed_model,
                 )
             except Exception as e:
-                print(f"[CrossedArts] Error initializing HuggingFace embeddings: {e}. Using mock embeddings.")
-                cls._embeddings = MockEmbeddingProvider()
-        else:
+                cls._provider_error = f"No se pudo inicializar el proveedor HuggingFace de embeddings: {e}"
+                cls._embeddings = None
+        elif provider == "mock":
             cls._embeddings = MockEmbeddingProvider()
+        else:
+            cls._provider_error = f"Proveedor de embeddings no soportado: {provider}"
+            cls._embeddings = None
             
         cls._initialized = True
-        mode = provider if not isinstance(cls._embeddings, MockEmbeddingProvider) else "mock"
+        mode = provider if cls._embeddings is not None and not isinstance(cls._embeddings, MockEmbeddingProvider) else ("mock" if provider == "mock" else f"{provider}-unavailable")
         print(f"[CrossedArts] Embedding Service initialized: {mode}")
 
     @classmethod
@@ -111,6 +116,8 @@ class EmbeddingService:
         """Get embeddings for a list of texts."""
         if not cls._initialized:
             cls.initialize()
+        if cls._embeddings is None:
+            raise RuntimeError(cls._provider_error or "El proveedor de embeddings configurado no está disponible.")
         return cls._embeddings.embed_documents(texts)
 
     @classmethod
@@ -118,6 +125,8 @@ class EmbeddingService:
         """Get embedding for a single text."""
         if not cls._initialized:
             cls.initialize()
+        if cls._embeddings is None:
+            raise RuntimeError(cls._provider_error or "El proveedor de embeddings configurado no está disponible.")
         return cls._embeddings.embed_query(text)
 
     @classmethod
@@ -136,7 +145,9 @@ class EmbeddingService:
             return settings.openai_embed_model
         elif settings.embedding_provider == "huggingface":
             return settings.huggingface_embed_model
-        return settings.ollama_embed_model
+        elif settings.embedding_provider == "ollama":
+            return settings.ollama_embed_model
+        return f"{settings.embedding_provider}-unavailable"
 
     @classmethod
     def index_entity(cls, db: Session, entity_id: uuid.UUID, entity_type: str, text: str, commit: bool = True) -> None:
