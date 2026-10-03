@@ -9,10 +9,6 @@ from backend.app.services.thumbnail import ThumbnailService
 from backend.app.services.scanner import CourseScanner, BookScanner, ScannerManager
 from backend.app.models.resource import Course, Book, MediaAsset
 from backend.app.models.course_structure import Module, Lesson
-from backend.app.models.activity import MediaProgress
-from backend.app.models.base import ResourceStatus
-from frontend.app.components.media_viewer import VideoViewer, DocumentViewer
-
 
 def test_thumbnail_resolution_precedence():
     # 1. URL externa
@@ -39,16 +35,6 @@ def test_thumbnail_resolution_precedence():
 
     # 5. Fallback a placeholder por defecto (libro)
     assert ThumbnailService.resolve_cover_url(None, None, "book") == "/static/placeholders/book_placeholder.png"
-
-
-def test_media_viewer_and_empty_state_compilation():
-    # Validar que los esqueletos de clases instancian sin fallos
-    v_viewer = VideoViewer("res_123", "media_123", "video.mp4", "video/mp4")
-    d_viewer = DocumentViewer("res_456", "media_456", "book.pdf", "PDF")
-    
-    assert v_viewer.resource_id == "res_123"
-    assert d_viewer.file_type == "PDF"
-
 
 def test_video_discovery_and_idempotency(db: Session, tmp_path: Path):
     # Crear un directorio temporal de curso con un video

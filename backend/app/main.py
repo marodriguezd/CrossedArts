@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     # Creación automática de tablas si no existen
     Base.metadata.create_all(bind=engine)
-    print("[DomestiK] Base de datos SQLite inicializada correctamente.")
+    print("[CrossedArts] Base de datos SQLite inicializada correctamente.")
 
     # Initialize shared HTTP client pool (async for LLM calls)
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
@@ -27,8 +27,8 @@ async def lifespan(app: FastAPI):
     from backend.app.services.embedding import EmbeddingService
     LLMService.initialize_from_env(client=app.state.http_client)
     EmbeddingService.initialize_from_env(client=app.state.http_client_sync)
-    print(f"[DomestiK] Proveedor de LLM inicializado: {LLMService.get_provider_name()}")
-    print(f"[DomestiK] Proveedor de Embedding inicializado: {EmbeddingService.get_model_name()}")
+    print(f"[CrossedArts] Proveedor de LLM inicializado: {LLMService.get_provider_name()}")
+    print(f"[CrossedArts] Proveedor de Embedding inicializado: {EmbeddingService.get_model_name()}")
 
     yield
 
@@ -37,9 +37,9 @@ async def lifespan(app: FastAPI):
     app.state.http_client_sync.close()
 
 app = FastAPI(
-    title="DomestiK API",
+    title="CrossedArts API",
     description="Learning Operating System autohospedable y local-first",
-    version="0.1.0",
+    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -48,117 +48,32 @@ app.include_router(api_router)
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "service": "CrossedArts API"}
 
-# ==========================================
-# INTEGRACIÓN DE FRONTEND (NICEGUI)
-# ==========================================
-from nicegui import ui
-from frontend.app.dashboard import DashboardPage
-from frontend.app.library import LibraryPage
-from frontend.app.course_detail import CourseDetailPage
-from frontend.app.book_detail import BookDetailPage
-from frontend.app.notes_list import NotesListPage
-from frontend.app.search_results import SearchResultsPage
-from frontend.app.semantic_search import SemanticSearchPage
-from frontend.app.pages.learning_paths import LearningPathsPage
-from frontend.app.pages.study_plans import StudyPlansPage
-from frontend.app.pages.goals import GoalsPage
-from frontend.app.pages.habits import HabitsPage
-from frontend.app.pages.review_center import ReviewCenterPage
-from frontend.app.pages.knowledge_graph import KnowledgeGraphPage
-from frontend.app.pages.settings import SettingsPage
-from frontend.app.pages.about import AboutPage
-
-
-@ui.page('/')
-def show_dashboard():
-    page = DashboardPage()
-    page.draw()
-
-
-@ui.page('/library')
-def show_library():
-    page = LibraryPage()
-    page.draw()
-
-@ui.page('/course/{course_id}')
-def show_course_detail(course_id: str):
-    page = CourseDetailPage(course_id)
-    page.draw()
-
-@ui.page('/book/{book_id}')
-def show_book_detail(book_id: str):
-    page = BookDetailPage(book_id)
-    page.draw()
-
-@ui.page('/notes-list')
-def show_notes_list():
-    page = NotesListPage()
-    page.draw()
-
-@ui.page('/search-results')
-def show_search_results(q: str = ''):
-    page = SearchResultsPage(q)
-    page.draw()
-
-@ui.page('/semantic-search')
-def show_semantic_search():
-    page = SemanticSearchPage()
-    page.draw()
-
-@ui.page('/learning-paths')
-def show_learning_paths():
-    page = LearningPathsPage()
-    page.draw()
-
-@ui.page('/study-plans')
-def show_study_plans():
-    page = StudyPlansPage()
-    page.draw()
-
-@ui.page('/goals')
-def show_goals():
-    page = GoalsPage()
-    page.draw()
-
-@ui.page('/habits')
-def show_habits():
-    page = HabitsPage()
-    page.draw()
-
-@ui.page('/review-center')
-def show_review_center():
-    page = ReviewCenterPage()
-    page.draw()
-
-@ui.page('/knowledge-graph')
-def show_knowledge_graph():
-    page = KnowledgeGraphPage()
-    page.draw()
-
-
-@ui.page('/settings')
-def show_settings():
-    page = SettingsPage()
-    page.draw()
-
-
-@ui.page('/about')
-def show_about():
-    page = AboutPage()
-    page.draw()
-
-
-
-# Montar NiceGUI sobre FastAPI
-from nicegui import app as nicegui_app
-static_dir = str(settings.static_dir)
+# Configuración de archivos estáticos y datos
 settings.ensure_dirs()
-nicegui_app.add_static_files("/static", static_dir)
+static_dir = settings.static_dir
+if static_dir.exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-ui.run_with(app, mount_path="/", title="DomestiK")
+# Montar frontend compilado (dist) si existe
+frontend_dist = settings.static_dir.parent / "frontend" / "dist"
+if frontend_dist.exists() and (frontend_dist / "index.html").exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+else:
+    @app.get("/")
+    def root():
+        return {
+            "name": "CrossedArts API",
+            "version": "1.0.0",
+            "description": "Learning Operating System API (Backend)",
+            "docs": "/docs",
+            "health": "/api/health"
+        }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.app.main:app", host="127.0.0.1", port=settings.port, reload=True)
+    uvicorn.run("backend.app.main:app", host=settings.host, port=settings.port, reload=True)
+
