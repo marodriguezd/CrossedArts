@@ -27,7 +27,7 @@ export const aiService = {
       if (typeof localStorage === 'undefined') {
         return inMemorySettings || DEFAULT_SETTINGS;
       }
-      const saved = localStorage.getItem('domestik_ai_settings');
+      const saved = localStorage.getItem('crossedarts_ai_settings');
       return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
     } catch {
       return DEFAULT_SETTINGS;
@@ -39,7 +39,7 @@ export const aiService = {
       inMemorySettings = settings;
       return;
     }
-    localStorage.setItem('domestik_ai_settings', JSON.stringify(settings));
+    localStorage.setItem('crossedarts_ai_settings', JSON.stringify(settings));
   },
 
   async askTutor(messages: AIChatMessage[], contextInfo: string = ''): Promise<string> {
@@ -47,7 +47,7 @@ export const aiService = {
 
     if (settings.provider === 'ollama') {
       try {
-        const systemPrompt = `Eres el tutor académico de DomestiK (Learning Operating System). Contexto de estudio del usuario:\n${contextInfo}\nResponde de forma concisa, estructurada y pedagógica.`;
+        const systemPrompt = `Eres el tutor académico de Crossed Arts (Learning Operating System). Contexto de estudio del usuario:\n${contextInfo}\nResponde de forma concisa, estructurada y pedagógica.`;
         const res = await fetch(`${settings.ollamaUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -75,7 +75,7 @@ export const aiService = {
           body: JSON.stringify({
             model: settings.apiModel || 'gpt-4o-mini',
             messages: [
-              { role: 'system', content: `Tutor de DomestiK. Contexto:\n${contextInfo}` },
+              { role: 'system', content: `Tutor de Crossed Arts. Contexto:\n${contextInfo}` },
               ...messages
             ]
           })
@@ -92,12 +92,12 @@ export const aiService = {
     const lastUserMsg = messages[messages.length - 1]?.content.toLowerCase() || '';
 
     if (lastUserMsg.includes('flashcard') || lastUserMsg.includes('repaso')) {
-      return `💡 **Sugerencia de Repaso Activo:** Según la curva del olvido de Ebbinghaus y el algoritmo SM-2 que tienes activo en DomestiK, te recomiendo repasar las tarjetas de *React 18* y *Deep Work* hoy para fijar los conceptos a largo plazo.`;
+      return `💡 **Sugerencia de Repaso Activo:** Según la curva del olvido de Ebbinghaus y el algoritmo SM-2 que tienes activo en Crossed Arts, te recomiendo repasar las tarjetas de *React 18* y *Deep Work* hoy para fijar los conceptos a largo plazo.`;
     }
     if (lastUserMsg.includes('react') || lastUserMsg.includes('hook')) {
       return `⚛️ **Concepto Clave en React 18:** Recuerda que con el motor *Fiber*, las actualizaciones de estado ya no bloquean el hilo principal cuando usas \`useTransition\`. ¿Quieres que preparemos un quiz rápido sobre esto?`;
     }
 
-    return `📚 **Tutor DomestiK:** He analizado tus recursos activos (${contextInfo || 'Cursos y libros del sistema'}). Para profundizar en este tema, revisa las notas vinculadas y realiza una autoevaluación en el **Centro de Repaso**. Configura tu proveedor de Ollama o API Key en **Ajustes** para respuestas con LLM en tiempo real.`;
+    return `📚 **Tutor Crossed Arts:** He analizado tus recursos activos (${contextInfo || 'Cursos y libros del sistema'}). Para profundizar en este tema, revisa las notas vinculadas y realiza una autoevaluación en el **Centro de Repaso**. Configura tu proveedor de Ollama o API Key en **Ajustes** para respuestas con LLM en tiempo real.`;
   }
 };

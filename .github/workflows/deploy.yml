@@ -1,4 +1,4 @@
-name: Deploy DomestiK to GitHub Pages
+name: Deploy Crossed Arts to GitHub Pages
 
 on:
   push:

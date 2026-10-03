@@ -68,7 +68,7 @@ export async function exportSqliteFile(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `domestik-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
+  a.download = `crossedarts-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -88,7 +88,7 @@ export async function exportJsonBackup(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `domestik-data-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `crossedarts-data-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

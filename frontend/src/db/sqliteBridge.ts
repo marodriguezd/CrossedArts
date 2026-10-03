@@ -3,7 +3,7 @@ import type { Database } from 'sql.js';
 import { SCHEMA_SQL } from './schema.ts';
 import { SEED_SQL } from './seedDemo.ts';
 
-const DB_STORE_NAME = 'domestik_sqlite_store';
+const DB_STORE_NAME = 'crossedarts_sqlite_store';
 const DB_KEY = 'current_database_bytes';
 
 class SQLiteBridge {
@@ -97,7 +97,7 @@ class SQLiteBridge {
 
   private openIDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('DomestiK_IDB', 1);
+      const req = indexedDB.open('CrossedArts_IDB', 1);
       req.onupgradeneeded = () => {
         const idb = req.result;
         if (!idb.objectStoreNames.contains(DB_STORE_NAME)) {
