@@ -1,4 +1,4 @@
-# 🏛️ Crossed Arts — Learning Operating System
+# 🏛️ CrossedArts — Learning Operating System
 
 <p align="center">
   <img src="https://img.shields.io/badge/GitHub%20Pages-Live%20Deploy-7c3aed?style=flat&logo=githubpages&logoColor=white" alt="GitHub Pages" />
@@ -11,7 +11,7 @@
 
 ---
 
-**Crossed Arts** es un **Learning Operating System** (sistema operativo de aprendizaje personal) *local-first*, modular y optimizado para **GitHub Pages First**.
+**CrossedArts** es un **Learning Operating System** (sistema operativo de aprendizaje personal) *local-first*, modular y optimizado para **GitHub Pages First**.
 
 Centraliza cursos estructurados, libros, flashcards de repetición espaciada (algoritmo SuperMemo-2), notas de estudio y un grafo de conocimiento interactivo, ejecutando toda la base de datos relacional SQLite directamente dentro de tu navegador.
 
@@ -24,7 +24,7 @@ Centraliza cursos estructurados, libros, flashcards de repetición espaciada (al
    - Cero servidores obligatorios para estudiar, consultar notas o repasar tarjetas.
 2. **Base de Datos SQLite en el Navegador (WASM + IndexedDB):**
    - Esquema relacional completo (`learning_resource`, `course`, `book`, `module`, `lesson`, `note`, `flashcard`, `concept`, `knowledge_connection`).
-   - Importación y exportación nativa de archivos `.sqlite` / `.db` compatibles con el backend original de Crossed Arts.
+   - Importación y exportación nativa de archivos `.sqlite` / `.db` compatibles con el backend original de CrossedArts.
    - Respaldo universal en formato JSON.
 3. **Acceso a Medios Locales (Streaming sin Duplicar Disco):**
    - Integración con la **File System Access API** (`window.showDirectoryPicker`) para montar directorios locales de cursos y reproducir vídeos en streaming sin saturar la memoria del navegador.
@@ -53,8 +53,8 @@ Para activarlo en tu fork o repositorio:
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/marodriguezd/Crossed Arts.git
-cd Crossed Arts/frontend
+git clone https://github.com/marodriguezd/CrossedArts.git
+cd CrossedArts/frontend
 
 # Instalar dependencias
 npm install

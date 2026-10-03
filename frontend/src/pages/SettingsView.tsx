@@ -52,7 +52,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
           <span>Base de Datos Local (SQLite WASM & IndexedDB)</span>
         </div>
         <p className="text-xs text-slate-300">
-          Crossed Arts almacena todas tus entidades (cursos, libros, notas, flashcards SM-2) en un archivo SQLite relacional dentro de tu navegador.
+          CrossedArts almacena todas tus entidades (cursos, libros, notas, flashcards SM-2) en un archivo SQLite relacional dentro de tu navegador.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">

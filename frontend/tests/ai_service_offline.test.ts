@@ -60,5 +60,5 @@ test('5.4 aiService.askTutor provides domain-specific answers for technical topi
     { role: 'user', content: '¿Qué debería estudiar a continuación?' }
   ];
   const generalReply = await aiService.askTutor(generalMessages, 'Bases de Datos');
-  assert.ok(generalReply.includes('Tutor Crossed Arts') || generalReply.includes('Crossed Arts'), 'Should return structured tutor feedback');
+  assert.ok(generalReply.includes('Tutor CrossedArts') || generalReply.includes('CrossedArts'), 'Should return structured tutor feedback');
 });

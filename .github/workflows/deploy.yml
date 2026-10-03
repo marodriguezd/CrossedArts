@@ -1,4 +1,4 @@
-name: Deploy Crossed Arts to GitHub Pages
+name: Deploy CrossedArts to GitHub Pages
 
 on:
   push:

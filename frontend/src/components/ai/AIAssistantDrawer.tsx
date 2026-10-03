@@ -12,7 +12,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   const [messages, setMessages] = useState<AIChatMessage[]>([
     {
       role: 'assistant',
-      content: '¡Hola! Soy tu tutor académico de Crossed Arts. Puedo resolver dudas sobre tus cursos, resumir conceptos clave o generar preguntas de autoevaluación activas. ¿En qué te ayudo hoy?'
+      content: '¡Hola! Soy tu tutor académico de CrossedArts. Puedo resolver dudas sobre tus cursos, resumir conceptos clave o generar preguntas de autoevaluación activas. ¿En qué te ayudo hoy?'
     }
   ]);
   const [input, setInput] = useState('');
