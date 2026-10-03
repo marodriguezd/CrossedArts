@@ -547,6 +547,22 @@ class SQLiteBridge {
       throw err;
     }
   }
+  public async exportPersistedRecovery(): Promise<string | null> {
+    const bytes = await this.loadFromStorage();
+    if (!bytes || bytes.byteLength === 0 || typeof document === 'undefined') return null;
+    const filename = `crossedarts-recovery-${new Date().toISOString().slice(0, 10)}.sqlite`;
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/x-sqlite3' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return filename;
+  }
+
   public async importDatabase(bytes: Uint8Array): Promise<void> {
     if (!isValidSqliteBuffer(bytes)) {
       throw new Error('El archivo suministrado no contiene una cabecera SQLite válida (SQLite format 3).');
