@@ -31,6 +31,7 @@ export type DbInitFailureCode =
   | 'storage-unavailable'
   | 'corrupt-storage'
   | 'schema-invalid'
+  | 'stale-other-tab'
   | 'unknown';
 
 export interface DbInitFailure {
@@ -72,6 +73,10 @@ const INIT_FAILURE_MESSAGES: Record<DbInitFailureCode, { message: string; retrya
   'schema-invalid': {
     message: 'El esquema de la base de datos local no es válido, por lo que la aplicación no puede funcionar.',
     retryable: false
+  },
+  'stale-other-tab': {
+    message: 'Otra pestaña de CrossedArts ha actualizado tus datos. Recarga esta pestaña antes de continuar.',
+    retryable: true
   },
   unknown: {
     message: 'No se pudo inicializar la base de datos local. Vuelve a cargar la aplicación; si el problema continúa, revisa el espacio disponible en tu navegador.',
@@ -150,8 +155,10 @@ class SQLiteBridge {
    * informar del tamaño en cada notificación de estado.
    */
   private databaseSizeBytes = 0;
+  private persistentStorageGranted = false;
 
   constructor() {
+    void this.refreshPersistentStorageState();
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.broadcastChannel = new BroadcastChannel('crossedarts_storage_coordination');
@@ -183,11 +190,24 @@ class SQLiteBridge {
     return {
       state: this.storageState,
       hasIndexedDB: this.hasIndexedDB(),
-      isPersistentGranted: false,
+      isPersistentGranted: this.persistentStorageGranted,
       lastPersistedTimestamp: this.lastPersistedAt,
       lastError: this.lastError,
       databaseSizeBytes: this.databaseSizeBytes
     };
+  }
+
+  private async refreshPersistentStorageState(): Promise<void> {
+    if (typeof navigator === 'undefined' || !('storage' in navigator) || typeof navigator.storage.persisted !== 'function') return;
+    try {
+      this.persistentStorageGranted = await navigator.storage.persisted();
+      const report = this.getStorageReport();
+      for (const listener of this.stateListeners) {
+        try { listener(report); } catch { /* listener aislado */ }
+      }
+    } catch {
+      this.persistentStorageGranted = false;
+    }
   }
 
   public subscribeStorage(listener: (report: StorageStatusReport) => void): () => void {
@@ -307,36 +327,34 @@ class SQLiteBridge {
 
       if (savedBytes && savedBytes.length > 0) {
         if (!isValidSqliteBuffer(savedBytes)) {
-          this.setStorageState('corrupt-storage', 'Los datos guardados en IndexedDB no son un SQLite válido.');
-          // Crear base de datos de respaldo en memoria sin sobreescribir inmediatamente
-          this.db = new SQL.Database();
-          this.db.run('PRAGMA foreign_keys = ON;');
-          this.db.run(SCHEMA_SQL);
-          this.isInitialized = true;
-          this.initState = 'ready';
-          this.setStorageState('ready');
-          return this.db;
+          this.setStorageState('corrupt-storage', 'Los datos guardados en IndexedDB no contienen una base de datos SQLite válida.');
+          throw new DatabaseInitializationError({
+            ...INIT_FAILURE_MESSAGES['corrupt-storage'],
+            code: 'corrupt-storage',
+            detail: 'Los bytes persistidos no tienen una cabecera SQLite válida.'
+          });
         }
 
         let migrated = false;
         try {
           this.db = new SQL.Database(savedBytes);
           this.db.run('PRAGMA foreign_keys = ON;');
+          this.validateDatabaseSchema(this.db);
           // Migraciones idempotentes para bases de datos existentes
           const migratedSession = this.migrateLearningSession(this.db);
           const migratedLesson = this.migrateLessonContent(this.db);
           const migratedGraph = this.migrateKnowledgeConnectionIndex(this.db);
           migrated = migratedSession || migratedLesson || migratedGraph;
+          this.validateDatabaseSchema(this.db);
         } catch (e: any) {
-          console.warn('Error cargando SQLite previo, creando nueva BD:', e);
-          this.setStorageState('corrupt-storage', e?.message || 'Corrupción en base de datos');
-          this.db = new SQL.Database();
-          this.db.run('PRAGMA foreign_keys = ON;');
-          this.db.run(SCHEMA_SQL);
-          this.db.run(SEED_SQL);
-          this.isInitialized = true;
-          this.initState = 'ready';
-          await this.persist();
+          try { this.db?.close(); } catch { /* cierre defensivo */ }
+          this.db = null;
+          this.setStorageState('corrupt-storage', e?.message || 'La base de datos guardada no es compatible.');
+          throw new DatabaseInitializationError({
+            ...INIT_FAILURE_MESSAGES['corrupt-storage'],
+            code: 'corrupt-storage',
+            detail: e?.message || String(e)
+          });
         }
         if (this.db) {
           this.isInitialized = true;
@@ -452,7 +470,8 @@ class SQLiteBridge {
     this.isInitialized = true;
     this.inMemoryBytes = bytes;
     this.persistedRevision = this.remoteRevision;
-    this.lastSeenRevision = Math.max(this.lastSeenRevision, this.remoteRevision);
+    this.remoteRevision = 0;
+    this.lastSeenRevision = Math.max(this.lastSeenRevision, this.persistedRevision);
     this.setStorageState('ready');
     console.info('[CrossedArts Storage] Estado en memoria actualizado tras la escritura de otra pestaña.');
   }
@@ -466,6 +485,13 @@ class SQLiteBridge {
    * en español y con una vía de recuperación accionable.
    */
   public getDatabase(): Database {
+    if (this.remoteRevision > this.persistedRevision) {
+      throw new DatabaseInitializationError({
+        ...INIT_FAILURE_MESSAGES['stale-other-tab'],
+        code: 'stale-other-tab',
+        detail: 'La pestaña actual está por detrás de una revisión persistida más reciente.'
+      });
+    }
     if (!this.db) {
       if (this.initState === 'failed' || this.initFailure) {
         throw new DatabaseInitializationError(
@@ -484,42 +510,40 @@ class SQLiteBridge {
     return this.db;
   }
 
+  private async commitPersistedBytes(bytes: Uint8Array): Promise<void> {
+    const nextRevision = this.persistedRevision + 1;
+    await this.saveToStorage(bytes);
+    this.inMemoryBytes = bytes;
+    this.databaseSizeBytes = bytes.byteLength;
+    this.persistedRevision = nextRevision;
+    this.lastSeenRevision = Math.max(this.lastSeenRevision, nextRevision);
+    this.setStorageState('persisted');
+
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({
+          type: 'DATABASE_MUTATED_ANOTHER_TAB',
+          revision: nextRevision,
+          origin: TAB_ID,
+          timestamp: Date.now()
+        });
+      } catch {}
+    }
+  }
+
   public async persist(): Promise<void> {
     if (!this.db) return;
     this.setStorageState('persisting');
     try {
-      this.persistedRevision += 1;
       const bytes = this.db.export();
-      this.databaseSizeBytes = bytes.byteLength;
-      // sql.js `export()` cierra y reabre la conexión SQLite, lo que restablece los
-      // PRAGMAs de conexión a sus valores por defecto. Volvemos a activar las
-      // claves foráneas para que ON DELETE CASCADE / SET NULL sigan funcionando
-      // después de cada persistencia.
+      // `export()` puede restablecer PRAGMAs de conexión.
       this.db.run('PRAGMA foreign_keys = ON;');
-      await this.saveToStorage(bytes);
-      this.setStorageState('persisted');
-      
-      // Notificar a otras pestañas con la revisión persistida para que puedan
-      // detectar que su estado en memoria está obsoleto. No incluye datos ni
-      // secretos, solo un contador monótono y el origen.
-      if (this.broadcastChannel) {
-        try {
-          this.broadcastChannel.postMessage({
-            type: 'DATABASE_MUTATED_ANOTHER_TAB',
-            revision: this.persistedRevision,
-            origin: TAB_ID,
-            timestamp: Date.now()
-          });
-        } catch {}
-      }
-      // Nuestra propia escritura es la versión vigente: no estamos obsoletos.
-      this.lastSeenRevision = Math.max(this.lastSeenRevision, this.persistedRevision);
+      await this.commitPersistedBytes(bytes);
     } catch (err: any) {
       this.setStorageState('persistence-error', err?.message || 'Error guardando en almacenamiento persistente');
       throw err;
     }
   }
-
   public async importDatabase(bytes: Uint8Array): Promise<void> {
     if (!isValidSqliteBuffer(bytes)) {
       throw new Error('El archivo suministrado no contiene una cabecera SQLite válida (SQLite format 3).');
@@ -527,36 +551,55 @@ class SQLiteBridge {
 
     const options = await this.getSqlJsOptions();
     const SQL = await initSqlJs(options);
-    
-    // Instanciar temporalmente para validar que es legible y tiene el esquema esperado
-    let tempDb: Database;
+    let tempDb: Database | null = null;
     try {
       tempDb = new SQL.Database(bytes);
+      tempDb.run('PRAGMA foreign_keys = ON;');
+      this.validateDatabaseSchema(tempDb);
+      this.migrateLearningSession(tempDb);
+      this.migrateLessonContent(tempDb);
+      this.migrateKnowledgeConnectionIndex(tempDb);
+      this.validateDatabaseSchema(tempDb);
+
+      const persistedBytes = tempDb.export();
+      tempDb.run('PRAGMA foreign_keys = ON;');
+
+      this.setStorageState('persisting');
+      await this.commitPersistedBytes(persistedBytes);
+
+      if (this.db) {
+        try { this.db.close(); } catch {}
+      }
+      this.db = tempDb;
+      tempDb = null;
+      this.isInitialized = true;
+      this.initState = 'ready';
+      this.setStorageState('persisted');
     } catch (err: any) {
-      throw new Error(`Archivo SQLite corrupto o ilegible: ${err.message}`);
+      if (tempDb) { try { tempDb.close(); } catch {} }
+      throw new Error(err?.message || 'No se pudo importar la base de datos SQLite.');
     }
-
-    const testRes = tempDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='learning_resource';");
-    if (!testRes.length || !testRes[0].values.length) {
-      tempDb.close();
-      throw new Error('El archivo SQLite no contiene las tablas de CrossedArts (tabla learning_resource ausente).');
+  }
+  private validateDatabaseSchema(db: Database): void {
+    const requiredColumns: Record<string, string[]> = {
+      learning_resource: ['id', 'title', 'description', 'cover_path', 'category', 'status', 'source_path', 'type', 'created_at', 'updated_at'],
+      course: ['id', 'instructor', 'difficulty', 'total_duration_minutes', 'total_lessons', 'completed_lessons'],
+      book: ['id', 'author', 'isbn', 'page_count', 'current_page', 'reading_percentage'],
+      module: ['id', 'course_id', 'title', 'order_index'],
+      lesson: ['id', 'module_id', 'title', 'content', 'order_index', 'duration_minutes', 'lesson_type', 'media_url', 'is_completed'],
+      learning_session: ['id', 'resource_id', 'lesson_id', 'started_at', 'ended_at', 'duration_minutes', 'inactive_seconds', 'mode', 'cards_reviewed', 'questions_answered', 'correct_answers', 'status'],
+      note: ['id', 'resource_id', 'lesson_id', 'title', 'content', 'tags', 'created_at', 'updated_at'],
+      flashcard: ['id', 'resource_id', 'front', 'back', 'repetition_count', 'interval_days', 'ease_factor', 'due_date', 'last_reviewed'],
+      concept: ['id', 'name', 'description'],
+      knowledge_connection: ['id', 'source_id', 'target_id', 'connection_type', 'weight']
+    };
+    for (const [table, columns] of Object.entries(requiredColumns)) {
+      const info = db.exec(`PRAGMA table_info(${table})`);
+      if (!info.length || !info[0].values.length) throw new Error(`Falta la tabla requerida: ${table}`);
+      const present = new Set(info[0].values.map(row => String(row[1])));
+      const missing = columns.filter(column => !present.has(column));
+      if (missing.length) throw new Error(`La tabla ${table} no contiene las columnas requeridas: ${missing.join(', ')}`);
     }
-    tempDb.close();
-
-    // Reemplazo atómico
-    if (this.db) {
-      try {
-        this.db.close();
-      } catch {}
-    }
-
-    this.db = new SQL.Database(bytes);
-    this.db.run('PRAGMA foreign_keys = ON;');
-    this.migrateLearningSession(this.db);
-    this.migrateLessonContent(this.db);
-    this.migrateKnowledgeConnectionIndex(this.db);
-    this.isInitialized = true;
-    await this.persist();
   }
 
   /**
@@ -711,7 +754,10 @@ class SQLiteBridge {
   public async requestPersistentStorage(): Promise<boolean> {
     if (typeof navigator !== 'undefined' && 'storage' in navigator && typeof navigator.storage.persist === 'function') {
       try {
-        return await navigator.storage.persist();
+        const granted = await navigator.storage.persist();
+        this.persistentStorageGranted = granted || await navigator.storage.persisted();
+        this.setStorageState(this.storageState);
+        return granted;
       } catch {
         return false;
       }
