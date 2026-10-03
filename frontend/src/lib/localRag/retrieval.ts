@@ -20,8 +20,8 @@ export interface RetrievalResult {
   documents: RetrievedDocument[];
   hasContext: boolean;
   totalCandidates: number;
-  modeUsed: 'lexical' | 'hybrid';
-  retrievalMode: 'lexical' | 'hybrid';
+  modeUsed: 'lexical' | 'hybrid' | 'semantic';
+  retrievalMode: 'lexical' | 'hybrid' | 'semantic';
 }
 
 /**
@@ -322,7 +322,7 @@ export async function retrieveLocalContext(
       const allCached = await embeddingCache.getAllEntriesForModel(modelId);
 
       if (allCached.length > 0) {
-        modeUsed = 'hybrid';
+        // El modo semántico solo se anuncia cuando existen coincidencias semánticas aceptables.
 
         // Validación de vigencia (staleness) por hash de contenido: un vector
         // cacheado solo es utilizable si su `contentHash` coincide con el hash
@@ -331,10 +331,40 @@ export async function retrieveLocalContext(
         // y sin afectar a la lección B ni a otros recursos sin cambios.
         const currentHashes = new Map<string, string>();
         try {
-          // Usar la MISMA fuente que el indexador (getAllLearningResources) para que
-          // los chunks de lección incluyan su contenido y el hash coincida.
-          const currentResources = await dao.getAllLearningResources();
-          const currentChunks = await createSemanticChunksFromResourcesAsync(currentResources as any);
+          // Reutilizar los datos que esta misma recuperación ya cargó. Antes se
+          // reconstruía toda la biblioteca mediante getAllLearningResources(), que
+          // volvía a consultar cursos/módulos y podía introducir trabajo N+1.
+          const lessonGroups = new Map<string, Map<string, any[]>>();
+          for (const entry of lessonIndex) {
+            if (!lessonGroups.has(entry.courseId)) lessonGroups.set(entry.courseId, new Map());
+            const groups = lessonGroups.get(entry.courseId)!;
+            if (!groups.has(entry.moduleTitle)) groups.set(entry.moduleTitle, []);
+            groups.get(entry.moduleTitle)!.push({
+              id: entry.lessonId,
+              title: entry.lessonTitle,
+              content: entry.lessonContent,
+              duration_minutes: entry.durationMinutes
+            });
+          }
+
+          const coursesForChunks = courses.map(course => ({
+            ...course,
+            modules: Array.from(lessonGroups.get(course.id)?.entries() || [])
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([moduleTitle, lessons], index) => ({
+                id: `${course.id}::${index + 1}`,
+                title: moduleTitle,
+                lessons: lessons.sort((a, b) => a.id.localeCompare(b.id))
+              }))
+          }));
+
+          const currentChunks = await createSemanticChunksFromResourcesAsync({
+            courses: coursesForChunks,
+            books,
+            notes,
+            flashcards,
+            concepts: graph.nodes
+          });
           for (const c of currentChunks) currentHashes.set(c.chunkId, c.contentHash);
         } catch {
           /* Si no se pueden recalcular los hashes, no se usan vectores potencialmente obsoletos. */
@@ -359,42 +389,57 @@ export async function retrieveLocalContext(
     }
   }
 
-  // Fusionar candidatos
+  // Fusionar candidatos con Reciprocal Rank Fusion (RRF) y conservar
+  // una señal normalizada de similitud para desempates de calidad.
   const mergedMap: Map<string, RetrievedDocument & { chunkKey: string }> = new Map();
   const maxLexical = Math.max(...Array.from(lexicalCandidates.values()).map(c => c.score), 1);
+  const lexicalEligible = Array.from(lexicalCandidates.entries())
+    .filter(([, cand]) => cand.score >= THRESHOLDS.MIN_LEXICAL_CANDIDATE)
+    .sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0]));
+  const semanticRanked = [...semanticMatches]
+    .sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId));
 
-  // Añadir candidatos léxicos
-  for (const [key, cand] of lexicalCandidates.entries()) {
-    if (cand.score < THRESHOLDS.MIN_LEXICAL_CANDIDATE) continue;
-    const normLex = normalizeScore(cand.score, maxLexical);
-    mergedMap.set(key, {
-      ...cand,
-      chunkKey: key,
-      score: normLex * 0.5, // 50% peso léxico base
-      retrievalMode: 'lexical'
-    });
+  const lexicalRanks = new Map<string, number>();
+  for (let i = 0; i < lexicalEligible.length; i++) lexicalRanks.set(lexicalEligible[i][0], i);
+
+  const semanticRanks = new Map<string, number>();
+  for (let i = 0; i < semanticRanked.length; i++) semanticRanks.set(semanticRanked[i].chunkId, i);
+
+  const maxRrf = computeRrfScore(0, 0);
+  const semanticById = new Map(semanticRanked.map(item => [item.chunkId, item]));
+
+  for (const key of new Set([...lexicalRanks.keys(), ...semanticRanks.keys()])) {
+    const lexical = lexicalCandidates.get(key);
+    const semantic = semanticById.get(key);
+    const lexScore = lexical ? normalizeScore(lexical.score, maxLexical) : 0;
+    const semScore = semantic ? Math.min(Math.max(semantic.score, 0), 1) : 0;
+    const rrf = computeRrfScore(lexicalRanks.get(key) ?? null, semanticRanks.get(key) ?? null);
+    const rrfNormalized = maxRrf > 0 ? rrf / maxRrf : 0;
+
+    const base: RetrievedDocument = lexical
+      ? { ...lexical }
+      : {
+          id: semantic!.entry.sourceId,
+          sourceType: semantic!.entry.sourceType as any,
+          title: semantic!.entry.title,
+          snippet: semantic!.entry.text.slice(0, 200),
+          score: semScore,
+          retrievalMode: 'semantic'
+        };
+
+    const hasLexical = lexicalRanks.has(key);
+    const hasSemantic = semanticRanks.has(key);
+    base.score = (lexScore * 0.25) + (semScore * 0.25) + (rrfNormalized * 0.5);
+    base.retrievalMode = hasLexical && hasSemantic
+      ? 'hybrid'
+      : hasSemantic
+        ? 'semantic'
+        : 'lexical';
+
+    mergedMap.set(key, { ...base, chunkKey: key });
   }
 
-  // Incorporar y combinar coincidencias semánticas
-  for (const sem of semanticMatches) {
-    const normSem = Math.min(Math.max(sem.score, 0), 1);
-    if (mergedMap.has(sem.chunkId)) {
-      const existing = mergedMap.get(sem.chunkId)!;
-      // Puntuación combinada híbrida
-      existing.score = existing.score + (normSem * 0.5);
-      existing.retrievalMode = 'hybrid';
-    } else {
-      mergedMap.set(sem.chunkId, {
-        id: sem.entry.sourceId,
-        sourceType: sem.entry.sourceType as any,
-        title: sem.entry.title,
-        snippet: sem.entry.text.slice(0, 200),
-        score: normSem * 0.5,
-        chunkKey: sem.chunkId,
-        retrievalMode: 'semantic'
-      });
-    }
-  }
+  if (semanticRanked.length > 0) modeUsed = 'hybrid';
 
   const allMerged = Array.from(mergedMap.values());
 
@@ -433,11 +478,16 @@ export async function retrieveLocalContext(
 
   const selected = diversified.slice(0, Math.min(limit, 5));
 
+  const finalMode: 'lexical' | 'hybrid' | 'semantic' =
+    semanticRanked.length === 0 ? 'lexical' :
+    lexicalRanks.size === 0 ? 'semantic' :
+    'hybrid';
+
   return {
     documents: selected,
     hasContext: selected.length > 0,
     totalCandidates: diversified.length,
-    modeUsed,
-    retrievalMode: modeUsed
+    modeUsed: finalMode,
+    retrievalMode: finalMode
   };
 }
