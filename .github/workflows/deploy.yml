@@ -33,6 +33,10 @@ jobs:
         working-directory: frontend
         run: npm ci || npm install
 
+      - name: Run Zero-Web-Access Test Fleet
+        working-directory: frontend
+        run: npm test
+
       - name: Build Web Application
         working-directory: frontend
         run: npx vite build

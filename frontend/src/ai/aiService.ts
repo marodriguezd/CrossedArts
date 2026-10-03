@@ -19,9 +19,14 @@ const DEFAULT_SETTINGS: AISettings = {
   apiModel: 'gemini-1.5-flash'
 };
 
+let inMemorySettings: AISettings | null = null;
+
 export const aiService = {
   getSettings(): AISettings {
     try {
+      if (typeof localStorage === 'undefined') {
+        return inMemorySettings || DEFAULT_SETTINGS;
+      }
       const saved = localStorage.getItem('domestik_ai_settings');
       return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
     } catch {
@@ -30,6 +35,10 @@ export const aiService = {
   },
 
   saveSettings(settings: AISettings) {
+    if (typeof localStorage === 'undefined') {
+      inMemorySettings = settings;
+      return;
+    }
     localStorage.setItem('domestik_ai_settings', JSON.stringify(settings));
   },
 
@@ -78,8 +87,8 @@ export const aiService = {
       }
     }
 
-    // Modo Demo / Fallback pedagógico sin conexión
-    await new Promise(r => setTimeout(r, 600));
+    // Modo Demo / Fallback pedagógico sin conexión (0 web requests)
+    await new Promise(r => setTimeout(r, 50));
     const lastUserMsg = messages[messages.length - 1]?.content.toLowerCase() || '';
 
     if (lastUserMsg.includes('flashcard') || lastUserMsg.includes('repaso')) {

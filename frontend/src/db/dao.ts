@@ -1,5 +1,5 @@
 import { dbBridge } from './sqliteBridge.ts';
-import { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, Module } from '../types/models.ts';
+import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, Module } from '../types/models.ts';
 
 export const dao = {
   async getKPIs(): Promise<KPIMetrics> {
@@ -122,7 +122,7 @@ export const dao = {
 
   async updateBookProgress(id: string, currentPage: number, totalPages: number): Promise<void> {
     const db = dbBridge.getDatabase();
-    const pct = totalPages > 0 ? ((currentPage / totalPages) * 100).toFixed(1) : 0;
+    const pct = totalPages > 0 ? Number(((currentPage / totalPages) * 100).toFixed(1)) : 0;
     const status = currentPage >= totalPages ? 'COMPLETED' : 'IN_PROGRESS';
     db.run(`UPDATE book SET current_page = ${currentPage}, reading_percentage = ${pct} WHERE id = '${id}'`);
     db.run(`UPDATE learning_resource SET status = '${status}' WHERE id = '${id}'`);
