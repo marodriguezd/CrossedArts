@@ -2,7 +2,7 @@ import { localLlmEngine } from '../lib/localLlm/engine.ts';
 import { localEmbeddingEngine } from '../lib/localEmbeddings/engine.ts';
 import { detectWebGPUCapability, type WebGPUCapabilityReport } from '../lib/localLlm/capabilities.ts';
 import { selectRuntimeProfile } from '../lib/localLlm/selection.ts';
-import { getLocalModelById, type LocalModelDefinition } from '../lib/localLlm/registry.ts';
+import { getLocalModelById, LOCAL_MODELS_REGISTRY, type LocalModelDefinition } from '../lib/localLlm/registry.ts';
 import { DEFAULT_EMBEDDING_MODEL_ID } from '../lib/localEmbeddings/registry.ts';
 import { dao } from '../db/dao.ts';
 import { createSemanticChunksFromResourcesAsync, type SemanticChunk } from '../lib/localEmbeddings/chunking.ts';
@@ -247,12 +247,34 @@ export class LocalAiRuntime {
     try { this.deps.storage.removeItem(LOCAL_AI_CONSENT_KEY); } catch { /* no persistible */ }
   }
 
-  private getCachedModelId(): string | null {
-    try { return this.deps.storage.getItem(LOCAL_AI_CACHED_MODEL_KEY); } catch { return null; }
+  private getCachedModelIds(): Set<string> {
+    try {
+      const raw = this.deps.storage.getItem(LOCAL_AI_CACHED_MODEL_KEY);
+      if (!raw) return new Set();
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return new Set(parsed.filter((id): id is string => typeof id === 'string' && !!id));
+        }
+      } catch {
+        // Compatibilidad con versiones que almacenaban un único id como texto.
+      }
+      return raw ? new Set([raw]) : new Set();
+    } catch {
+      return new Set();
+    }
+  }
+
+  private isModelCached(modelId: string): boolean {
+    return this.getCachedModelIds().has(modelId);
   }
 
   private markModelCached(modelId: string): void {
-    try { this.deps.storage.setItem(LOCAL_AI_CACHED_MODEL_KEY, modelId); } catch { /* no persistible */ }
+    try {
+      const ids = this.getCachedModelIds();
+      ids.add(modelId);
+      this.deps.storage.setItem(LOCAL_AI_CACHED_MODEL_KEY, JSON.stringify(Array.from(ids).sort()));
+    } catch { /* no persistible */ }
   }
 
   /* ------------------------------------------------------------------ */
@@ -315,9 +337,14 @@ export class LocalAiRuntime {
 
     // El override explícito (solo avanzado) se respeta si es compatible con las
     // features conocidas; si no, se cae a la selección automática segura.
-    const overrideCandidate = options?.overrideModelId ? this.deps.getModelDefinition(options.overrideModelId) : undefined;
-    const overrideCompatible = overrideCandidate && (!overrideCandidate.requiredFeatures?.length
-      || (cap.supportedFeatures ?? []).some((f) => overrideCandidate.requiredFeatures!.includes(f)));
+    const overrideCandidate = options?.overrideModelId
+      ? this.deps.getModelDefinition(options.overrideModelId)
+      : undefined;
+    const overrideCompatible = overrideCandidate && (
+      !overrideCandidate.requiredFeatures?.length ||
+      (Array.isArray(cap.supportedFeatures) &&
+        overrideCandidate.requiredFeatures.every((feature) => cap.supportedFeatures!.includes(feature)))
+    );
     const model = (overrideCompatible ? overrideCandidate : undefined) ?? profile?.model;
 
     if (!model) {
@@ -343,7 +370,7 @@ export class LocalAiRuntime {
     }
 
     // Sin conexión y sin registro de caché previo: no se intenta una descarga inútil.
-    if (!this.deps.isOnline() && this.getCachedModelId() !== model.id) {
+    if (!this.deps.isOnline() && !this.isModelCached(model.id)) {
       return this.setLlmStatus({
         stage: 'error',
         progress: 0,
@@ -355,29 +382,61 @@ export class LocalAiRuntime {
       });
     }
 
-    this.setLlmStatus({ stage: 'preparing', progress: 0, message: 'Preparando tu IA…', modelId: model.id, modelName: model.name });
+    const eligibleModels = LOCAL_MODELS_REGISTRY
+      .filter(candidate => {
+        if (!candidate.requiredFeatures?.length) return true;
+        return Array.isArray(cap.supportedFeatures) &&
+          candidate.requiredFeatures.every(feature => cap.supportedFeatures!.includes(feature));
+      })
+      .sort((a, b) => a.vramRequiredMB - b.vramRequiredMB || a.id.localeCompare(b.id));
 
-    await this.deps.llmEngine.loadModel(model.id, (progress) => {
-      const mapped = stageFromProgress(progress);
+    const candidates = [
+      model,
+      ...eligibleModels.filter(candidate => candidate.id !== model.id && candidate.vramRequiredMB < model.vramRequiredMB)
+    ];
+    let lastError: unknown = null;
+
+    for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
+      const candidate = candidates[candidateIndex];
+      const isFallback = candidateIndex > 0;
       this.setLlmStatus({
-        stage: mapped.stage,
-        progress: Math.max(0, Math.min(100, progress.progress || 0)),
-        message: mapped.message,
-        modelId: model.id,
-        modelName: model.name
+        stage: 'preparing',
+        progress: 0,
+        message: isFallback ? 'Ajustando automáticamente la IA…' : 'Preparando tu IA…',
+        modelId: candidate.id,
+        modelName: candidate.name
       });
-    });
 
-    this.markModelCached(model.id);
-    return this.setLlmStatus({
-      stage: 'ready',
-      progress: 100,
-      message: 'Listo',
-      modelId: model.id,
-      modelName: model.name,
-      errorCategory: undefined,
-      errorAction: undefined
-    });
+      try {
+        await this.deps.llmEngine.loadModel(candidate.id, (progress) => {
+          const mapped = stageFromProgress(progress);
+          this.setLlmStatus({
+            stage: mapped.stage,
+            progress: Math.max(0, Math.min(100, progress.progress || 0)),
+            message: isFallback ? `Ajustando automáticamente la IA… ${progress.progress || 0}%` : mapped.message,
+            modelId: candidate.id,
+            modelName: candidate.name
+          });
+        });
+
+        this.markModelCached(candidate.id);
+        return this.setLlmStatus({
+          stage: 'ready',
+          progress: 100,
+          message: isFallback ? 'Listo con una configuración más ligera' : 'Listo',
+          modelId: candidate.id,
+          modelName: candidate.name,
+          errorCategory: undefined,
+          errorAction: undefined
+        });
+      } catch (err) {
+        lastError = err;
+        const { errorCategory } = categorizeLlmError(err);
+        if (errorCategory !== 'insufficient-resources') throw err;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('No se pudo preparar la IA local.');
   }
 
   /**
@@ -392,7 +451,19 @@ export class LocalAiRuntime {
   /* Preparación automática de embeddings / índice semántico             */
   /* ------------------------------------------------------------------ */
 
-  public async ensureSemanticIndexReady(): Promise<SemanticStatus> {
+  public async ensureSemanticIndexReady(provider: LocalProviderId = 'local'): Promise<SemanticStatus> {
+    // Demo/Ollama/OpenAI no deben arrancar motores de IA local.
+    if (provider !== 'local') return this.semanticStatus;
+    if (!this.hasConsent()) {
+      return this.setSemanticStatus({
+        stage: 'idle',
+        progress: 0,
+        indexed: 0,
+        total: 0,
+        message: 'La búsqueda semántica se preparará al activar la IA local.',
+        errorCategory: undefined
+      });
+    }
     if (this.inFlightSemantic) return this.inFlightSemantic;
 
     this.inFlightSemantic = this.prepareSemantic()
@@ -417,15 +488,21 @@ export class LocalAiRuntime {
     }
 
     try {
+      this.setSemanticStatus({ stage: 'preparing', progress: 0, message: 'Preparando búsqueda…' });
+      const resources = await this.deps.loadResources();
+      const chunks = await this.deps.buildChunks(resources);
+      const total = chunks.length;
+
+      // No descargamos embeddings para una biblioteca que todavía está vacía.
+      if (total === 0) {
+        return this.setSemanticStatus({ stage: 'ready', progress: 100, indexed: 0, total: 0, message: 'Búsqueda semántica lista' });
+      }
+
       if (this.deps.embeddingEngine.getStatus() !== 'ready') {
-        this.setSemanticStatus({ stage: 'preparing', progress: 0, message: 'Preparando búsqueda…' });
         await this.deps.embeddingEngine.loadModel(DEFAULT_EMBEDDING_MODEL_ID);
       }
 
       this.setSemanticStatus({ stage: 'indexing', progress: 0, message: 'Preparando búsqueda…' });
-      const resources = await this.deps.loadResources();
-      const chunks = await this.deps.buildChunks(resources);
-      const total = chunks.length;
 
       await this.deps.embeddingEngine.indexChunks(chunks, (indexed, count) => {
         const safeTotal = count || total;
@@ -452,8 +529,8 @@ export class LocalAiRuntime {
    * Indexación en segundo plano tras importar contenido. Nunca lanza: si falla,
    * la recuperación léxica sigue funcionando.
    */
-  public scheduleIndexing(): void {
-    void this.ensureSemanticIndexReady().catch(() => { /* degradación silenciosa y segura */ });
+  public scheduleIndexing(provider: LocalProviderId = 'local'): void {
+    void this.ensureSemanticIndexReady(provider).catch(() => { /* degradación silenciosa y segura */ });
   }
 
   public cancelIndexing(): void {
