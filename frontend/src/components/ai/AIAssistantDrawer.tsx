@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle } from 'lucide-react';
 import { aiService, AIChatMessage, AssistantResponse } from '../../ai/aiService.ts';
 import { cn } from '../ui/index.tsx';
+import { MessageBody, SourceTitle } from './MarkdownMessage.ts';
 
 interface MessageItem extends AIChatMessage {
   sources?: string[];
@@ -166,10 +167,11 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
                   'rounded-2xl p-3 text-body leading-relaxed',
                   m.role === 'user'
                     ? 'rounded-tr-none bg-accent text-on-accent'
-                    : 'rounded-tl-none whitespace-pre-wrap border border-line bg-canvas text-ink'
+                    : 'rounded-tl-none border border-line bg-canvas text-ink'
                 )}
               >
-                {m.content}
+                {/* El asistente renderiza Markdown seguro; el usuario conserva texto plano. */}
+                <MessageBody role={m.role} content={m.content} />
 
                 {/* Fuentes RAG recuperadas de SQLite */}
                 {m.sources && m.sources.length > 0 && (
@@ -193,7 +195,9 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
                     </span>
                     <ul className="list-inside list-disc space-y-0.5 text-muted">
                       {m.sources.map((s, sIdx) => (
-                        <li key={sIdx} className="truncate">{s}</li>
+                        <li key={sIdx}>
+                          <SourceTitle title={s} />
+                        </li>
                       ))}
                     </ul>
                   </div>
