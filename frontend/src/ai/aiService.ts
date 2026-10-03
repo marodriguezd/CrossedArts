@@ -228,6 +228,7 @@ export const aiService = {
             stream: false
           })
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const reply = data.message?.content || 'No se recibió respuesta del modelo local.';
         if (onChunk) onChunk(reply);
@@ -250,7 +251,16 @@ export const aiService = {
     }
 
     // 4. Proveedor OPENAI (Cloud API)
-    if (settings.provider === 'openai' && settings.apiKey) {
+    if (settings.provider === 'openai') {
+      if (!settings.apiKey) {
+        return {
+          answer: 'OpenAI está seleccionado pero no hay una clave de API configurada. Introduce una clave en Ajustes o selecciona otro proveedor.',
+          sources: rag.sourceTitles,
+          providerUsed: 'openai',
+          isLocalOnDevice: false,
+          retrievalMode: retrieval.retrievalMode
+        };
+      }
       // Se envía solo el encabezado de autenticación; la clave nunca se registra
       // en consola ni se incluye en el cuerpo de la petición.
       const openAiKey = settings.apiKey;
@@ -268,8 +278,10 @@ export const aiService = {
               ...messages
             ]
           })
-        });const data = await res.json();
-          const reply = data.choices[0]?.message?.content || 'Sin respuesta de OpenAI.';
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const reply = data.choices[0]?.message?.content || 'Sin respuesta de OpenAI.';
           // La respuesta del proveedor puede incluir el fragmento de cabecera en
           // algunos intermediarios: se recorta para no exponer la clave en la UI.
         if (onChunk) onChunk(reply);
