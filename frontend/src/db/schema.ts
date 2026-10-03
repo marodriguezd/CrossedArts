@@ -1,0 +1,96 @@
+export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS learning_resource (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  cover_path TEXT,
+  category TEXT DEFAULT 'General',
+  status TEXT DEFAULT 'NOT_STARTED',
+  source_path TEXT,
+  type TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS course (
+  id TEXT PRIMARY KEY REFERENCES learning_resource(id) ON DELETE CASCADE,
+  instructor TEXT,
+  difficulty TEXT DEFAULT 'BEGINNER',
+  total_duration_minutes INTEGER DEFAULT 0,
+  total_lessons INTEGER DEFAULT 0,
+  completed_lessons INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS book (
+  id TEXT PRIMARY KEY REFERENCES learning_resource(id) ON DELETE CASCADE,
+  author TEXT,
+  isbn TEXT,
+  page_count INTEGER,
+  current_page INTEGER DEFAULT 0,
+  reading_percentage REAL DEFAULT 0.0
+);
+
+CREATE TABLE IF NOT EXISTS module (
+  id TEXT PRIMARY KEY,
+  course_id TEXT NOT NULL REFERENCES course(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  order_index INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS lesson (
+  id TEXT PRIMARY KEY,
+  module_id TEXT NOT NULL REFERENCES module(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  order_index INTEGER DEFAULT 0,
+  duration_minutes INTEGER DEFAULT 0,
+  lesson_type TEXT DEFAULT 'VIDEO',
+  media_url TEXT,
+  is_completed BOOLEAN DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS learning_session (
+  id TEXT PRIMARY KEY,
+  resource_id TEXT NOT NULL REFERENCES learning_resource(id) ON DELETE CASCADE,
+  started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  ended_at DATETIME,
+  duration_minutes INTEGER DEFAULT 0,
+  inactive_seconds INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS note (
+  id TEXT PRIMARY KEY,
+  resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
+  lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  tags TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS flashcard (
+  id TEXT PRIMARY KEY,
+  resource_id TEXT REFERENCES learning_resource(id) ON DELETE CASCADE,
+  front TEXT NOT NULL,
+  back TEXT NOT NULL,
+  repetition_count INTEGER DEFAULT 0,
+  interval_days INTEGER DEFAULT 1,
+  ease_factor REAL DEFAULT 2.5,
+  due_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_reviewed DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS concept (
+  id TEXT PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_connection (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  connection_type TEXT DEFAULT 'related_to',
+  weight REAL DEFAULT 1.0
+);
+`;

@@ -1,0 +1,15 @@
+{
+  "strategy": "balanced",
+  "lane_models": {
+    "planning": "gemini-3.1-pro-preview",
+    "execution": "gemini-3-flash-preview",
+    "quick_edit": "gemini-3.1-flash-lite-preview",
+    "review_verify": "gemini-3.1-pro-preview"
+  },
+  "updated_at": "2026-07-09T10:45:09Z",
+  "source": "oma:model",
+  "diagnostics": {
+    "trace_env": "OMG_MODEL_ROUTING_TRACE=1",
+    "last_trace_file": ".omg/state/model-router-last.json"
+  }
+}

@@ -1,0 +1,17 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["."]
+addopts = "--tb=short -q"
+filterwarnings = [
+    "ignore::DeprecationWarning:httpx.*:",
+    "ignore::DeprecationWarning:starlette.*:",
+    "ignore::pytest.PytestUnraisableExceptionWarning:",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/tests/*", "backend/alembic/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

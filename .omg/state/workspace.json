@@ -1,0 +1,12 @@
+{
+  "lanes": {
+    "main": {
+      "owner": "antigravity",
+      "clean": true,
+      "trusted": true,
+      "baseline_branch": "main",
+      "baseline_head": "HEAD",
+      "verified_at": "2026-05-31T18:16:00Z"
+    }
+  }
+}
