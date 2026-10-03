@@ -13,7 +13,86 @@ export type StorageState =
   | 'persisted'
   | 'persistence-error'
   | 'corrupt-storage'
-  | 'storage-unavailable';
+  | 'storage-unavailable'
+  | 'stale-other-tab';
+
+/**
+ * Ciclo de vida terminal de la inicialización de SQLite. `failed` es un estado
+ * real y observable: la aplicación no debe montar sus vistas contra una base de
+ * datos ausente (eso era lo que hacía el grafo de conocimiento mostrar
+ * "Database not initialized" en la aplicación ya renderizada).
+ */
+export type InitState = 'idle' | 'initializing' | 'ready' | 'failed';
+
+/** Clases de fallo de inicialización conocidas, con texto controlado en español. */
+export type DbInitFailureCode =
+  | 'wasm-unavailable'
+  | 'storage-unavailable'
+  | 'corrupt-storage'
+  | 'schema-invalid'
+  | 'unknown';
+
+export interface DbInitFailure {
+  code: DbInitFailureCode;
+  /** Mensaje en español apto para mostrar al usuario. Nunca texto interno en inglés. */
+  message: string;
+  /** Si es cierto, reintentar tiene sentido. Nunca implicar borrado de datos. */
+  retryable: boolean;
+  /** Detalle técnico solo para la consola del desarrollador. */
+  detail?: string;
+}
+
+/**
+ * Error de inicialización portador de un mensaje controlado en español. Evita que
+ * las vistas hijas muestren nunca el texto crudo de una excepción interna.
+ */
+export class DatabaseInitializationError extends Error {
+  public readonly failure: DbInitFailure;
+  constructor(failure: DbInitFailure) {
+    super(failure.message);
+    this.name = 'DatabaseInitializationError';
+    this.failure = failure;
+  }
+}
+
+const INIT_FAILURE_MESSAGES: Record<DbInitFailureCode, { message: string; retryable: boolean }> = {
+  'wasm-unavailable': {
+    message: 'No se pudo cargar el motor SQLite en WebAssembly. Comprueba tu conexión y vuelve a cargar la aplicación.',
+    retryable: true
+  },
+  'storage-unavailable': {
+    message: 'No se pudo acceder al almacenamiento local del navegador, así que la base de datos no se ha podido abrir. Puede ocurrir en ventanas privadas o si el almacenamiento está bloqueado.',
+    retryable: true
+  },
+  'corrupt-storage': {
+    message: 'Los datos guardados no se han podido leer y la aplicación ha iniciado con una base de datos nueva y vacía. Tus datos anteriores siguen intactos en el almacenamiento: restáuralos desde Ajustes.',
+    retryable: false
+  },
+  'schema-invalid': {
+    message: 'El esquema de la base de datos local no es válido, por lo que la aplicación no puede funcionar.',
+    retryable: false
+  },
+  unknown: {
+    message: 'No se pudo inicializar la base de datos local. Vuelve a cargar la aplicación; si el problema continúa, revisa el espacio disponible en tu navegador.',
+    retryable: true
+  }
+};
+
+function classifyInitError(err: unknown): DbInitFailure {
+  const detail = err instanceof Error ? err.message : String(err);
+  const lower = detail.toLowerCase();
+  let code: DbInitFailureCode = 'unknown';
+  if (lower.includes('wasm') || lower.includes('fetch') || lower.includes('network') || lower.includes('locatefile')) {
+    code = 'wasm-unavailable';
+  } else if (lower.includes('indexeddb') || lower.includes('idb')) {
+    code = 'storage-unavailable';
+  } else if (lower.includes('sqlite') || lower.includes('corrupt') || lower.includes('malformed')) {
+    code = 'corrupt-storage';
+  } else if (lower.includes('schema') || lower.includes('table') || lower.includes('no such column')) {
+    code = 'schema-invalid';
+  }
+  return { ...INIT_FAILURE_MESSAGES[code], code, detail };
+}
 
 export interface StorageStatusReport {
   state: StorageState;
@@ -34,6 +113,9 @@ export function isValidSqliteBuffer(buffer: ArrayBuffer | Uint8Array): boolean {
   return header === SQLITE_HEADER_STRING;
 }
 
+/** Identificador único de esta pestaña, para ignorar nuestros propios mensajes. */
+const TAB_ID = `tab_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
 class SQLiteBridge {
   private db: Database | null = null;
   private isInitialized = false;
@@ -43,6 +125,24 @@ class SQLiteBridge {
   private lastError: string | null = null;
   private broadcastChannel: BroadcastChannel | null = null;
   private stateListeners: Set<(report: StorageStatusReport) => void> = new Set();
+  /**
+   * Promesa de inicialización compartida. Mientras exista, TODOS los llamantes
+   * reciben exactamente la misma operación: sin secuencias `init()` paralelas que
+   * compitan por escribir `this.db`.
+   */
+  private initPromise: Promise<Database> | null = null;
+  private initState: InitState = 'idle';
+  private initFailure: DbInitFailure | null = null;
+  /**
+   * Revisión monótona de la versión persistida. Se incrementa en cada `persist()`
+   * y viaja en el mensaje de coordinación para que otra pestaña pueda detectar que
+   * su estado en memoria puede estar obsoleto sin resolver conflictos.
+   */
+  private persistedRevision = 0;
+  private lastSeenRevision = 0;
+  /** Segunda revisión más alta observada en el canal: nuestra versión local es antigua. */
+  private remoteRevision = 0;
+  private reloadPromise: Promise<void> | null = null;
   /**
    * Tamaño cacheado del último export. Evita llamar a `db.export()` (que cierra y
    * reabre la conexión SQLite y restablece PRAGMAs como `foreign_keys`) solo para
@@ -56,7 +156,20 @@ class SQLiteBridge {
         this.broadcastChannel = new BroadcastChannel('crossedarts_storage_coordination');
         this.broadcastChannel.onmessage = (event) => {
           if (event.data?.type === 'DATABASE_MUTATED_ANOTHER_TAB') {
-            console.info('[CrossedArts Storage] Otra pestaña modificó la base de datos.');
+            const revision = Number(event.data.revision) || 0;
+            // Ignoramos nuestros propios mensajes y cualquier revisión que ya
+            // tengamos incorporada: así no Entramos en un bucle de recarga.
+            if (event.data.origin === TAB_ID) return;
+            this.lastSeenRevision = Math.max(this.lastSeenRevision, revision);
+            if (revision > this.persistedRevision) {
+              // Otra pestaña persistió una versión más nueva que la nuestra: nuestro
+              // estado en memoria puede estar obsoleto. No se resuelve ningún
+              // conflicto aquí; solo se marca para recargar ANTES de la siguiente
+              // operación de datos (ver `ensureFresh`).
+              this.remoteRevision = Math.max(this.remoteRevision, revision);
+              this.setStorageState('stale-other-tab');
+              console.info('[CrossedArts Storage] Otra pestaña guardó una versión más nueva; se recargará antes de la siguiente lectura.');
+            }
           }
         };
       } catch (e) {
@@ -121,77 +234,241 @@ class SQLiteBridge {
     return initOptions;
   }
 
+  /**
+   * Inicializa SQLite de forma CONCURRENCY-SAFE.
+   *
+   * Antes, cada llamada ejecutaba su propia secuencia completa (`initSqlJs`,
+   * `loadFromStorage`, migraciones, `persist`) porque la comprobación
+   * `if (this.db && this.isInitialized)` solo es válida si no hay `await`
+   * entre la comprobación y la asignación. Con varias llamadas solapadas
+   * (React StrictMode monta-desmonta-monta el efecto de `useAppData`, y las
+   * vistas perezosas como KnowledgeGraph piden datos por su cuenta), dos
+   * secuencias competían por escribir `this.db`: una podía sobrescribir a la
+   * otra y `getDatabase()` lanzaba "Database not initialized" aunque el resto
+   * de la aplicación ya estuviera renderizada.
+   *
+   * Ahora la inicialización es una única promesa compartida: el primer llamante
+   * la crea, el resto la espera. Además hay estados terminales explícitos
+   * (`ready` / `failed`) para que la UI pueda distinguir "inicializando" de
+   * "falló" y mostrar un error en español controlado en lugar del texto crudo
+   * de una excepción interna.
+   */
   public async init(): Promise<Database> {
     if (this.db && this.isInitialized) return this.db;
 
-    this.setStorageState('loading');
-    const options = await this.getSqlJsOptions();
-    const SQL = await initSqlJs(options);
-
-    let savedBytes: Uint8Array | null = null;
-    try {
-      savedBytes = await this.loadFromStorage();
-    } catch (err: any) {
-      this.setStorageState('storage-unavailable', err?.message || 'IndexedDB no disponible');
+    // Un inicializador en curso se comparte; nunca se duplica.
+    if (!this.initPromise) {
+      this.initPromise = this.runInit().finally(() => {
+        // Se libera el slot solo si esta sigue siendo la promesa actual: un
+        // reintento explícito crea una promesa nueva y no debe ser pisada.
+        this.initPromise = null;
+      });
     }
+    return this.initPromise;
+  }
 
-    if (savedBytes && savedBytes.length > 0) {
-      if (!isValidSqliteBuffer(savedBytes)) {
-        this.setStorageState('corrupt-storage', 'Los datos guardados en IndexedDB no son un SQLite válido.');
-        // Crear base de datos de respaldo en memoria sin sobreescribir inmediatamente
-        this.db = new SQL.Database();
-        this.db.run('PRAGMA foreign_keys = ON;');
-        this.db.run(SCHEMA_SQL);
-        this.isInitialized = true;
-        return this.db;
+  /** Ejecuta la secuencia real de inicialización (una sola vez por intento). */
+  private async runInit(): Promise<Database> {
+    this.initState = 'initializing';
+    this.initFailure = null;
+    this.setStorageState('loading');
+
+    try {
+      const options = await this.getSqlJsOptions();
+      let SQL;
+      try {
+        SQL = await initSqlJs(options);
+      } catch (err) {
+        // El WASM es un recurso crítico: si no carga, la inicialización falla de
+        // forma terminal y controlada, no se renderiza la aplicación a medias.
+        throw new DatabaseInitializationError(classifyInitError(err));
       }
 
-      let migrated = false;
+      let savedBytes: Uint8Array | null = null;
       try {
-        this.db = new SQL.Database(savedBytes);
-        this.db.run('PRAGMA foreign_keys = ON;');
-        // Migraciones idempotentes para bases de datos existentes
-        const migratedSession = this.migrateLearningSession(this.db);
-        const migratedLesson = this.migrateLessonContent(this.db);
-        const migratedGraph = this.migrateKnowledgeConnectionIndex(this.db);
-        migrated = migratedSession || migratedLesson || migratedGraph;
-      } catch (e: any) {
-        console.warn('Error cargando SQLite previo, creando nueva BD:', e);
-        this.setStorageState('corrupt-storage', e?.message || 'Corrupción en base de datos');
+        savedBytes = await this.loadFromStorage();
+      } catch (err: any) {
+        // Sin IndexedDB seguimos pudiendo trabajar en memoria: no es un fallo
+        // terminal, se informa del estado y se continúa.
+        this.setStorageState('storage-unavailable', err?.message || 'IndexedDB no disponible');
+      }
+
+      if (savedBytes && savedBytes.length > 0) {
+        if (!isValidSqliteBuffer(savedBytes)) {
+          this.setStorageState('corrupt-storage', 'Los datos guardados en IndexedDB no son un SQLite válido.');
+          // Crear base de datos de respaldo en memoria sin sobreescribir inmediatamente
+          this.db = new SQL.Database();
+          this.db.run('PRAGMA foreign_keys = ON;');
+          this.db.run(SCHEMA_SQL);
+          this.isInitialized = true;
+          this.initState = 'ready';
+          this.setStorageState('ready');
+          return this.db;
+        }
+
+        let migrated = false;
+        try {
+          this.db = new SQL.Database(savedBytes);
+          this.db.run('PRAGMA foreign_keys = ON;');
+          // Migraciones idempotentes para bases de datos existentes
+          const migratedSession = this.migrateLearningSession(this.db);
+          const migratedLesson = this.migrateLessonContent(this.db);
+          const migratedGraph = this.migrateKnowledgeConnectionIndex(this.db);
+          migrated = migratedSession || migratedLesson || migratedGraph;
+        } catch (e: any) {
+          console.warn('Error cargando SQLite previo, creando nueva BD:', e);
+          this.setStorageState('corrupt-storage', e?.message || 'Corrupción en base de datos');
+          this.db = new SQL.Database();
+          this.db.run('PRAGMA foreign_keys = ON;');
+          this.db.run(SCHEMA_SQL);
+          this.db.run(SEED_SQL);
+          this.isInitialized = true;
+          this.initState = 'ready';
+          await this.persist();
+        }
+        if (this.db) {
+          this.isInitialized = true;
+          this.initState = 'ready';
+          this.setStorageState('ready');
+          if (migrated) {
+            // Persistir la migración fuera del bloque de recuperación: un fallo
+            // transitorio de almacenamiento no debe descartar los datos del usuario.
+            try {
+              await this.persist();
+            } catch (err) {
+              console.warn('No se pudo persistir la migración de esquema:', err);
+            }
+          }
+        }
+      } else {
         this.db = new SQL.Database();
         this.db.run('PRAGMA foreign_keys = ON;');
         this.db.run(SCHEMA_SQL);
         this.db.run(SEED_SQL);
+        this.db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
+        this.isInitialized = true;
+        this.initState = 'ready';
+        this.setStorageState('ready');
+        // Si no hay IndexedDB, `persist()` degrada a `inMemoryBytes` sin lanzar.
         await this.persist();
       }
-      if (this.db) {
-        this.setStorageState('ready');
-        if (migrated) {
-          // Persistir la migración fuera del bloque de recuperación: un fallo
-          // transitorio de almacenamiento no debe descartar los datos del usuario.
-          try {
-            await this.persist();
-          } catch (err) {
-            console.warn('No se pudo persistir la migración de esquema:', err);
-          }
-        }
-      }
-    } else {
-      this.db = new SQL.Database();
-      this.db.run('PRAGMA foreign_keys = ON;');
-      this.db.run(SCHEMA_SQL);
-      this.db.run(SEED_SQL);
-      this.db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
-      this.setStorageState('ready');
-      await this.persist();
-    }
 
-    this.isInitialized = true;
-    return this.db;
+      return this.db!;
+    } catch (err) {
+      // Estado terminal de fallo. La aplicación no debe montar sus vistas.
+      this.db = null;
+      this.isInitialized = false;
+      this.initState = 'failed';
+      this.initFailure =
+        err instanceof DatabaseInitializationError ? err.failure : classifyInitError(err);
+      this.setStorageState('storage-unavailable', this.initFailure.detail || this.initFailure.message);
+      console.error('[CrossedArts DB] Fallo de inicialización:', this.initFailure.detail || this.initFailure.message);
+      throw err instanceof DatabaseInitializationError
+        ? err
+        : new DatabaseInitializationError(this.initFailure);
+    }
   }
 
+  /** Estado actual del ciclo de vida de inicialización. */
+  public getInitState(): InitState {
+    return this.initState;
+  }
+
+  /** Detalle del último fallo de inicialización, si lo hubo. */
+  public getInitFailure(): DbInitFailure | null {
+    return this.initFailure;
+  }
+
+  /**
+   * Permite a un hijoLazy (KnowledgeGraph) esperar la inicialización en curso en
+   * lugar de asumir que la base de datos ya existe. Es seguro con StrictMode y con
+   * varias llamadas simultáneas porque devuelve la misma promesa compartida.
+   */
+  public async ensureInitialized(): Promise<Database> {
+    if (this.db && this.isInitialized) {
+      await this.ensureFresh();
+      return this.db;
+    }
+    const db = await this.init();
+    await this.ensureFresh();
+    return db;
+  }
+
+  /**
+   * Detecta estado obsoleto multi-pestaña y recarga desde IndexedDB ANTES de la
+   * siguiente operación de datos. No resuelve conflictos ni sobrescribe con
+   * información antigua: si nuestra revisión es menor que la remota, la versión
+   * de IndexedDB (escrita por la otra pestaña) es la ganadora por definición.
+   */
+  public async ensureFresh(): Promise<void> {
+    if (this.remoteRevision <= this.persistedRevision) return;
+    if (!this.reloadPromise) {
+      this.reloadPromise = this.reloadFromPeerRevision().finally(() => {
+        this.reloadPromise = null;
+      });
+    }
+    return this.reloadPromise;
+  }
+
+  private async reloadFromPeerRevision(): Promise<void> {
+    const target = this.remoteRevision;
+    let bytes: Uint8Array | null = null;
+    try {
+      bytes = await this.loadFromStorage();
+    } catch (err) {
+      console.warn('[CrossedArts Storage] No se pudo releer IndexedDB tras otra pestaña:', err);
+      return;
+    }
+    // Si no hay nada legible, mantenemos el estado actual: es preferible servir
+    // datos posiblemente antiguos que perder la sesión por un fallo transitorio.
+    if (!bytes || !bytes.length || !isValidSqliteBuffer(bytes)) return;
+    // Nunca sobrescribimos con una revisión más antigua que la que ya tenemos.
+    if (this.remoteRevision !== target) return;
+
+    const options = await this.getSqlJsOptions();
+    const SQL = await initSqlJs(options);
+    const reloaded = new SQL.Database(bytes);
+    reloaded.run('PRAGMA foreign_keys = ON;');
+    try { this.migrateLearningSession(reloaded); } catch { /* esquema legado: se acepta tal cual */ }
+    try { this.migrateLessonContent(reloaded); } catch { /* idem */ }
+    try { this.migrateKnowledgeConnectionIndex(reloaded); } catch { /* idem */ }
+
+    if (this.db) {
+      try { this.db.close(); } catch { /* ya cerrado */ }
+    }
+    this.db = reloaded;
+    this.isInitialized = true;
+    this.inMemoryBytes = bytes;
+    this.persistedRevision = this.remoteRevision;
+    this.lastSeenRevision = Math.max(this.lastSeenRevision, this.remoteRevision);
+    this.setStorageState('ready');
+    console.info('[CrossedArts Storage] Estado en memoria actualizado tras la escritura de otra pestaña.');
+  }
+
+  /**
+   * Acceso síncrono a la base de datos.
+   *
+   * Antes lanzaba el texto crudo en inglés "Database not initialized", que se
+   * escapaba a la interfaz (el grafo de conocimiento lo pintaba tal cual).
+   * Ahora distingue los dos casos reales y ambos mensajes son de clase conocida,
+   * en español y con una vía de recuperación accionable.
+   */
   public getDatabase(): Database {
-    if (!this.db) throw new Error('Database not initialized');
+    if (!this.db) {
+      if (this.initState === 'failed' || this.initFailure) {
+        throw new DatabaseInitializationError(
+          this.initFailure || {
+            ...INIT_FAILURE_MESSAGES.unknown,
+            code: 'unknown'
+          }
+        );
+      }
+      throw new DatabaseInitializationError({
+        ...INIT_FAILURE_MESSAGES['storage-unavailable'],
+        code: 'storage-unavailable',
+        detail: 'getDatabase() llamado antes de que la inicialización terminara.'
+      });
+    }
     return this.db;
   }
 
@@ -199,6 +476,7 @@ class SQLiteBridge {
     if (!this.db) return;
     this.setStorageState('persisting');
     try {
+      this.persistedRevision += 1;
       const bytes = this.db.export();
       this.databaseSizeBytes = bytes.byteLength;
       // sql.js `export()` cierra y reabre la conexión SQLite, lo que restablece los
@@ -209,12 +487,21 @@ class SQLiteBridge {
       await this.saveToStorage(bytes);
       this.setStorageState('persisted');
       
-      // Notificar a otras pestañas
+      // Notificar a otras pestañas con la revisión persistida para que puedan
+      // detectar que su estado en memoria está obsoleto. No incluye datos ni
+      // secretos, solo un contador monótono y el origen.
       if (this.broadcastChannel) {
         try {
-          this.broadcastChannel.postMessage({ type: 'DATABASE_MUTATED_ANOTHER_TAB', timestamp: Date.now() });
+          this.broadcastChannel.postMessage({
+            type: 'DATABASE_MUTATED_ANOTHER_TAB',
+            revision: this.persistedRevision,
+            origin: TAB_ID,
+            timestamp: Date.now()
+          });
         } catch {}
       }
+      // Nuestra propia escritura es la versión vigente: no estamos obsoletos.
+      this.lastSeenRevision = Math.max(this.lastSeenRevision, this.persistedRevision);
     } catch (err: any) {
       this.setStorageState('persistence-error', err?.message || 'Error guardando en almacenamiento persistente');
       throw err;
@@ -382,7 +669,7 @@ class SQLiteBridge {
   }
 
   public exportDatabase(): Uint8Array {
-    if (!this.db) throw new Error('Database not initialized');
+    if (!this.db) throw new DatabaseInitializationError(this.initFailure || { ...INIT_FAILURE_MESSAGES.unknown, code: 'unknown' });
     const bytes = this.db.export();
     this.databaseSizeBytes = bytes.byteLength;
     // Reafirmar claves foráneas tras el cierre/reapertura implícita de export().

@@ -35,7 +35,7 @@ For an in-depth dive into the system's philosophy, cognitive science foundations
 
 ### 1. 100% Client-Side Static Deployment & Offline PWA
 - Runs entirely as a lightning-fast Single Page Application (SPA) without requiring containers or servers.
-- **Offline PWA Shell:** Includes a Web App Manifest and Service Worker (`sw.js`) that caches application shell assets and SQLite WASM, enabling CrossedArts to launch offline after initial visit.
+- **Offline PWA Shell:** Includes a Web App Manifest and Service Worker (`sw.js`) that caches application shell assets and SQLite WASM, enabling CrossedArts to launch offline after initial visit. The shell cache is explicitly versioned: on a new deploy the Service Worker purges the stale shell caches on activation and serves the updated shell without a manual reload.
 - Automated CI/CD deployment via GitHub Actions in `.github/workflows/deploy.yml`.
 - Try it instantly without installing anything: [marodriguezd.github.io/CrossedArts](https://marodriguezd.github.io/CrossedArts/).
 
@@ -128,7 +128,7 @@ study workflow
   - **E5 Semantic Prefixes:** Explicitly applies `query: ` to search inputs and `passage: ` to indexed materials for optimal retrieval quality.
   - **Vector Isolation & Cryptographic Hashing:** Embeddings are cached in a dedicated IndexedDB store (`CrossedArts_Embeddings`) completely decoupled from the canonical SQLite database. Only modified learning materials are recomputed using authoritative SHA-256 content hashing (`crypto.subtle`) and pipeline versioning (`v1.1-e5-sha256`).
   - **Calibrated Scoring & Source Deduplication:** Employs calibrated candidate thresholds, Reciprocal Rank Fusion (RRF), and diversity-preserving source deduplication with instant fallback to pure lexical retrieval.
-- **Hybrid Multi-Mode Options:** Choose between On-Device WebGPU (`local`), Offline Heuristic (`demo`), Local Ollama server (`http://localhost:11434`), or direct OpenAI API.
+- **Hybrid Multi-Mode Options:** Choose between On-Device WebGPU (`local`), Offline Heuristic (`demo`), Local Ollama server (`http://localhost:11434`), or direct OpenAI API. The OpenAI key is held **in memory only** by default and is lost on reload; optionally you can ask the app to remember it, with an explicit warning that browser storage is not a secure secret store and client-side encryption does not protect against XSS.
 
 ### 8. Local Document Ingestion & End-to-End RAG
 - **Zero-Cloud Document Parsing:** Import `.txt`, `.md`, `.pdf`, and `.epub` documents directly in the browser with 0 external network requests or remote OCR.
@@ -218,7 +218,7 @@ npm run dev
 Open `http://localhost:5173` in your browser.
 
 ### Run Integrity Tests (Zero-Web-Access Test Fleet)
-The project includes 148 tests verifying offline SQLite initialization, SM-2 math, unified study sessions, the lesson workspace (content editing, ordering, progress, continuation), knowledge graph integrity and migrations, resource organization and detail views, lesson-scoped study with note isolation and study-history lesson scope, relational integrity (foreign key enforcement, ON DELETE behaviour, graph index migration), accessible confirmations, binary/JSON exports, local AI, hybrid RAG, document ingestion, and grounded study generation:
+The project includes 184 tests verifying offline SQLite initialization, SM-2 math, unified study sessions, the lesson workspace (content editing, ordering, progress, continuation), knowledge graph integrity and migrations, resource organization and detail views, lesson-scoped study with note isolation and study-history lesson scope, relational integrity (foreign key enforcement, ON DELETE behaviour, graph index migration), accessible confirmations, binary/JSON exports, local AI, hybrid RAG, document ingestion, grounded study generation, concurrency-safe database initialization, local-calendar-day streak logic, multi-tab coordination, and JSON backup validation:
 
 ```bash
 cd frontend

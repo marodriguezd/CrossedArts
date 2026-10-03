@@ -35,7 +35,7 @@ Para un desglose detallado de la filosofía, ciencia cognitiva y arquitectura de
 
 ### 1. Despliegue Estático en GitHub Pages & PWA Offline
 - Funciona como una Single Page Application (SPA) ultra rápida sin necesidad de levantar contenedores, servidores o servicios en la nube.
-- **PWA Shell Offline:** Dispone de Web App Manifest (`manifest.json`) y Service Worker (`sw.js`) que cachea el App Shell y el binario de WebAssembly `sql-wasm.wasm`, permitiendo arrancar CrossedArts sin conexión tras la primera visita.
+- **PWA Shell Offline:** Dispone de Web App Manifest (`manifest.json`) y Service Worker (`sw.js`) que cachea el App Shell y el binario de WebAssembly `sql-wasm.wasm`, permitiendo arrancar CrossedArts sin conexión tras la primera visita. La caché del shell lleva una versión explícita: al desplegar una versión nueva, el Service Worker borra las cachés antiguas al activarse y trae el shell actualizado sin descarga manual.
 - Despliegue continuo automatizado con GitHub Actions en `.github/workflows/deploy.yml`.
 - Pruébala en vivo sin instalar nada: [marodriguezd.github.io/CrossedArts](https://marodriguezd.github.io/CrossedArts/).
 
@@ -134,7 +134,7 @@ flujo de estudio
   - **Local On-Device (WebLLM):** Inferencia privada en GPU local con liberación explícita de VRAM en Ajustes.
   - **Modo Demo Heurístico:** 100% desconectado, cero llamadas de red y respuestas pedagógicas basadas en reglas.
   - **Modo Ollama Local:** Conexión directa a tus modelos LLM locales (`http://localhost:11434`).
-  - **Modo Proveedores Externos:** Compatible con OpenAI mediante clave en `localStorage`.
+  - **Modo Proveedores Externos (OpenAI):** Compatible con OpenAI. La clave se mantiene **solo en memoria** por defecto y se pierde al recargar la página. Puedes activar opcionalmente "recordar la clave en este navegador", pero el aviso es explícito: el almacenamiento del navegador **no es un almacén seguro de secretos**, y cifrar en el cliente no la protege frente a XSS. Si no usas OpenAI, la clave se descarta al cambiar de proveedor.
 
 ### 7. Ingestión de Documentos Locales y RAG de Extremo a Extremo
 - **Extracción Local sin Nube:** Importa documentos `.txt`, `.md`, `.pdf` y `.epub` directamente en el navegador con 0 peticiones a servidores externos o servicios de OCR remotos.
@@ -281,6 +281,14 @@ En la pestaña **Ajustes** de CrossedArts puedes gestionar tu información con t
 * **Importar SQLite (.sqlite):** Restaura cualquier base de datos previa al instante.
 * **Exportar Respaldo JSON:** Genera un volcado estructurado con todas las tablas y relaciones.
 * **Restaurar Respaldo JSON:** Recupera tus datos desde cualquier volcado de texto JSON.
+* **Validación previa del respaldo JSON:** el archivo se comprueba **por completo antes de tocar la base de datos**. Si no corresponde a un respaldo de CrossedArts (tablas o columnas desconocidas, formato inválido o una versión más moderna que la de la aplicación), la restauración se cancela y tus datos actuales quedan intactos.
+
+### Límites conocidos y comportamiento local
+
+- **Local-first, no "offline absoluto".** La aplicación funciona sin red, pero la primera carga de un modelo local (WebLLM o embeddings) sí necesita conexión para descargarlo. OpenAI y Ollama son opciones opt-in que sí hacen peticiones de red.
+- **Día de estudio local.** "Hoy" y la racha de días se calculan con el día calendario **local** de tu reloj, no con UTC. Las marcas de tiempo guardadas siguen siendo UTC.
+- **Varias pestañas.** Cada pestaña trabaja sobre su propia copia en memoria. Cuando una guarda cambios, las demás lo detectan y recargan desde IndexedDB antes de la siguiente lectura, de modo que no sirven datos obsoletos. No hay sincronización en la nube ni resolución automática de conflictos: la última escritura en IndexedDB es la que gana.
+- **Medios locales.** Las rutas de archivos locales y sus `blob:` URLs son efímeras y solo viven en la sesión del navegador: no se incluyen en los respaldos. Los medios remotos opcionales (URLs http) sí persisten.
 
 ---
 

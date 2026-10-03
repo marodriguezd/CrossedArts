@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
+import { resolveLocalDay } from '../src/services/localDate.ts';
 
 test('2.1 dao.getKPIs calculates metrics from relational tables accurately', async () => {
   await dbBridge.init();
@@ -133,8 +134,17 @@ test('2.7 dao.getActiveStreak calculates real streak based on calendar days with
     streak = await dao.getActiveStreak();
     assert.strictEqual(streak, 3, 'Gap in study dates stops streak increment');
 
-    // 6. Caso: Sin sesión hoy, pero con sesión ayer y anteayer (mantiene racha de 2)
-    db.run("DELETE FROM learning_session WHERE date(started_at) = date('now')");
+    // 6. Caso: Sin sesión HOY (día local), pero con sesión ayer y anteayer (racha de 2)
+    //
+    // El borrado usa el DÍA LOCAL, igual que la racha. Antes esta prueba borraba
+    // por `date('now')` (UTC) mientras la racha se computaba por día UTC, de modo
+    // que solo coincidía por casualidad: al caer la ejecución entre las 22:00 y
+    // las 24:00 UTC, la sesión "de hoy" ya tenía fecha local del día siguiente y
+    // la prueba medía una racha de 3 en lugar de 2. Ahora la prueba expresa su
+    // intención en los mismos términos que la implementación y es determinista
+    // en cualquier franja horaria.
+    const { day: localToday, utcOffsetModifier } = resolveLocalDay();
+    db.run('DELETE FROM learning_session WHERE date(started_at, ?) = ?', [utcOffsetModifier, localToday]);
     streak = await dao.getActiveStreak();
     assert.strictEqual(streak, 2, 'Streak counts backwards from yesterday if no session has been recorded yet today');
   } finally {

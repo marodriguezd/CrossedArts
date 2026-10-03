@@ -1,6 +1,7 @@
 import { dbBridge } from './sqliteBridge.ts';
 import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, Module, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState } from '../types/models.ts';
 import { calculateBookProgress, calculateSM2, validateKnowledgeConnection } from '../services/domainLogic.ts';
+import { resolveLocalDay, computeActiveStreak } from '../services/localDate.ts';
 import type { SM2Result } from '../services/domainLogic.ts';
 
 const SESSION_LIVE_DURATION_SQL = `duration_minutes = CASE
@@ -58,11 +59,15 @@ export const dao = {
 
   async getTodayStudySummary(): Promise<TodayStudySummary> {
     const db = dbBridge.getDatabase();
+    // El "día de hoy" es el día calendario LOCAL del usuario, resuelto en
+    // JavaScript y pasado como parámetro. Antes se usaba `date('now')` (UTC),
+    // lo que desplazaba el día de estudio respecto al reloj del usuario.
+    const { day, utcOffsetModifier } = resolveLocalDay();
     const res = db.exec(`
       SELECT COALESCE(SUM(cards_reviewed), 0), COALESCE(SUM(questions_answered), 0), COALESCE(SUM(correct_answers), 0)
       FROM learning_session
-      WHERE date(started_at) = date('now')
-    `);
+      WHERE date(started_at, ?) = ?
+    `, [utcOffsetModifier, day]);
     const row = res.length ? res[0].values[0] : [0, 0, 0];
     const flashcards = Number(row[0]) || 0;
     const questions = Number(row[1]) || 0;
@@ -76,8 +81,13 @@ export const dao = {
 
   async getRecentStudySessions(limit: number = 5): Promise<LearningSession[]> {
     const db = dbBridge.getDatabase();
+    // Una sesión completada es válida si tiene ámbito de RECURSO o de LECCIÓN.
+    // Antes el filtro exigía `resource_id IS NOT NULL`, lo que descartaba una
+    // sesión con ámbito de lección cuyo `resource_id` es nulo: el historial
+    // reciente del Dashboard perdía actividad real. No se inventa ningún
+    // resource_id; `lesson_title` sigue resolviendose por LEFT JOIN.
     const res = db.exec(`${SESSION_SELECT}
-      WHERE s.status = 'completed' AND s.resource_id IS NOT NULL
+      WHERE s.status = 'completed' AND (s.resource_id IS NOT NULL OR s.lesson_id IS NOT NULL)
       ORDER BY datetime(s.started_at) DESC, s.id DESC
       LIMIT ?`, [Math.max(1, Math.floor(limit))]);
     if (!res.length) return [];
@@ -227,42 +237,28 @@ export const dao = {
     }
   },
 
+  /**
+   * Racha de estudio activa en días consecutivos.
+   *
+   * Los días de estudio se etiquetan con el DÍA CALENDARIO LOCAL del usuario
+   * (offset calculado en JavaScript y pasado como parámetro), no con el día UTC.
+   * La aritmética de días consecutivos es pura y se hace sobre las cadenas
+   * `YYYY-MM-DD`, de modo que no depende del huso horario del proceso.
+   */
   async getActiveStreak(): Promise<number> {
     const db = dbBridge.getDatabase();
+    const { day: todayStr, utcOffsetModifier } = resolveLocalDay();
     const res = db.exec(`
-      SELECT DISTINCT date(started_at)
+      SELECT DISTINCT date(started_at, ?) AS study_day
       FROM learning_session
       WHERE duration_minutes > 0
-      ORDER BY date(started_at) DESC
-    `);
+      ORDER BY study_day DESC
+    `, [utcOffsetModifier]);
 
     if (!res.length || !res[0].values.length) return 0;
 
     const dates = new Set(res[0].values.map(row => String(row[0])));
-    const todayRes = db.exec("SELECT date('now')");
-    const todayStr = String(todayRes[0]?.values[0][0]);
-
-    let checkDate = new Date(`${todayStr}T00:00:00Z`);
-    const formatDate = (d: Date) => d.toISOString().slice(0, 10);
-
-    let currentStr = formatDate(checkDate);
-    // Si no hubo sesión hoy, comprobar si hubo ayer para mantener la racha activa
-    if (!dates.has(currentStr)) {
-      checkDate.setUTCDate(checkDate.getUTCDate() - 1);
-      currentStr = formatDate(checkDate);
-      if (!dates.has(currentStr)) {
-        return 0;
-      }
-    }
-
-    let streak = 0;
-    while (dates.has(currentStr)) {
-      streak++;
-      checkDate.setUTCDate(checkDate.getUTCDate() - 1);
-      currentStr = formatDate(checkDate);
-    }
-
-    return streak;
+    return computeActiveStreak(dates, todayStr);
   },
 
   async getCourses(): Promise<Course[]> {
@@ -337,6 +333,48 @@ export const dao = {
       }
     }
     return course;
+  },
+
+  /**
+   * Índice plano de lecciones con su curso y módulo, en UNA sola consulta.
+   *
+   * Existe para la recuperación RAG: antes, `retrieveLocalContext()` llamaba a
+   * `getCourseById()` por cada curso y cada llamada re-ejecutaba `getCourses()`
+   * (un escaneo completo de recursos) más una consulta por módulo. Con N cursos
+   * y M módulos eso es O(N*M) consultas y N reconstrucciones completas de la
+   * jerarquía. Esta versión resuelve la misma información en 2 consultas
+   * fijas, sin cambiar el modelo de datos ni el orden determinista.
+   */
+  async getLessonIndex(): Promise<Array<{
+    lessonId: string;
+    lessonTitle: string;
+    lessonContent?: string;
+    durationMinutes: number;
+    moduleTitle: string;
+    courseId: string;
+    courseTitle: string;
+  }>> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(`
+      SELECT l.id, l.title, l.content, l.duration_minutes,
+             m.title AS module_title, m.course_id,
+             r.title AS course_title
+      FROM lesson l
+      JOIN module m ON l.module_id = m.id
+      JOIN course c ON m.course_id = c.id
+      JOIN learning_resource r ON r.id = c.id
+      ORDER BY m.order_index ASC, m.id ASC, l.order_index ASC, l.id ASC
+    `);
+    if (!res.length) return [];
+    return res[0].values.map((row: any[]) => ({
+      lessonId: String(row[0]),
+      lessonTitle: String(row[1]),
+      lessonContent: row[2] ? String(row[2]) : undefined,
+      durationMinutes: Number(row[3]) || 0,
+      moduleTitle: String(row[4]),
+      courseId: String(row[5]),
+      courseTitle: String(row[6])
+    }));
   },
 
   async toggleLessonCompleted(lessonId: string, completed: boolean): Promise<void> {

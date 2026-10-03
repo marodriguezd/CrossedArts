@@ -28,11 +28,19 @@ class LocalEmbeddingCache {
 
   private openIDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(IDB_NAME, 1);
+      // La versión 2 asegura el índice `modelId` incluso en bases creadas por una
+      // versión anterior de la aplicación que no lo declaraba. No cambia el
+      // esquema de datos: solo añade el índice que ya se usaba para filtrar.
+      const req = indexedDB.open(IDB_NAME, 2);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const store = db.createObjectStore(STORE_NAME, { keyPath: 'chunkId' });
+          store.createIndex('modelId', 'modelId', { unique: false });
+          return;
+        }
+        const store = req.transaction!.objectStore(STORE_NAME);
+        if (!store.indexNames.contains('modelId')) {
           store.createIndex('modelId', 'modelId', { unique: false });
         }
       };
@@ -83,6 +91,18 @@ class LocalEmbeddingCache {
     }
   }
 
+  /**
+   * Devuelve los vectores cacheados de un modelo concreto.
+   *
+   * Usa el índice `modelId` que ya existe en el object store en lugar de traer
+   * TODOS los registros y filtrar en memoria: con varios modelos y versiones de
+   * pipeline, `getAll()` descargaba la caché entera para descartar la mayoría.
+   *
+   * La semántica NO cambia: se siguen validando modelId, versión de pipeline y
+   * dimensión del vector (384) antes de devolver nada. Si el índice no estuviera
+   * disponible (base creada por una versión anterior sin `onupgradeneeded`), se
+   * recurre a la lectura completa como degradación segura.
+   */
   public async getAllEntriesForModel(
     modelId: string,
     pipelineVersion: string = EMBEDDING_PIPELINE_VERSION
@@ -101,16 +121,33 @@ class LocalEmbeddingCache {
       const db = await this.openIDB();
       return new Promise((resolve) => {
         const tx = db.transaction(STORE_NAME, 'readonly');
-        const req = tx.objectStore(STORE_NAME).getAll();
-        req.onsuccess = () => {
-          const rawList = (req.result as CachedVectorEntry[] || []);
-          const list = rawList.filter(isEntryValid);
+        const store = tx.objectStore(STORE_NAME);
+
+        const settle = (rawList: CachedVectorEntry[]) => {
+          const list = (rawList || []).filter(isEntryValid);
           // Actualizar in-memory
           for (const item of list) {
             this.inMemoryCache.set(item.chunkId, item);
           }
           resolve(list);
         };
+
+        // El índice filtra por modelId en SQLite; el resto de criterios se
+        // validan igual que antes.
+        if (store.indexNames.contains('modelId')) {
+          const indexReq = store.index('modelId').getAll(IDBKeyRange.only(modelId));
+          indexReq.onsuccess = () => settle((indexReq.result as CachedVectorEntry[]) || []);
+          indexReq.onerror = () => {
+            // Índice inutilizable: se degrada a la lectura completa.
+            const fallback = store.getAll();
+            fallback.onsuccess = () => settle((fallback.result as CachedVectorEntry[]) || []);
+            fallback.onerror = () => resolve([]);
+          };
+          return;
+        }
+
+        const req = store.getAll();
+        req.onsuccess = () => settle((req.result as CachedVectorEntry[]) || []);
         req.onerror = () => resolve([]);
       });
     } catch {

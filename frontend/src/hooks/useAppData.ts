@@ -1,10 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { dbBridge } from '../db/sqliteBridge.ts';
+import { dbBridge, type DbInitFailure } from '../db/sqliteBridge.ts';
 import { dao } from '../db/dao.ts';
 import type { KPIMetrics, Course, Book, Flashcard, Note, LearningSession } from '../types/models.ts';
 
 export interface AppDataState {
   loading: boolean;
+  /**
+   * Fallo terminal de inicialización. Mientras no sea null la aplicación NO debe
+   * renderizar sus vistas de datos: hacerlo llevaba al grafo de conocimiento a
+   * llamar a `getDatabase()` y a mostrar "Database not initialized".
+   */
+  initError: DbInitFailure | null;
   kpis: KPIMetrics | null;
   courses: Course[];
   books: Book[];
@@ -14,10 +20,13 @@ export interface AppDataState {
   selectedCourse: Course | null;
   refreshData: () => Promise<void>;
   selectCourse: (id: string | null) => Promise<void>;
+  retryInit: () => Promise<void>;
 }
 
 export function useAppData(selectedCourseId: string | null): AppDataState {
   const [loading, setLoading] = useState(true);
+  const [initError, setInitError] = useState<DbInitFailure | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
   const [kpis, setKpis] = useState<KPIMetrics | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
@@ -28,6 +37,9 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
 
   const refreshData = useCallback(async () => {
     try {
+      // Si otra pestaña ha persistido una versión más nueva, `ensureFresh()` recarga
+      // el estado en memoria ANTES de que leamos, para no servir lecturas obsoletas.
+      await dbBridge.ensureFresh();
       // El grafo de conocimiento se carga de forma perezosa solo al abrir su vista
       // (KnowledgeGraph.tsx), no en el arranque de la aplicación.
       const [k, c, b, f, n, s] = await Promise.all([
@@ -63,16 +75,36 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
     setSelectedCourse(fullCourse);
   }, []);
 
+  /**
+   * Inicialización de la aplicación.
+   *
+   * `dbBridge.init()` es concurrency-safe y devuelve una promesa compartida, de
+   * modo que el doble montaje de StrictMode (montar -> desmontar -> montar) y
+   * cualquier vista perezosa que se monte a la vez esperan la MISMA operación.
+   *
+   * Clave del defecto corregido: antes el `finally` hacia `setLoading(false)`
+   * incluso cuando `init()` fallaba, así que la aplicación se renderizaba contra
+   * una base de datos inexistente y el fallo aflora meses tarde como un error de
+   * una vista hija. Ahora un fallo de inicialización es un estado de primer clase.
+   */
   useEffect(() => {
     let mounted = true;
     const initApp = async () => {
       try {
         await dbBridge.init();
-        if (mounted) {
-          await refreshData();
-        }
-      } catch (err) {
-        console.error('Error inicializando base de datos:', err);
+        if (!mounted) return;
+        await refreshData();
+        if (mounted) setInitError(null);
+      } catch (err: any) {
+        if (!mounted) return;
+        const failure = err?.failure ?? {
+          code: 'unknown' as const,
+          message: 'No se pudo inicializar la base de datos local. Vuelve a cargar la aplicación.',
+          retryable: true,
+          detail: err?.message
+        };
+        console.error('Error inicializando base de datos:', failure.detail || failure.message);
+        setInitError(failure);
       } finally {
         if (mounted) {
           setLoading(false);
@@ -84,10 +116,19 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
     return () => {
       mounted = false;
     };
-  }, [refreshData]);
+  }, [refreshData, retryToken]);
+
+  /** Reintenta la inicialización tras un fallo recuperable (acción del usuario). */
+  const retryInit = useCallback(async () => {
+    setLoading(true);
+    setInitError(null);
+    setRetryToken(t => t + 1);
+  }, []);
 
   return {
     loading,
+    initError,
+    retryInit,
     kpis,
     courses,
     books,

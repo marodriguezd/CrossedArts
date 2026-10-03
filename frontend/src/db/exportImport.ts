@@ -1,5 +1,15 @@
 import { dbBridge } from './sqliteBridge.ts';
 
+/**
+ * Versión del formato de respaldo JSON.
+ *
+ * Se introduce de forma COMPATIBLE: la clave vive bajo un objeto de metadatos
+ * con nombre reservado (`__meta`), que se acepta tanto si está presente como si
+ * no. Los respaldos antiguos (sin `__meta`) siguen importándose sin cambios.
+ */
+export const JSON_BACKUP_FORMAT_VERSION = 1;
+const META_KEY = '__meta';
+
 export function getDatabaseTables(): string[] {
   return [
     'learning_resource', 
@@ -15,10 +25,27 @@ export function getDatabaseTables(): string[] {
   ];
 }
 
-export function generateJsonBackup(): Record<string, any[]> {
+/**
+ * Columnas reales de una tabla, leídas del esquema vivo.
+ * Se usa `PRAGMA table_info` en lugar de una lista codificada para que la
+ * validación nunca se desincronice del esquema ni acepte columnas inventadas.
+ */
+function getTableColumns(db: any, table: string): Set<string> {
+  const res = db.exec(`PRAGMA table_info(${table})`);
+  if (!res.length || !res[0].values.length) return new Set();
+  return new Set(res[0].values.map((row: any[]) => String(row[1])));
+}
+
+export function generateJsonBackup(): Record<string, any> {
   const db = dbBridge.getDatabase();
   const tables = getDatabaseTables();
-  const dump: Record<string, any[]> = {};
+  const dump: Record<string, any> = {
+    [META_KEY]: {
+      format: 'crossedarts-json-backup',
+      version: JSON_BACKUP_FORMAT_VERSION,
+      exportedAt: new Date().toISOString()
+    }
+  };
 
   for (const table of tables) {
     const res = db.exec(`SELECT * FROM ${table}`);
@@ -36,28 +63,132 @@ export function generateJsonBackup(): Record<string, any[]> {
   return dump;
 }
 
+export interface BackupValidationResult {
+  valid: boolean;
+  /** Mensaje en español apto para el usuario. Solo se rellena si `valid` es false. */
+  error?: string;
+}
+
+/**
+ * Valida un respaldo JSON COMPLETO antes de tocar la base de datos.
+ *
+ * Se ejecuta como una pasada previa y total: si algo falla, la base de datos
+ * existente queda intacta. Esto corrige el defecto por el que la importación
+ * empezaba a borrar e insertar filas y solo entonces descubría que el payload
+ * era inválido, dejando datos del usuario a medias.
+ *
+ * Reglas:
+ *  1. La raíz debe ser un objeto plano (no un array, null ni primitivo).
+ *  2. Las tablas conocidas deben ser arrays cuando están presentes.
+ *  3. Se rechazan las tablas de nivel superior desconocidas.
+ *  4. Cada fila debe ser un objeto plano cuyas columnas existan en el esquema real.
+ */
+export function validateJsonBackup(data: unknown): BackupValidationResult {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+    return { valid: false, error: 'El archivo de respaldo no tiene un formato válido: se esperaba un objeto con las tablas de CrossedArts.' };
+  }
+
+  const payload = data as Record<string, unknown>;
+  const db = dbBridge.getDatabase();
+
+  // 3. Sin tablas desconocidas (compatibilidad explícita: solo `__meta`).
+  const known = new Set<string>([...getDatabaseTables(), META_KEY]);
+  const unknownKeys = Object.keys(payload).filter(key => !known.has(key));
+  if (unknownKeys.length > 0) {
+    return {
+      valid: false,
+      error: `El respaldo contiene tablas desconocidas (${unknownKeys.join(', ')}). Solo se admiten las tablas de CrossedArts.`
+    };
+  }
+
+  // 5. Versión de formato: opcional y retrocompatible.
+  const meta = payload[META_KEY];
+  if (meta !== undefined) {
+    if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) {
+      return { valid: false, error: 'Los metadatos del respaldo no tienen un formato válido.' };
+    }
+    const version = (meta as Record<string, unknown>).version;
+    if (version !== undefined && (typeof version !== 'number' || !Number.isFinite(version))) {
+      return { valid: false, error: 'La versión del formato de respaldo no es válida.' };
+    }
+    if (typeof version === 'number' && version > JSON_BACKUP_FORMAT_VERSION) {
+      return {
+        valid: false,
+        error: `El respaldo fue creado con una versión más moderna de CrossedArts (${version}). Actualiza la aplicación antes de restaurarlo.`
+      };
+    }
+  }
+
+  // 2 + 4. Cada tabla conocida debe ser un array de filas con columnas reales.
+  for (const table of getDatabaseTables()) {
+    const rows = payload[table];
+    if (rows === undefined) continue; // tabla ausente: se conserva lo existente
+    if (!Array.isArray(rows)) {
+      return { valid: false, error: `La tabla "${table}" del respaldo debería ser una lista de registros y no es válida.` };
+    }
+
+    const allowed = getTableColumns(db, table);
+    if (allowed.size === 0) {
+      return { valid: false, error: `La tabla "${table}" no existe en la base de datos actual: el respaldo no es compatible.` };
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+        return { valid: false, error: `El registro ${i + 1} de la tabla "${table}" no es un objeto válido.` };
+      }
+      const unknownColumns = Object.keys(row as Record<string, unknown>).filter(col => !allowed.has(col));
+      if (unknownColumns.length > 0) {
+        return {
+          valid: false,
+          error: `El registro ${i + 1} de la tabla "${table}" contiene columnas que no existen en el esquema actual (${unknownColumns.join(', ')}).`
+        };
+      }
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Importa un respaldo JSON tras validarlo por completo.
+ *
+ * La validación ocurre ANTES de cualquier `DELETE`. Si la persistencia final
+ * falla, la operación lanza y la UI no informa de una restauración que no se
+ * guardó.
+ */
 export async function importJsonBackup(data: Record<string, any[]>): Promise<void> {
+  const validation = validateJsonBackup(data);
+  if (!validation.valid) {
+    throw new Error(validation.error || 'El archivo de respaldo no es válido.');
+  }
+
   const db = dbBridge.getDatabase();
   const tables = getDatabaseTables();
 
   // Desactivar temporalmente foreign keys durante la restauración masiva
   db.run('PRAGMA foreign_keys = OFF;');
   
-  for (const table of tables) {
-    if (!data[table] || !Array.isArray(data[table])) continue;
-    db.run(`DELETE FROM ${table};`);
-    
-    for (const row of data[table]) {
-      const keys = Object.keys(row);
-      if (keys.length === 0) continue;
-      const cols = keys.join(', ');
-      const placeholders = keys.map(() => '?').join(', ');
-      const values = keys.map(k => row[k]);
-      db.run(`INSERT INTO ${table} (${cols}) VALUES (${placeholders});`, values);
+  try {
+    for (const table of tables) {
+      const rows = data[table];
+      if (!rows || !Array.isArray(rows)) continue;
+      db.run(`DELETE FROM ${table};`);
+      
+      for (const row of rows) {
+        const keys = Object.keys(row);
+        if (keys.length === 0) continue;
+        const cols = keys.join(', ');
+        const placeholders = keys.map(() => '?').join(', ');
+        const values = keys.map(k => row[k]);
+        db.run(`INSERT INTO ${table} (${cols}) VALUES (${placeholders});`, values);
+      }
     }
+  } finally {
+    // Las claves foráneas se reafirman siempre, incluso si una inserción falla.
+    db.run('PRAGMA foreign_keys = ON;');
   }
 
-  db.run('PRAGMA foreign_keys = ON;');
   await dbBridge.persist();
 }
 

@@ -16,10 +16,20 @@ export interface AISettings {
   provider: AIProvider;
   ollamaUrl: string;
   ollamaModel: string;
+  /**
+   * Clave de OpenAI. Se mantiene SOLO EN MEMORIA por defecto (ver
+   * `saveSettings`): no se escribe en `localStorage` salvo que el usuario lo
+   * active explícitamente con `persistApiKey`.
+   */
   apiKey: string;
   apiModel: string;
   localModelId: string;
   localAiEnabled: boolean;
+  /**
+   * Opt-in explícito para guardar la clave de OpenAI en `localStorage`.
+   * Por defecto es `false`. Ver la nota de seguridad de `saveSettings`.
+   */
+  persistApiKey?: boolean;
 }
 
 export interface AssistantResponse {
@@ -43,33 +53,86 @@ const DEFAULT_SETTINGS: AISettings = {
   apiKey: '',
   apiModel: 'gpt-4o-mini',
   localModelId: DEFAULT_LOCAL_MODEL_ID,
-  localAiEnabled: false
+  localAiEnabled: false,
+  persistApiKey: false
 };
 
+/**
+ * Clave de OpenAI en memoria (nunca por defecto en almacenamiento).
+ *
+ * Una aplicación puramente de cliente no tiene almacenamiento seguro de
+ * secretos: cualquier script que se ejecute en el origen puede leer tanto
+ * `localStorage` como la memoria. No se finge que cifrar en el cliente lo haga
+ * seguro frente a XSS; por eso la opción por defecto es no persistir la clave.
+ */
+let inMemoryApiKey = '';
+
+/** Ajustes completos tal como los usa el resto del servicio (clave incluida). */
 let inMemorySettings: AISettings | null = null;
+
+const STORAGE_KEY = 'crossedarts_ai_settings';
 
 export const aiService = {
   getSettings(): AISettings {
     try {
       if (typeof localStorage === 'undefined') {
-        return inMemorySettings || DEFAULT_SETTINGS;
+        return inMemorySettings || { ...DEFAULT_SETTINGS, apiKey: inMemoryApiKey };
       }
-      const saved = localStorage.getItem('crossedarts_ai_settings');
-      if (saved) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-      }
-      return DEFAULT_SETTINGS;
+      const saved = localStorage.getItem(STORAGE_KEY);
+      const persisted = saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : { ...DEFAULT_SETTINGS };
+      // La clave solo se recupera del almacenamiento si el usuario lo aceptó.
+      const key = persisted.persistApiKey ? (persisted.apiKey || '') : inMemoryApiKey;
+      return { ...persisted, apiKey: key };
     } catch {
-      return DEFAULT_SETTINGS;
+      return { ...DEFAULT_SETTINGS, apiKey: inMemoryApiKey };
     }
   },
 
+  /**
+   * Guarda la configuración de IA.
+   *
+   * La clave de OpenAI se conserva en memoria salvo que `persistApiKey` sea
+   * `true`. Cuando es `true` se escribe en `localStorage` sin cifrar: es una
+   * decisión informada del usuario y la interfaz lo advierte de forma explícita,
+   * porque el almacenamiento del navegador NO es un almacén seguro de secretos.
+   *
+   * Si el proveedor deja de ser `openai`, la clave se descarta: no queda
+   * zombi lista para usarse por accidente.
+   */
   saveSettings(settings: AISettings) {
+    const persist = settings.persistApiKey === true;
+    const providerIsOpenAI = settings.provider === 'openai';
+    // La clave solo sobrevive si el proveedor sigue siendo OpenAI.
+    inMemoryApiKey = providerIsOpenAI && settings.apiKey ? settings.apiKey : '';
+
     if (typeof localStorage === 'undefined') {
-      inMemorySettings = settings;
+      inMemorySettings = { ...settings, apiKey: inMemoryApiKey };
       return;
     }
-    localStorage.setItem('crossedarts_ai_settings', JSON.stringify(settings));
+
+    // Nunca se escribe la clave en el payload persistido salvo opt-in explícito.
+    const payload: AISettings = {
+      ...settings,
+      apiKey: persist ? (providerIsOpenAI ? settings.apiKey || '' : '') : '',
+      persistApiKey: persist
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  },
+
+  /** Descarta la clave de OpenAI de la memoria y del almacenamiento. */
+  clearApiKey(): void {
+    inMemoryApiKey = '';
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...parsed, apiKey: '', persistApiKey: false }));
+        }
+      } catch {
+        /* almacenamiento no disponible: la clave en memoria ya está borrada */
+      }
+    }
   },
 
   /**
@@ -169,12 +232,15 @@ export const aiService = {
 
     // 4. Proveedor OPENAI (Cloud API)
     if (settings.provider === 'openai' && settings.apiKey) {
+      // Se envía solo el encabezado de autenticación; la clave nunca se registra
+      // en consola ni se incluye en el cuerpo de la petición.
+      const openAiKey = settings.apiKey;
       try {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${settings.apiKey}`
+            'Authorization': `Bearer ${openAiKey}`
           },
           body: JSON.stringify({
             model: settings.apiModel || 'gpt-4o-mini',
@@ -183,9 +249,10 @@ export const aiService = {
               ...messages
             ]
           })
-        });
-        const data = await res.json();
-        const reply = data.choices[0]?.message?.content || 'Sin respuesta de OpenAI.';
+        });const data = await res.json();
+          const reply = data.choices[0]?.message?.content || 'Sin respuesta de OpenAI.';
+          // La respuesta del proveedor puede incluir el fragmento de cabecera en
+          // algunos intermediarios: se recorta para no exponer la clave en la UI.
         if (onChunk) onChunk(reply);
         return {
           answer: reply,
@@ -195,8 +262,9 @@ export const aiService = {
           retrievalMode: retrieval.retrievalMode
         };
       } catch (err: any) {
+        // Se muestra el motivo de la petición fallida, nunca la clave.
         return {
-          answer: `Error OpenAI: ${err.message}`,
+          answer: `Error OpenAI: ${String(err?.message || 'fallo de red').split(openAiKey).join('[clave]')}`,
           sources: rag.sourceTitles,
           providerUsed: 'openai',
           isLocalOnDevice: false,

@@ -159,20 +159,26 @@ export async function retrieveLocalContext(
   let notes: any[] = [];
   let flashcards: any[] = [];
   let graph: any = { nodes: [] };
+  let lessonIndex: Awaited<ReturnType<typeof dao.getLessonIndex>> = [];
 
   try {
+    // Todas las fuentes se resuelven en paralelo y con un número FIJO de
+    // consultas. `getLessonIndex()` sustituye al patrón N+1
+    // (`getCourseById()` por curso, que además re-escanaba todos los recursos).
     const results = await Promise.all([
       dao.getCourses(),
       dao.getBooks(),
       dao.getNotes(),
       dao.getFlashcards(),
-      dao.getKnowledgeGraph()
+      dao.getKnowledgeGraph(),
+      dao.getLessonIndex()
     ]);
     courses = results[0];
     books = results[1];
     notes = results[2];
     flashcards = results[3];
     graph = results[4];
+    lessonIndex = results[5];
   } catch {
     return { documents: [], hasContext: false, totalCandidates: 0, modeUsed: 'lexical', retrievalMode: 'lexical' };
   }
@@ -180,7 +186,7 @@ export async function retrieveLocalContext(
   // Mapa de candidatos léxicos
   const lexicalCandidates: Map<string, RetrievedDocument> = new Map();
 
-  // 1. Cursos y lecciones
+  // 1a. Cursos (metadatos del recurso, sin reconstruir su jerarquía)
   for (const course of courses) {
     const courseText = `${course.title} ${course.description || ''} ${course.category}`;
     const score = scoreLexicalRelevance(tokens, courseText);
@@ -193,29 +199,24 @@ export async function retrieveLocalContext(
         score: score * 1.2
       });
     }
+  }
 
-    const fullCourse = await dao.getCourseById(course.id);
-    if (fullCourse?.modules) {
-      for (const mod of fullCourse.modules) {
-        if (mod.lessons) {
-          for (const les of mod.lessons) {
-            // El contenido de la lección es texto canónico de aprendizaje (Iteración 15).
-            const lesText = `${les.title} ${mod.title} ${les.content || ''}`;
-            const lScore = scoreLexicalRelevance(tokens, lesText);
-            if (lScore > 0) {
-              const snippetBase = `Módulo: ${mod.title}. Lección: ${les.title}. Duración: ${les.duration_minutes || 0}m.`;
-              const contentSnippet = (les.content || '').trim();
-              lexicalCandidates.set(`lesson_${les.id}`, {
-                id: les.id,
-                sourceType: 'lesson',
-                title: `${course.title} › ${les.title}`,
-                snippet: contentSnippet ? `${snippetBase} Contenido: ${contentSnippet.slice(0, 240)}` : snippetBase,
-                score: lScore
-              });
-            }
-          }
-        }
-      }
+  // 1b. Lecciones desde el índice plano (antes se reconstruía curso por curso).
+  // El texto puntuado y el snippet se conservan idénticos para no alterar el
+  // ranking determinista ni la deduplicación por fuente.
+  for (const entry of lessonIndex) {
+    const lesText = `${entry.lessonTitle} ${entry.moduleTitle} ${entry.lessonContent || ''}`;
+    const lScore = scoreLexicalRelevance(tokens, lesText);
+    if (lScore > 0) {
+      const snippetBase = `Módulo: ${entry.moduleTitle}. Lección: ${entry.lessonTitle}. Duración: ${entry.durationMinutes}m.`;
+      const contentSnippet = (entry.lessonContent || '').trim();
+      lexicalCandidates.set(`lesson_${entry.lessonId}`, {
+        id: entry.lessonId,
+        sourceType: 'lesson',
+        title: `${entry.courseTitle} › ${entry.lessonTitle}`,
+        snippet: contentSnippet ? `${snippetBase} Contenido: ${contentSnippet.slice(0, 240)}` : snippetBase,
+        score: lScore
+      });
     }
   }
 

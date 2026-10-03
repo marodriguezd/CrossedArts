@@ -19,6 +19,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
+import { dbBridge, type DbInitFailure } from '../db/sqliteBridge.ts';
 import { GRAPH_NODE_LABELS, GRAPH_RELATION_LABELS, GRAPH_RELATION_TYPES, resolveGraphNodeDestination, describeDestructiveAction } from '../services/domainLogic.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { Button, Chip, cn } from '../components/ui/index.tsx';
@@ -219,12 +220,24 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     setIsLoading(true);
     setLoadError(null);
     try {
+      // El grafo es una vista perezosa: al abrirla puede coincidir con una
+      // inicialización de SQLite aún en curso (o con un fallo ya registrado).
+      // `ensureInitialized()` espera la promesa compartida en lugar de asumir que
+      // la base de datos existe, y recarga si otra pestaña escribió más tarde.
+      // Esto elimina la carrera que antes terminaba en "Database not initialized".
+      await dbBridge.ensureInitialized();
       const data = await dao.getKnowledgeGraph();
       // Sanea conexiones huérfanas de forma tolerante (no bloquea la vista).
       await dao.pruneDanglingConnections();
       setGraphData(data);
     } catch (err: any) {
-      setLoadError(err?.message || 'No se pudo cargar el grafo de conocimiento local.');
+      // Solo se muestran clases de fallo conocidas, con su mensaje controlado en
+      // español. Nunca se pinta texto crudo de una excepción interna (Regla 5).
+      const failure: DbInitFailure | undefined = err?.failure;
+      setLoadError(
+        failure?.message ||
+          'No se pudo cargar el grafo de conocimiento local. Vuelve a abrir esta sección o recarga la aplicación.'
+      );
     } finally {
       setIsLoading(false);
     }

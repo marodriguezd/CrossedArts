@@ -122,7 +122,7 @@ npm install
 # Iniciar servidor de desarrollo en caliente (Vite)
 npm run dev
 
-# Ejecutar la flota de pruebas de integridad (148/148 tests)
+# Ejecutar la flota de pruebas de integridad (184/184 tests)
 npm test
 # O directamente mediante el test runner de Node:
 node --test --experimental-strip-types tests/*.test.ts
@@ -134,7 +134,7 @@ npm run typecheck
 npx vite build
 ```
 
-> **IMPORTANTE:** La flota de 148 pruebas de frontend valida:
+> **IMPORTANTE:** La flota de 184 pruebas de frontend valida:
 > 1. Inicialización de SQLite WASM sin acceso a la red (0 web requests).
 > 2. Precisión del algoritmo de repetición espaciada SuperMemo-2 (`domainLogic.ts` & SM-2).
 > 3. Operaciones CRUD, cálculo de racha real y validación pura de lectura de libros en `dao.ts` y `domainLogic.ts`.
@@ -185,6 +185,10 @@ Cualquier modificación o ampliación de código debe respetar estrictamente est
 * Nunca introduzcas dependencias en `frontend/index.html` que carguen fuentes, scripts o estilos desde servidores externos no respaldados en local.
 
 ### Regla 2: Persistencia Relacional con SQLite Bridge
+* La inicialización de SQLite **debe ser segura ante concurrencia**: `dbBridge.init()` comparte una única promesa entre todos los llamantes y expone estados terminales (`idle` / `initializing` / `ready` / `failed`) mediante `getInitState()`. Nunca ejecutes una secuencia de inicialización paralela que compita por escribir `this.db`.
+* Un fallo de inicialización **debe ser un estado de primer clase**: `useAppData()` expone `initError` y `App.tsx` detiene el montaje antes de renderizar cualquier vista de datos. Nunca renderices la aplicación contra una base de datos ausente.
+* Las vistas perezosas que llaman al DAO (p. ej. `KnowledgeGraph`) **deben** llamar a `dbBridge.ensureInitialized()` antes de leer, y nunca pintar `err.message` crudo. Solo se muestran clases de fallo conocidas con su mensaje controlado en español (`DbInitFailure`).
+* **Día de estudio local:** el "hoy" del usuario y la racha se calculan con el día calendario local (`resolveLocalDay()`) y se pasan como parámetro a consultas SQLite. No vuelvas a `date('now')` (UTC) para lógica visible al usuario. La aritmética de días consecutivos vive en `services/localDate.ts`, no en bucles con `Date`.
 * Toda modificación de datos debe sincronizarse con `IndexedDB` invocando `await dbBridge.persist()`.
 * Si se añaden nuevas tablas o columnas al esquema:
   1. Actualiza `frontend/src/db/schema.ts`.
@@ -205,6 +209,11 @@ Cualquier modificación o ampliación de código debe respetar estrictamente est
 * Toda la interfaz de usuario, títulos, botones, cuadros de diálogo, mensajes de error y textos explicativos deben estar en **español**.
 * La estética visual se define mediante variables CSS semánticas (`--c-canvas`, `--c-surface`, `--c-ink`, `--c-accent`, etc.) declaradas en `frontend/src/index.css` y expuestas a Tailwind en `frontend/tailwind.config.js`. El tema **por defecto es claro y cálido (crema)**, con un segundo tema **oscuro suave (carbón)** que el usuario elige de forma persistente (`hooks/useTheme.ts`, `localStorage: crossedarts-theme`). Está prohibido introducir colores literales de paleta (`slate-*`, `purple-*`, `indigo-*`) en el JSX: usa siempre las utilidades semánticas (`bg-surface`, `text-muted`, `text-accent`, `border-line`).
 * Los nuevos componentes compartidos deben construirse sobre las primitivas de `frontend/src/components/ui/index.tsx` y el shell de `frontend/src/components/layout/Shell.tsx`.
+
+### Regla 5-bis: Datos, Copias de Seguridad y Privacidad
+* Toda importación de respaldo JSON **debe** pasar `validateJsonBackup()` por completo **antes** de ejecutar cualquier `DELETE`. Si la validación falla, los datos del usuario quedan intactos.
+* Las claves de API de terceros (p. ej. OpenAI) se mantienen **en memoria** por defecto. No las escribas en `localStorage` salvo opt-in explícito del usuario, y explica con claridad que el almacenamiento del navegador no es seguro para secretos.
+* El día de estudio es el día calendario **local** del usuario; las marcas de tiempo persistidas siguen siendo UTC. Documéntalo si cambias el comportamiento.
 
 ### Regla 6: Higiene de Git y Control de Versiones
 * No confirmes archivos de log de agentes, volcados de estado temporal ni artefactos innecesarios en la raíz (`.omg`, `.agents`, `.opencode`, `PLAN.md`, etc.).

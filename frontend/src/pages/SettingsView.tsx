@@ -109,6 +109,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   const handleSaveAi = (e: React.FormEvent) => {
     e.preventDefault();
+    // Si el usuario deja de usar OpenAI, la clave se descarta por completo.
+    if (aiConfig.provider !== 'openai' && aiConfig.apiKey) {
+      aiService.clearApiKey();
+      setAiConfig({ ...aiConfig, apiKey: '', persistApiKey: false });
+    }
     aiService.saveSettings(aiConfig);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
@@ -517,16 +522,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
           )}
 
           {aiConfig.provider === 'openai' && (
-            <div>
-              <label className={LABEL_CLS} htmlFor="openai-key">OpenAI API Key</label>
-              <input
-                id="openai-key"
-                type="password"
-                value={aiConfig.apiKey}
-                onChange={e => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
-                placeholder="sk-..."
-                className={INPUT_CLS}
-              />
+            <div className="space-y-3">
+              <div>
+                <label className={LABEL_CLS} htmlFor="openai-key">Clave de API de OpenAI</label>
+                <input
+                  id="openai-key"
+                  type="password"
+                  value={aiConfig.apiKey}
+                  onChange={e => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
+                  placeholder="sk-..."
+                  autoComplete="off"
+                  spellCheck={false}
+                  className={INPUT_CLS}
+                />
+                <p className="type-micro text-meta mt-1.5">
+                  {aiConfig.apiKey
+                    ? 'Clave introducida. Al guardar se conserva solo en la memoria de esta pestaña.'
+                    : 'La clave se mantiene únicamente en memoria y se pierde al recargar la página.'}
+                </p>
+              </div>
+
+              <label className="flex items-start gap-2 rounded-lg border border-line bg-canvas px-3 py-2.5 text-meta text-muted">
+                <input
+                  type="checkbox"
+                  checked={aiConfig.persistApiKey === true}
+                  onChange={e => setAiConfig({ ...aiConfig, persistApiKey: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span>
+                  Recordar la clave en este navegador.
+                  <span className="block text-micro text-warning">
+                    El almacenamiento del navegador no es seguro para secretos: cualquier
+                    extensión o script que se ejecute en el origen puede leerla. Actívalo
+                    solo si aceptas ese riesgo.
+                  </span>
+                </span>
+              </label>
             </div>
           )}
 

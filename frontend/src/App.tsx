@@ -11,7 +11,8 @@ import { SettingsView } from './pages/SettingsView.tsx';
 import { AIAssistantDrawer } from './components/ai/AIAssistantDrawer.tsx';
 import { localMediaService } from './services/localMediaService.ts';
 import { useAppData } from './hooks/useAppData.ts';
-import { Loader2, AlertTriangle, X } from 'lucide-react';
+import { Loader2, AlertTriangle, X, RotateCcw } from 'lucide-react';
+import { Button } from './components/ui/index.tsx';
 
 const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph.tsx').then(m => ({ default: m.KnowledgeGraph })));
 
@@ -33,6 +34,7 @@ export const App: React.FC = () => {
 
   const {
     loading,
+    initError,
     kpis,
     courses,
     books,
@@ -41,7 +43,8 @@ export const App: React.FC = () => {
     recentSessions,
     selectedCourse,
     refreshData,
-    selectCourse
+    selectCourse,
+    retryInit
   } = useAppData(selectedCourseId);
 
   const handleSelectCourse = async (id: string) => {
@@ -177,10 +180,56 @@ export const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-canvas text-ink gap-3">
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-canvas text-ink gap-3" role="status" aria-live="polite">
         <Loader2 className="animate-spin text-accent" size={36} />
         <p className="text-secondary font-semibold tracking-wide">Inicializando SQLite en WebAssembly...</p>
         <span className="text-meta">Cargando base de datos y esquemas relacionales</span>
+      </div>
+    );
+  }
+
+  /**
+   * Fallo de inicialización de la base de datos.
+   *
+   * Se comprueba ANTES de montar cualquier vista de datos. Antes, un fallo de
+   * inicialización solo se registraba en consola y la aplicación continuaba
+   * renderizando: las vistas hijas llegaban a `getDatabase()` y exponían el
+   * texto interno en inglés "Database not initialized". Aquí se detiene el
+   * montaje y se ofrece una vía de recuperación segura. Nunca se borran datos
+   * automáticamente: la acción destructiva sigue requiriendo confirmación
+   * explícita en Ajustes.
+   */
+  if (initError) {
+    return (
+      <div className="flex min-h-screen w-screen items-center justify-center bg-canvas px-5 py-12 text-ink">
+        <div
+          role="alert"
+          className="w-full max-w-lg space-y-4 rounded-xl border border-error/30 bg-surface p-6 text-center shadow-card"
+        >
+          <AlertTriangle size={30} className="mx-auto text-error" aria-hidden="true" />
+          <div className="space-y-2">
+            <h1 className="type-display text-ink">No se pudo abrir tu base de datos local</h1>
+            <p className="text-body leading-relaxed text-muted">{initError.message}</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <Button variant="solid" onClick={() => void retryInit()}>
+              <RotateCcw size={15} aria-hidden="true" />
+              {initError.retryable ? 'Reintentar' : 'Volver a intentar la carga'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (typeof window !== 'undefined') window.location.reload();
+              }}
+            >
+              Recargar la aplicación
+            </Button>
+          </div>
+          <p className="text-micro text-faint">
+            Tus datos no se han eliminado. Si el problema continúa, restaura un respaldo desde
+            Ajustes una vez que la aplicación vuelva a cargar.
+          </p>
+        </div>
       </div>
     );
   }

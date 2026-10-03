@@ -127,7 +127,7 @@ El asistente virtual (`aiService.ts`) ofrece cuatro modalidades pedagógicas de 
 1. **Modo Local On-Device (WebLLM + WebGPU):** Inferencia 100% en dispositivo mediante modelos SLM como `Qwen3 1.7B`, `Llama 3.2 1B` o `SmolLM2 1.7B`. Descarga los pesos a la caché de IndexedDB y no requiere servidor ni clave de API.
 2. **RAG Local Híbrido con Embeddings en Navegador:** Recuperación de contexto combinando similitud léxica con embeddings matemáticos on-device (`Xenova/multilingual-e5-small` basado en `intfloat/multilingual-e5-small`, licencia MIT, en ONNX). Los vectores se aíslan en la base de datos `CrossedArts_Embeddings` de IndexedDB con versionado de pipeline (`v1.1-e5-sha256`) y los fragmentos se invalidan de forma incremental mediante hashing criptográfico SHA-256 (`crypto.subtle`). Aplica prefijos canónicos (`query: ` / `passage: `) y normalización L2 estricta a 384 dimensiones.
 3. **Modo Demo Heurístico (100% Offline):** No realiza peticiones de red (0 web requests). Proporciona orientación pedagógica inmediata basada en reglas y sugerencias de estudio.
-4. **Modo Ollama y Proveedores Externos:** Se conecta a instancias locales de Ollama (`http://localhost:11434`) o claves privadas de OpenAI en `localStorage` inyectando el contexto recuperado de SQLite.
+4. **Modo Ollama y Proveedores Externos:** Se conecta a instancias locales de Ollama (`http://localhost:11434`) o a la API de OpenAI inyectando el contexto recuperado de SQLite. La clave de OpenAI se mantiene **solo en memoria** por defecto: una aplicación de cliente no tiene almacenamiento seguro de secretos, y cifrar en el cliente no la protegería frente a XSS. Su persistencia es un opt-in explícito y advertencia al usuario.
 
 ---
 
