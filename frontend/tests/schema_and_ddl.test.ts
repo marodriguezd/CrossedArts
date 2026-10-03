@@ -4,6 +4,7 @@ import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
 import { SCHEMA_SQL } from '../src/db/schema.ts';
 import { SEED_SQL } from '../src/db/seedDemo.ts';
+import { importJsonBackup } from '../src/db/exportImport.ts';
 
 test('1.1 SQLite Bridge initializes without network and creates all relational tables', async () => {
   const db = await dbBridge.init();
@@ -181,4 +182,25 @@ test('1.5 knowledge_connection gains deterministic indexes, uniqueness and dedup
   // Limpieza.
   imported.run("DELETE FROM knowledge_connection WHERE source_id = 'legacy-src'");
   await dbBridge.persist();
+});
+
+
+
+test('1.11 JSON restore rolls back completely when an insert fails', async () => {
+  await dbBridge.init();
+  const db = dbBridge.getDatabase();
+  const before = db.exec("SELECT id, title FROM learning_resource ORDER BY id");
+  const duplicate = {
+    learning_resource: [
+      { id: 'rollback-probe', title: 'Rollback Probe A', category: 'Test', status: 'NOT_STARTED', type: 'learning_resource' },
+      { id: 'rollback-probe', title: 'Rollback Probe B', category: 'Test', status: 'NOT_STARTED', type: 'learning_resource' }
+    ]
+  } as any;
+
+  await assert.rejects(() => importJsonBackup(duplicate), /UNIQUE|constraint|duplicate/i);
+
+  const after = db.exec("SELECT id, title FROM learning_resource ORDER BY id");
+  assert.deepStrictEqual(after[0]?.values, before[0]?.values);
+  const probe = db.exec("SELECT id FROM learning_resource WHERE id = 'rollback-probe'");
+  assert.strictEqual(probe[0]?.values.length ?? 0, 0);
 });
