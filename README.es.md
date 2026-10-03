@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Active%20Recall-SuperMemo--2%20(SM--2)-10b981" alt="Algoritmo SM-2" />
   <img src="https://img.shields.io/badge/Knowledge%20Graph-Vis.js%202D-818cf8" alt="Vis.js" />
   <img src="https://img.shields.io/badge/Backend%20Companion-FastAPI%20%2B%20SQLAlchemy-059669?style=flat&logo=fastapi" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="Licencia MIT" />
+  <img src="https://img.shields.io/badge/Licencia-GPL--3.0--only-blue.svg" alt="Licencia: GPL-3.0-only" />
 </p>
 
 <p align="center">
@@ -33,20 +33,26 @@ Para un desglose detallado de la filosofía, ciencia cognitiva y arquitectura de
 
 ## ✨ Características Principales
 
-### 1. Despliegue Estático en GitHub Pages (100% Client-Side)
+### 1. Despliegue Estático en GitHub Pages & PWA Offline
 - Funciona como una Single Page Application (SPA) ultra rápida sin necesidad de levantar contenedores, servidores o servicios en la nube.
+- **PWA Shell Offline:** Dispone de Web App Manifest (`manifest.json`) y Service Worker (`sw.js`) que cachea el App Shell y el binario de WebAssembly `sql-wasm.wasm`, permitiendo arrancar CrossedArts sin conexión tras la primera visita.
 - Despliegue continuo automatizado con GitHub Actions en `.github/workflows/deploy.yml`.
 - Pruébala en vivo sin instalar nada: [marodriguezd.github.io/CrossedArts](https://marodriguezd.github.io/CrossedArts/).
 
-### 2. Motor SQLite en WebAssembly + IndexedDB
-- Motor SQLite compilado a WebAssembly (`sql.js`) ejecutado en el navegador.
-- Sincronización transparente con `IndexedDB` para persistir los datos permanentemente entre sesiones.
+### 2. Motor SQLite en WebAssembly & Control de Datos del Usuario
+- Motor SQLite compilado a WebAssembly (`sql.js`) ejecutado directamente en el navegador.
+- Sincronización transparente con `IndexedDB` (`CrossedArts_IDB`) con reporte explícito de estados de persistencia (`ready`, `persisting`, `persisted`, `corrupt-storage`, `storage-unavailable`).
 - Esquema relacional completo (`learning_resource`, `course`, `book`, `module`, `lesson`, `note`, `flashcard`, `concept`, `knowledge_connection`, `learning_session`).
-- Portabilidad garantizada: exportación e importación de bases de datos binarias `.sqlite` / `.db` y respaldos universales en JSON.
+- **Portabilidad y Límites del Respaldo:**
+  - Exportación e importación binaria `.crossedarts.sqlite` con verificación estricta de cabecera SQLite 3 y esquema de tablas.
+  - El respaldo incluye el 100% de tus cursos, libros, notas, tarjetas y grafo conceptual.
+  - Los archivos de vídeo y audio locales no se duplican dentro de SQLite; tras restaurar la base de datos en otro equipo, basta volver a vincular la carpeta de medios.
 
-### 3. Acceso a Medios Locales sin Duplicación de Disco
-- Integración con la **File System Access API** (`window.showDirectoryPicker`) en navegadores compatibles (Chrome, Edge, Brave).
-- Permite seleccionar carpetas de cursos en tu disco duro y reproducir lecciones en vídeo mediante streaming de memoria efímero, sin saturar la RAM ni duplicar gigabytes de almacenamiento.
+### 3. Integración de Carpetas Locales (File System Access API)
+- Implementada mediante la **File System Access API** estándar (`window.showDirectoryPicker`) en navegadores Chromium (Chrome, Edge, Brave).
+- Escanea de forma recursiva carpetas de cursos locales y empareja deterministamente archivos multimedia con las lecciones.
+- Los archivos permanecen en tu disco duro sin duplicación; genera streams efímeros `URL.createObjectURL()` en memoria por sesión y los revoca automáticamente sin persistir URLs temporales `blob:` ni handles nativos en SQLite.
+- La experiencia inicial con datos demo es 100% funcional sin conexión ni dependencias de medios remotos.
 
 ### 4. Centro de Repaso Activo (Active Recall & Algoritmo SM-2)
 - Tarjetas nemotécnicas con preguntas y respuestas.
@@ -56,11 +62,20 @@ Para un desglose detallado de la filosofía, ciencia cognitiva y arquitectura de
 - Visualización conceptual mediante simulación física de partículas impulsada por `vis-network`.
 - Conecta conceptos teóricos, cursos, libros y notas de estudio para navegar tu red de aprendizaje.
 
-### 6. Tutor Académico RAG Híbrido
-- Asistente de estudio accesible desde cualquier vista de la aplicación.
-- **Modo Demo Heurístico:** 100% desconectado, cero llamadas de red y respuestas socráticas adaptadas al contexto de estudio.
-- **Modo Ollama Local:** Conexión directa a tus modelos LLM locales (`http://localhost:11434`) con privacidad total.
-- **Modo Proveedores Externos:** Compatible con APIs de OpenAI y Gemini mediante clave almacenada exclusivamente en el `localStorage` de tu navegador.
+### 6. IA Nativa en Dispositivo (WebLLM + RAG Semántico Híbrido)
+- **Inferencia 100% on-device:** Motor LLM ejecutado directamente en el navegador con **WebLLM** vía **WebGPU**. Cero llamadas al exterior tras la descarga, sin clave de API y con total privacidad.
+- **Descarga Inicial y Cacheado:** La inferencia local corre en el dispositivo del usuario cuando hay soporte WebGPU. El modelo seleccionado requiere descargarse la primera vez; las inferencias posteriores se ejecutan desde el modelo cacheado localmente en IndexedDB.
+- **Modelos Verificados:** Compatible con `Qwen3-1.7B-q4f16_1-MLC` (por defecto), `Llama-3.2-1B-Instruct-q4f16_1-MLC`, `SmolLM2-1.7B-Instruct-q4f16_1-MLC` y `Qwen3-0.6B-q4f16_1-MLC`.
+- **RAG Híbrido Semántico y Léxico:**
+  - **Embeddings en Navegador:** Generación de representaciones vectoriales con Transformers.js y `Xenova/multilingual-e5-small` (basado en `intfloat/multilingual-e5-small`, licencia MIT, ONNX cuantizado q8, 384 dimensiones, 94 idiomas, ~135 MB).
+  - **Prefijos E5 Semánticos:** Aplicación estricta de `query: ` en consultas y `passage: ` en materiales indexados.
+  - **Aislamiento de Vectores & Hashing Criptográfico:** Persistencia vectorial en almacén IndexedDB dedicado (`CrossedArts_Embeddings`), manteniendo el fichero `.crossedarts.sqlite` 100% puro y ligero. Recomputación exclusiva de fragmentos modificados mediante hashing SHA-256 autoritativo (`crypto.subtle`) y versionado de pipeline (`v1.1-e5-sha256`).
+  - **Fusión Calibrada y Deduplicación:** Umbrales separados para candidatos léxicos y semánticos, fusión de rangos RRF y deduplicación por fuente con fallback inmediato a léxico puro si no hay modelo o índice disponible.
+- **Tutor Híbrido Multimodo:**
+  - **Local On-Device (WebLLM):** Inferencia privada en GPU local con liberación explícita de VRAM en Ajustes.
+  - **Modo Demo Heurístico:** 100% desconectado, cero llamadas de red y respuestas pedagógicas basadas en reglas.
+  - **Modo Ollama Local:** Conexión directa a tus modelos LLM locales (`http://localhost:11434`).
+  - **Modo Proveedores Externos:** Compatible con OpenAI mediante clave en `localStorage`.
 
 ### 7. Backend Complementario (Opcional)
 - Servidor REST en `backend/` construido con **FastAPI**, **SQLAlchemy 2.0** y **Alembic**.
@@ -184,4 +199,15 @@ En la pestaña **Ajustes** de CrossedArts puedes gestionar tu información con t
 
 ## 📄 Licencia
 
-Distribuido bajo la Licencia **MIT**. Consulta el archivo `LICENSE` para más información.
+License: GNU General Public License v3.0 only (GPL-3.0-only)
+
+Consulta el archivo [LICENSE](LICENSE) para ver el texto completo de la licencia.
+
+### Licencias de Terceros y Modelos
+
+Las dependencias externas y modelos conservan sus respectivas licencias originales:
+- `Xenova/multilingual-e5-small`: Licencia MIT
+- WebLLM (`@mlc-ai/web-llm`): Licencia Apache-2.0
+- Transformers.js (`@huggingface/transformers`): Licencia Apache-2.0
+- SQLite WASM (`sql.js`): Licencia MIT
+

@@ -35,10 +35,10 @@ CrossedArts/
 │   │   └── sql-wasm.wasm           # Binario WebAssembly de SQLite (CRÍTICO: nunca eliminar)
 │   ├── src/
 │   │   ├── ai/
-│   │   │   └── aiService.ts        # Motor de IA: Modo Demo (offline), Ollama local o APIs
+│   │   │   └── aiService.ts        # Motor de IA: Local on-device (WebLLM), Demo, Ollama o OpenAI
 │   │   ├── components/
 │   │   │   ├── ai/
-│   │   │   │   └── AIAssistantDrawer.tsx  # Cajón lateral del tutor pedagógico
+│   │   │   │   └── AIAssistantDrawer.tsx  # Cajón lateral del tutor pedagógico con citas RAG
 │   │   │   └── layout/
 │   │   │       └── Navbar.tsx      # Barra de navegación principal y selector de pestañas
 │   │   ├── db/
@@ -47,6 +47,10 @@ CrossedArts/
 │   │   │   ├── schema.ts           # DDL con las 10 tablas relacionales del sistema
 │   │   │   ├── seedDemo.ts         # Datos de demostración iniciales
 │   │   │   └── sqliteBridge.ts     # Carga de WASM, sincronización con IndexedDB y puente SQL
+│   │   ├── lib/
+│   │   │   ├── localEmbeddings/    # Motor de embeddings on-device (Transformers.js), hashing FNV-1a y caché IndexedDB
+│   │   │   ├── localLlm/           # Motor WebLLM on-device, registro, prompts y validadores
+│   │   │   └── localRag/           # RAG híbrido (léxico + semántico con embeddings) sobre SQLite local
 │   │   ├── pages/
 │   │   │   ├── CourseDetail.tsx    # Reproductor y visor de lecciones y módulos
 │   │   │   ├── Dashboard.tsx       # Métricas de estudio (KPIs), racha y accesos directos
@@ -54,13 +58,15 @@ CrossedArts/
 │   │   │   ├── Library.tsx         # Catálogo de cursos y libros con filtros
 │   │   │   ├── NotesView.tsx       # Editor y visor de notas de estudio en Markdown
 │   │   │   ├── ReviewCenter.tsx    # Centro de repaso activo con tarjetas nemotécnicas (SM-2)
-│   │   │   └── SettingsView.tsx    # Gestión de BD (backup/restore) y configuración de IA
+│   │   │   └── SettingsView.tsx    # Gestión de BD (backup/restore), IA on-device e índice semántico
+│   │   ├── services/
+│   │   │   └── localMediaService.ts   # Registro local de medios y matching determinista
 │   │   ├── types/
 │   │   │   └── models.ts           # Interfaces y tipos de datos TypeScript
 │   │   ├── App.tsx                 # Contenedor raíz y ciclo de vida de la aplicación
 │   │   ├── index.css               # Estilos globales y utilidades de Tailwind
 │   │   └── main.tsx                # Entrada de montaje de React en el DOM
-│   ├── tests/                      # Flota de pruebas de frontend (23 tests de integridad)
+│   ├── tests/                      # Flota de pruebas de frontend (65 tests de integridad)
 │   ├── index.html                  # Punto de entrada HTML
 │   ├── package.json                # Dependencias y scripts de Node.js
 │   ├── tailwind.config.js          # Configuración de diseño y colores
@@ -102,22 +108,30 @@ npm install
 # Iniciar servidor de desarrollo en caliente (Vite)
 npm run dev
 
-# Ejecutar la flota de pruebas de integridad (23/23 tests)
+# Ejecutar la flota de pruebas de integridad (82/82 tests)
 npm test
 # O directamente mediante el test runner de Node:
 node --test --experimental-strip-types tests/*.test.ts
+
+# Verificar tipado TypeScript sin emitir código
+npm run typecheck
 
 # Compilar para producción (genera frontend/dist/)
 npx vite build
 ```
 
-> **IMPORTANTE:** La flota de 23 pruebas de frontend valida:
+> **IMPORTANTE:** La flota de 82 pruebas de frontend valida:
 > 1. Inicialización de SQLite WASM sin acceso a la red (0 web requests).
-> 2. Precisión del algoritmo de repetición espaciada SuperMemo-2 (SM-2).
-> 3. Operaciones CRUD y métricas KPI de `dao.ts`.
-> 4. Exportación e importación binaria SQLite `.sqlite` y copias de seguridad JSON.
-> 5. Ausencia de scripts externos o dependencias no autorizadas en `index.html`.
-> 6. Parámetro `base: './'` en `vite.config.ts` para despliegue correcto en subdirectorios de GitHub Pages.
+> 2. Precisión del algoritmo de repetición espaciada SuperMemo-2 (`domainLogic.ts` & SM-2).
+> 3. Operaciones CRUD, cálculo de racha real y validación pura de lectura de libros en `dao.ts` y `domainLogic.ts`.
+> 4. Exportación e importación binaria SQLite `.sqlite` / `.crossedarts.sqlite` con validación estricta de cabecera y esquema, y respaldos universales JSON.
+> 5. Resiliencia de almacenamiento, reporte explícito de estados (`StorageState`), coordinación multi-pestaña con `BroadcastChannel` y supervivencia de datos reales tras recarga.
+> 6. Emparejamiento jerárquico determinista y asociación individual de medios locales (`localMediaService.ts`).
+> 7. Parámetro `base: './'` en `vite.config.ts`, manifest PWA y Service Worker offline (`sw.js`).
+> 8. Motor de IA on-device con WebLLM, detección WebGPU, máquina de estados resiliente, prompts pedagógicos delimitados contra injection, validación anti-alucinación y garantía de cero peticiones de red (`localLlm/`).
+> 9. RAG local híbrido determinista con embeddings on-device (`Xenova/multilingual-e5-small` con Transformers.js, licencia MIT), prefijos E5 canónicos (`query: ` / `passage: `), normalización L2 estricta a 384 dimensiones, hashing criptográfico SHA-256 (`crypto.subtle`), versionado de pipeline (`v1.1-e5-sha256`), ranking calibrado con RRF y deduplicación inteligente por fuente (`localEmbeddings/`, `localRag/`).
+> 10. Ingestión local y extracción de texto en navegador para documentos `.txt`, `.md`, `.pdf`, `.epub`, con huella criptográfica SHA-256 anti-duplicados, segmentación en secciones estructuradas con páginas/capítulos, cero almacenamiento de binarios pesados en SQLite y citación precisa en RAG (`localIngestion/`).
+> 11. Conversión de documentos importados en recursos de aprendizaje de primera clase (`learning_resource`), previsualización interactiva con estimación de palabras, selección de destino (standalone, curso, lección, libro), visor de origen de recursos con huella SHA-256 y acción pedagógica fundamentada `explainResource` con rechazo honesto ante contexto insuficiente.
 
 ### 3.2. Backend Companion (Python + FastAPI)
 
@@ -162,9 +176,10 @@ Cualquier modificación o ampliación de código debe respetar estrictamente est
 * Calificaciones menores a `3` representan fallo de memorización: deben reiniciar `repetition_count = 0` y establecer `interval_days = 1`.
 * Calificaciones entre `3` y `5` calculan el intervalo creciente multiplicando por el factor de facilidad.
 
-### Regla 4: File System Access API
-* El acceso a carpetas locales utiliza `window.showDirectoryPicker()`.
+### Regla 4: File System Access API & Medios Locales
+* El acceso a carpetas locales utiliza `window.showDirectoryPicker()` coordinado por `localMediaService.ts`.
 * Siempre envuelve la llamada en un bloque `try/catch` y comprueba `'showDirectoryPicker' in window`. Si el usuario cancela el diálogo del sistema operativo, ignora el `AbortError` de forma transparente sin alarmar en la UI.
+* Las URLs de medios locales son efímeras (`URL.createObjectURL`), se mantienen estrictamente en memoria y se deben revocar (`URL.revokeObjectURL`) al cambiar de lección o salir de la vista. Nunca persistas `blob:` URLs ni `FileSystemHandle`s en la base de datos SQLite.
 
 ### Regla 5: Idioma y Experiencia de Usuario
 * Toda la interfaz de usuario, títulos, botones, cuadros de diálogo, mensajes de error y textos explicativos deben estar en **español**.
@@ -173,6 +188,11 @@ Cualquier modificación o ampliación de código debe respetar estrictamente est
 ### Regla 6: Higiene de Git y Control de Versiones
 * No confirmes archivos de log de agentes, volcados de estado temporal ni artefactos innecesarios en la raíz (`.omg`, `.agents`, `.opencode`, `PLAN.md`, etc.).
 * El archivo `.gitignore` debe proteger contra `node_modules/`, `.venv/`, volcados locales de base de datos (`*.db`, `*.sqlite`), ficheros de bloqueo no estándar (`pnpm-lock.yaml`) y cachés de Python (`__pycache__`).
+
+### Regla 7: Licencia y Propiedad Intelectual
+* El proyecto está licenciado bajo la **GNU General Public License v3.0 only (GPL-3.0-only)** (`LICENSE`).
+* El software original del proyecto se distribuye bajo GPL-3.0-only; las dependencias y modelos de terceros (`Xenova/multilingual-e5-small` bajo MIT, WebLLM bajo Apache-2.0, Transformers.js bajo Apache-2.0, SQLite WASM bajo MIT) conservan intactas sus respectivas licencias originales.
+
 
 ---
 

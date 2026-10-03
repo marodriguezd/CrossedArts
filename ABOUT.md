@@ -52,8 +52,8 @@ En su segunda generación, el proyecto evolucionó a **CrossedArts**, acometiend
 │ • IndexedDB Persistence Bridge    │ • Sentence Transformers Embeddings │
 │ • File System Access API (Stream) │ • LangChain Hybrid LLM Services    │
 │ • Active Recall: Algoritmo SM-2   │ • Media & Thumbnail Scanner        │
-│ • Vis.js Interactive 2D Graph     │ • SQLite Local Storage (~/.domestik│
-│ • Hybrid AI Tutor (Demo/Ollama/API│                                    │
+│ • Vis.js Interactive 2D Graph     │ • SQLite Local Storage (~/.crossedarts)│
+│ • Hybrid AI Tutor (Demo/Ollama/API)│                                   │
 └───────────────────────────────────┴────────────────────────────────────┘
 ```
 
@@ -70,11 +70,12 @@ CrossedArts ejecuta un motor SQLite compilado a WebAssembly (`sql.js`) directame
   * `concept`, `knowledge_connection`: Nodos y aristas direccionales ponderadas del grafo de conocimiento.
   * `learning_session`: Registro cronológico y duración de sesiones de estudio.
 
-### 3.2. File System Access API: Streaming sin Duplicación
+### 3.2. File System Access API: Integración de Carpetas Locales
 Uno de los mayores retos de los LMS basados en navegador es la gestión de cursos con gigabytes de vídeo en alta resolución. 
-CrossedArts resuelve esto mediante la **File System Access API** (`window.showDirectoryPicker`):
+CrossedArts incorpora la **File System Access API** (`window.showDirectoryPicker`):
 * El usuario autoriza el acceso a la carpeta donde residen sus cursos en su disco duro.
-* El reproductor accede al archivo local mediante `FileSystemFileHandle` y crea streams `blob:` en memoria efímera sin subir el archivo a ningún servidor ni duplicar el espacio en disco.
+* El servicio `localMediaService.ts` recorre recursivamente el directorio, descubre archivos de medios soportados (`.mp4`, `.webm`, etc.) y aplica reglas de emparejamiento deterministas (por ruta relativa o por tallo de título/archivo).
+* Los reproductores de vídeo consumen streams efímeros en memoria (`URL.createObjectURL(file)`) que se revocan proactivamente al cambiar de lección o salir del curso. Los handles nativos y URLs temporales nunca se persisten en SQLite, garantizando aislamiento estricto y cero duplicación de almacenamiento.
 
 ### 3.3. Centro de Repaso Cognitivo: Algoritmo SuperMemo-2 (SM-2)
 La memoria humana sigue la curva del olvido descubierta por Hermann Ebbinghaus. Para contrarrestar la pérdida de retención, CrossedArts implementa el algoritmo matemático **SuperMemo-2 (SM-2)**:
@@ -94,11 +95,12 @@ Impulsado por `vis-network`, el grafo de conocimiento renderiza un mapa visual c
 * Permite descubrir conexiones transversales entre lecciones de cursos técnicos, capítulos de libros y conceptos fundamentales.
 * Los nodos representan conceptos o recursos formativos y las aristas representan relaciones tipadas (`requires`, `builds_on`, `related_to`) con pesos de afinidad.
 
-### 3.5. Tutor Académico RAG Híbrido
-El asistente virtual (`aiService.ts`) ofrece tres modalidades de interacción:
-1. **Modo Demo Heurístico (100% Offline):** No realiza peticiones de red (0 web requests). Proporciona orientación pedagógica inmediata, sugerencias de estudio basadas en la curva de Ebbinghaus y respuestas de dominio sobre programación, matemáticas y metodologías de estudio profundo.
-2. **Modo Ollama Local:** Se conecta a instancias locales de Ollama (`http://localhost:11434`) usando modelos como `llama3:8b`, garantizando privacidad absoluta sin salida a internet.
-3. **Modo Proveedores en la Nube:** Permite configurar claves privadas de OpenAI o Google Gemini para consultas académicas avanzadas cuando el usuario así lo decide. Las claves se almacenan exclusivamente en el `localStorage` del navegador.
+### 3.5. Tutor Académico Pedagógico (Asistente Híbrido con RAG Semántico Local)
+El asistente virtual (`aiService.ts`) ofrece cuatro modalidades pedagógicas de interacción:
+1. **Modo Local On-Device (WebLLM + WebGPU):** Inferencia 100% en dispositivo mediante modelos SLM como `Qwen3 1.7B`, `Llama 3.2 1B` o `SmolLM2 1.7B`. Descarga los pesos a la caché de IndexedDB y no requiere servidor ni clave de API.
+2. **RAG Local Híbrido con Embeddings en Navegador:** Recuperación de contexto combinando similitud léxica con embeddings matemáticos on-device (`Xenova/multilingual-e5-small` basado en `intfloat/multilingual-e5-small`, licencia MIT, en ONNX). Los vectores se aíslan en la base de datos `CrossedArts_Embeddings` de IndexedDB con versionado de pipeline (`v1.1-e5-sha256`) y los fragmentos se invalidan de forma incremental mediante hashing criptográfico SHA-256 (`crypto.subtle`). Aplica prefijos canónicos (`query: ` / `passage: `) y normalización L2 estricta a 384 dimensiones.
+3. **Modo Demo Heurístico (100% Offline):** No realiza peticiones de red (0 web requests). Proporciona orientación pedagógica inmediata basada en reglas y sugerencias de estudio.
+4. **Modo Ollama y Proveedores Externos:** Se conecta a instancias locales de Ollama (`http://localhost:11434`) o claves privadas de OpenAI en `localStorage` inyectando el contexto recuperado de SQLite.
 
 ---
 
@@ -116,4 +118,6 @@ El repositorio está organizado con un desacoplamiento estricto:
 
 ## 5. Compromiso con el Software Libre y Abierto
 
-CrossedArts se distribuye bajo la **Licencia MIT**. Creemos que el software que gestiona la mente y el aprendizaje debe ser transparente, auditable, extensible y accesible para cualquier persona en cualquier rincón del mundo.
+CrossedArts se distribuye bajo la licencia **GNU General Public License v3.0 only (GPL-3.0-only)**. Creemos que el software que gestiona la mente y el aprendizaje debe ser transparente, auditable, extensible y libre para cualquier persona en cualquier rincón del mundo, garantizando las cuatro libertades fundamentales del software libre y protegiendo el procomún abierto mediante copyleft. Consulta el archivo [LICENSE](LICENSE) para ver los términos oficiales completos.
+
+Las dependencias externas y modelos de terceros (como `Xenova/multilingual-e5-small` bajo licencia MIT, WebLLM bajo Apache-2.0, Transformers.js bajo Apache-2.0 y SQLite WASM bajo MIT) conservan sus términos y licencias originales de forma independiente.
