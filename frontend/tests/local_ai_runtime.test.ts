@@ -232,7 +232,8 @@ test('26.12 Demo, OpenAI and Ollama never load the local WebLLM model', async ()
 /* -------------------------------------------------------------------------- */
 
 test('26.13 Semantic preparation outside a browser never downloads embeddings', async () => {
-  const { runtime, embeddingEngine } = makeRuntime({}, { browser: false });
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+  const { runtime, embeddingEngine } = makeRuntime({}, { browser: false, storage });
   const status = await runtime.ensureSemanticIndexReady();
   assert.strictEqual(status.stage, 'error');
   assert.strictEqual(status.errorCategory, 'semantic-unavailable');
@@ -240,7 +241,8 @@ test('26.13 Semantic preparation outside a browser never downloads embeddings', 
 });
 
 test('26.14 Concurrent semantic preparation is deduplicated (one load, one index job)', async () => {
-  const { runtime, embeddingEngine } = makeRuntime();
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+  const { runtime, embeddingEngine } = makeRuntime({}, { storage });
   const [a, b] = await Promise.all([runtime.ensureSemanticIndexReady(), runtime.ensureSemanticIndexReady()]);
   assert.strictEqual(a.stage, 'ready');
   assert.strictEqual(b.stage, 'ready');
@@ -250,7 +252,8 @@ test('26.14 Concurrent semantic preparation is deduplicated (one load, one index
 });
 
 test('26.15 Fresh/unchanged content is handed to the engine once (reuse delegated, no duplicate jobs)', async () => {
-  const { runtime, embeddingEngine } = makeRuntime();
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+  const { runtime, embeddingEngine } = makeRuntime({}, { storage });
   const first = await runtime.ensureSemanticIndexReady();
   assert.strictEqual(first.stage, 'ready');
   // Segunda solicitud: trabajo nuevo (la reutilización de vectores frescos la
@@ -265,14 +268,16 @@ test('26.16 Semantic failure is contained and never throws to callers', async ()
   (embeddingEngine as any).loadModel = async () => {
     throw new Error('onnx unavailable');
   };
-  const { runtime } = makeRuntime({ embeddingEngine: embeddingEngine as any });
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+  const { runtime } = makeRuntime({ embeddingEngine: embeddingEngine as any }, { storage });
   const status = await runtime.ensureSemanticIndexReady();
   assert.strictEqual(status.stage, 'error');
   assert.strictEqual(status.errorCategory, 'indexing-failed');
 });
 
 test('26.17 scheduleIndexing never throws and is deduplicated', async () => {
-  const { runtime, embeddingEngine } = makeRuntime();
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+  const { runtime, embeddingEngine } = makeRuntime({}, { storage });
   runtime.scheduleIndexing();
   runtime.scheduleIndexing();
   await new Promise((r) => setTimeout(r, 40));
@@ -294,4 +299,55 @@ test('26.18 Status transitions are observable deterministically', async () => {
   assert.ok(seen.includes('preparing'));
   assert.ok(seen.includes('downloading') || seen.includes('compiling'));
   assert.strictEqual(seen[seen.length - 1], 'ready');
+});
+
+test('26.19 Demo/OpenAI/Ollama never prepare local embeddings, even with local consent', async () => {
+  for (const provider of ['demo', 'openai', 'ollama'] as const) {
+    const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+    const { runtime, embeddingEngine } = makeRuntime({}, { storage });
+    const status = await runtime.ensureSemanticIndexReady(provider);
+    assert.strictEqual(status.stage, 'idle');
+    assert.strictEqual(embeddingEngine.loadCalls.length, 0);
+  }
+});
+
+test('26.20 Semantic preparation does not download an embedding model for an empty library', async () => {
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+  const { runtime, embeddingEngine } = makeRuntime({
+    loadResources: async () => ({ courses: [], books: [], notes: [], flashcards: [], concepts: [] }),
+    buildChunks: async () => []
+  }, { storage });
+  const status = await runtime.ensureSemanticIndexReady();
+  assert.strictEqual(status.stage, 'ready');
+  assert.strictEqual(status.total, 0);
+  assert.strictEqual(embeddingEngine.loadCalls.length, 0);
+});
+
+test('26.21 High-capability device falls back to a lighter model after resource exhaustion', async () => {
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+  const llmEngine = makeLlmEngine();
+  const originalLoad = llmEngine.loadModel;
+  llmEngine.loadModel = async (id, onProgress) => {
+    if (id === 'Qwen3-1.7B-q4f16_1-MLC') throw new Error('CUDA out of memory / device lost');
+    return originalLoad(id, onProgress);
+  };
+  const { runtime } = makeRuntime({ llmEngine }, {
+    storage,
+    capability: { state: 'supported', supportedFeatures: ['shader-f16'], deviceTier: 'high' }
+  });
+  const status = await runtime.ensureLocalAiReady({ provider: 'local' });
+  assert.strictEqual(status.stage, 'ready');
+  assert.notStrictEqual(status.modelId, 'Qwen3-1.7B-q4f16_1-MLC');
+  assert.ok(status.message.includes('ligera'));
+  assert.strictEqual(llmEngine.calls.length, 2);
+});
+
+test('26.22 Cached model registry accepts old single-id values and upgrades to a multi-model list', async () => {
+  const selected = selectBestLocalModel({ webgpu: 'supported', supportedFeatures: [], deviceTier: 'unknown' })!;
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted', [LOCAL_AI_CACHED_MODEL_KEY]: selected.id });
+  const { runtime, llmEngine } = makeRuntime({}, { storage });
+  await runtime.ensureLocalAiReady({ provider: 'local' });
+  const raw = storage.getItem(LOCAL_AI_CACHED_MODEL_KEY);
+  assert.ok(raw);
+  assert.ok(JSON.parse(raw!).includes(selected.id));
 });
