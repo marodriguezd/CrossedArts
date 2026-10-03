@@ -47,6 +47,7 @@ class LLMService:
 
     _chat_model: Optional[BaseChatModel] = None
     _initialized: bool = False
+    _provider_error: Optional[str] = None
 
     @classmethod
     def initialize(cls) -> None:
@@ -54,6 +55,7 @@ class LLMService:
         if cls._initialized:
             return
 
+        cls._provider_error = None
         provider = settings.llm_provider
 
         if provider == "openai" and settings.openai_api_key:
@@ -68,7 +70,7 @@ class LLMService:
                     max_tokens=2048,
                 )
             except ImportError:
-                print("[CrossedArts] langchain-openai not installed. Using mock LLM.")
+                cls._provider_error = "El proveedor OpenAI está configurado pero la dependencia langchain-openai no está instalada."
                 cls._chat_model = None
         elif provider == "ollama":
             try:
@@ -87,7 +89,7 @@ class LLMService:
                         base_url=base_url,
                     )
             except ImportError:
-                print("[CrossedArts] langchain-ollama/langchain-community not installed. Using mock LLM.")
+                cls._provider_error = "Ollama está configurado pero no hay una integración LangChain compatible instalada."
                 cls._chat_model = None
         else:
             cls._chat_model = None  # Mock mode
@@ -111,7 +113,7 @@ class LLMService:
         if not cls._initialized:
             cls.initialize()
         if cls._chat_model is None:
-            return "mock-llm-provider"
+            return "mock-llm-provider" if settings.llm_provider == "mock" else f"{settings.llm_provider}-unavailable"
         return settings.openai_model if settings.llm_provider == "openai" else settings.ollama_model
 
     @classmethod
@@ -126,7 +128,9 @@ class LLMService:
             cls.initialize()
 
         if cls._chat_model is None:
-            return cls._mock_response(prompt)
+            if settings.llm_provider == "mock":
+                return cls._mock_response(prompt)
+            raise RuntimeError(cls._provider_error or "El proveedor LLM configurado no está disponible.")
 
         messages = []
         if system_prompt:
@@ -147,6 +151,8 @@ class LLMService:
             cls.initialize()
 
         if cls._chat_model is None:
+            if settings.llm_provider != "mock":
+                raise RuntimeError(cls._provider_error or "El proveedor LLM configurado no está disponible.")
             return None
 
         messages = []
@@ -169,8 +175,10 @@ class LLMService:
             cls.initialize()
 
         if cls._chat_model is None:
-            yield cls._mock_response(prompt)
-            return
+            if settings.llm_provider == "mock":
+                yield cls._mock_response(prompt)
+                return
+            raise RuntimeError(cls._provider_error or "El proveedor LLM configurado no está disponible.")
 
         messages = []
         if system_prompt:
