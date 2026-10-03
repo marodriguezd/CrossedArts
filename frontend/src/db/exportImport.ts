@@ -137,12 +137,16 @@ export function validateJsonBackup(data: unknown): BackupValidationResult {
       if (row === null || typeof row !== 'object' || Array.isArray(row)) {
         return { valid: false, error: `El registro ${i + 1} de la tabla "${table}" no es un objeto válido.` };
       }
-      const unknownColumns = Object.keys(row as Record<string, unknown>).filter(col => !allowed.has(col));
+      const rowKeys = Object.keys(row as Record<string, unknown>);
+      const unknownColumns = rowKeys.filter(col => !allowed.has(col));
       if (unknownColumns.length > 0) {
         return {
           valid: false,
           error: `El registro ${i + 1} de la tabla "${table}" contiene columnas que no existen en el esquema actual (${unknownColumns.join(', ')}).`
         };
+      }
+      if (!rowKeys.includes('id') || row.id === null || row.id === undefined || row.id === '') {
+        return { valid: false, error: `El registro ${i + 1} de la tabla "${table}" no contiene una clave primaria "id" válida.` };
       }
     }
   }
@@ -166,15 +170,16 @@ export async function importJsonBackup(data: Record<string, any[]>): Promise<voi
   const db = dbBridge.getDatabase();
   const tables = getDatabaseTables();
 
-  // Desactivar temporalmente foreign keys durante la restauración masiva
+  // La restauración completa debe ser una sola transacción.
   db.run('PRAGMA foreign_keys = OFF;');
-  
+  db.run('BEGIN TRANSACTION;');
+
   try {
     for (const table of tables) {
       const rows = data[table];
       if (!rows || !Array.isArray(rows)) continue;
       db.run(`DELETE FROM ${table};`);
-      
+
       for (const row of rows) {
         const keys = Object.keys(row);
         if (keys.length === 0) continue;
@@ -184,11 +189,13 @@ export async function importJsonBackup(data: Record<string, any[]>): Promise<voi
         db.run(`INSERT INTO ${table} (${cols}) VALUES (${placeholders});`, values);
       }
     }
-  } finally {
-    // Las claves foráneas se reafirman siempre, incluso si una inserción falla.
     db.run('PRAGMA foreign_keys = ON;');
+    db.run('COMMIT;');
+  } catch (err) {
+    try { db.run('ROLLBACK;'); } catch { /* rollback defensivo */ }
+    db.run('PRAGMA foreign_keys = ON;');
+    throw err;
   }
-
   await dbBridge.persist();
 }
 
