@@ -278,8 +278,8 @@ test('26.16 Semantic failure is contained and never throws to callers', async ()
 test('26.17 scheduleIndexing never throws and is deduplicated', async () => {
   const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
   const { runtime, embeddingEngine } = makeRuntime({}, { storage });
-  runtime.scheduleIndexing();
-  runtime.scheduleIndexing();
+  runtime.scheduleIndexing('local');
+  runtime.scheduleIndexing('local');
   await new Promise((r) => setTimeout(r, 40));
   assert.strictEqual(embeddingEngine.indexCalls.length, 1);
 });
