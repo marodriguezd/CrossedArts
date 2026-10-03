@@ -153,7 +153,7 @@ class EmbeddingService:
             EmbeddingRecord.entity_type == entity_type
         ).first()
 
-        if existing and existing.hash_content == text_hash:
+        if existing and existing.hash_content == text_hash and existing.model == model:
             return
 
         try:
@@ -190,27 +190,37 @@ class EmbeddingService:
 
     @classmethod
     def index_all_unindexed(cls, db: Session) -> None:
-        """Scan and index all entities that don't have embeddings yet."""
+        """Index all supported text entities missing for the ACTIVE embedding model."""
         from backend.app.models.activity import Note
         from backend.app.models.content import TranscriptSegment, ContentIndex
-        
+
+        model = cls.get_model_name()
         BATCH_SIZE = 50
-        
-        unindexed_notes = db.query(Note).filter(
-            ~Note.id.in_(db.query(EmbeddingRecord.entity_id).filter(EmbeddingRecord.entity_type == "note"))
-        ).all()
-        
-        for i in range(0, len(unindexed_notes), BATCH_SIZE):
-            batch = unindexed_notes[i:i+BATCH_SIZE]
-            for note in batch:
-                try:
-                    cls.index_entity(db, note.id, "note", note.content, commit=False)
-                except Exception as e:
-                    print(f"[CrossedArts] Error indexing note {note.id}: {e}")
-            db.commit()
-        
-        # Similar for transcript segments and content index
-        # (keep existing logic for these)
+
+        def index_missing(items, entity_type: str, text_getter) -> None:
+            for i in range(0, len(items), BATCH_SIZE):
+                for entity in items[i:i + BATCH_SIZE]:
+                    try:
+                        cls.index_entity(db, entity.id, entity_type, text_getter(entity), commit=False)
+                    except Exception as e:
+                        print(f"[CrossedArts] Error indexing {entity_type}:{entity.id}: {e}")
+                db.commit()
+
+        indexed_pairs = {
+            (str(record.entity_id), record.entity_type)
+            for record in db.query(EmbeddingRecord.entity_id, EmbeddingRecord.entity_type)
+            .filter(EmbeddingRecord.model == model)
+            .all()
+        }
+
+        notes = [n for n in db.query(Note).all() if (str(n.id), 'note') not in indexed_pairs]
+        segments = [s for s in db.query(TranscriptSegment).all() if (str(s.id), 'transcript_segment') not in indexed_pairs]
+        contents = [c for c in db.query(ContentIndex).all() if (str(c.id), 'content_index') not in indexed_pairs]
+
+        index_missing(notes, 'note', lambda n: n.content)
+        index_missing(segments, 'transcript_segment', lambda s: s.text)
+        index_missing(contents, 'content_index', lambda item: item.content)
+
 
 
 class CosineSimilarityCalculator:
