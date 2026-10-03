@@ -137,8 +137,8 @@ class LLMService:
             result = await cls._chat_model.ainvoke(messages)
             return result.content
         except Exception as e:
-            print(f"[CrossedArts] LLM error: {e}. Falling back to mock.")
-            return cls._mock_response(prompt)
+            print(f"[CrossedArts] LLM error: {e}")
+            raise
 
     @classmethod
     async def generate_structured(cls, prompt: str, system_prompt: Optional[str], schema):
@@ -183,7 +183,7 @@ class LLMService:
                     yield chunk.content
         except Exception as e:
             print(f"[CrossedArts] LLM stream error: {e}")
-            yield cls._mock_response(prompt)
+            raise
 
     @classmethod
     async def generate_response(cls, template_name: str, **kwargs) -> str:
