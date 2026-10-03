@@ -24,18 +24,46 @@ const STATIC_SHELL_ASSETS = [
   './sql-wasm.wasm'
 ];
 
+async function precacheShell(cache) {
+  // Primero fijamos el index fresco y derivamos de él los assets generados por Vite.
+  // Así el shell inicial (JS/CSS) también está disponible inmediatamente offline,
+  // sin hardcodear nombres hashados que cambian en cada build.
+  let indexResponse;
+  try {
+    indexResponse = await fetch('./index.html', { cache: 'reload' });
+    if (indexResponse.ok) await cache.put('./index.html', indexResponse.clone());
+  } catch (err) {
+    console.warn('[sw] No se pudo obtener index.html durante la instalación:', err);
+  }
+
+  const assets = new Set(STATIC_SHELL_ASSETS);
+  if (indexResponse?.ok) {
+    try {
+      const html = await indexResponse.text();
+      for (const match of html.matchAll(/(?:src|href)=\"([^\"]+)\"/g)) {
+        const value = match[1];
+        if (!value || value.startsWith('data:') || value.startsWith('//')) continue;
+        assets.add(value);
+      }
+    } catch (err) {
+      console.warn('[sw] No se pudieron descubrir los assets del shell:', err);
+    }
+  }
+
+  await Promise.all(
+    Array.from(assets).map((asset) =>
+      cache.add(new Request(asset, { cache: 'reload' })).catch((err) => {
+        console.warn('[sw] No se pudo precachear', asset, err);
+      })
+    )
+  );
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // `reload` evita que el propio HTTP cache del navegador sirva un WASM viejo.
-      return Promise.all(
-        STATIC_SHELL_ASSETS.map((asset) =>
-          cache.add(new Request(asset, { cache: 'reload' })).catch((err) => {
-            console.warn('[sw] No se pudo precachear', asset, err);
-          })
-        )
-      );
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then((cache) => precacheShell(cache))
+      .then(() => self.skipWaiting())
   );
 });
 
