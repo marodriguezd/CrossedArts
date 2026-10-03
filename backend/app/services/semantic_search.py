@@ -29,8 +29,11 @@ class SemanticSearchService:
             print(f"[CrossedArts] Embedding error for search: {e}")
             return []
 
-        # Load all embedding records
-        query_filter = db.query(EmbeddingRecord).order_by(EmbeddingRecord.created_at.desc())
+        # Nunca mezclar embeddings generados por modelos distintos.
+        current_model = EmbeddingService.get_model_name()
+        query_filter = db.query(EmbeddingRecord).filter(
+            EmbeddingRecord.model == current_model
+        ).order_by(EmbeddingRecord.created_at.desc())
         
         if resource_id:
             # Find entity IDs that belong to this resource
@@ -181,8 +184,10 @@ class SemanticSearchService:
             return []
 
         # Load embeddings for these entities
+        current_model = EmbeddingService.get_model_name()
         resource_embeddings = db.query(EmbeddingRecord).filter(
-            EmbeddingRecord.entity_id.in_(all_entity_ids)
+            EmbeddingRecord.entity_id.in_(all_entity_ids),
+            EmbeddingRecord.model == current_model
         ).limit(30).all()
 
         if not resource_embeddings:
@@ -203,7 +208,8 @@ class SemanticSearchService:
 
         # Compare against all other embeddings
         other_records = db.query(EmbeddingRecord).filter(
-            ~EmbeddingRecord.entity_id.in_(all_entity_ids)
+            ~EmbeddingRecord.entity_id.in_(all_entity_ids),
+            EmbeddingRecord.model == current_model
         ).order_by(EmbeddingRecord.created_at.desc()).limit(3000).all()
 
         scores = {}
@@ -240,9 +246,11 @@ class SemanticSearchService:
     def get_related_notes(cls, db: Session, note_id, limit: int = 5) -> List[dict]:
         """Find notes conceptually similar to the given note."""
         # Similar to get_related_resources but scoped to notes
+        current_model = EmbeddingService.get_model_name()
         note_record = db.query(EmbeddingRecord).filter(
             EmbeddingRecord.entity_id == note_id,
-            EmbeddingRecord.entity_type == "note"
+            EmbeddingRecord.entity_type == "note",
+            EmbeddingRecord.model == current_model
         ).first()
 
         if not note_record:
@@ -255,7 +263,8 @@ class SemanticSearchService:
 
         other_notes = db.query(EmbeddingRecord).filter(
             EmbeddingRecord.entity_type == "note",
-            EmbeddingRecord.entity_id != note_id
+            EmbeddingRecord.entity_id != note_id,
+            EmbeddingRecord.model == current_model
         ).all()
 
         results = []
