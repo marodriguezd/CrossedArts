@@ -1,16 +1,18 @@
 import React from 'react';
-import { KPIMetrics, Course, Book } from '../types/models.ts';
-import { BookOpen, GraduationCap, Clock, Flame, Brain, Play, CheckCircle2, ArrowRight } from 'lucide-react';
+import { KPIMetrics, Course, Book, LearningSession } from '../types/models.ts';
+import { BookOpen, GraduationCap, Clock, Flame, Brain, Play, CheckCircle2, ArrowRight, CalendarCheck, History } from 'lucide-react';
 
 interface DashboardProps {
   kpis: KPIMetrics | null;
   courses: Course[];
   books: Book[];
+  recentSessions: LearningSession[];
   onSelectCourse: (id: string) => void;
   onNavigate: (tab: string) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ kpis, courses, books, onSelectCourse, onNavigate }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ kpis, courses, books, recentSessions, onSelectCourse, onNavigate }) => {
+  const today = kpis?.today;
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Hero Welcome Banner */}
@@ -87,6 +89,60 @@ export const Dashboard: React.FC<DashboardProps> = ({ kpis, courses, books, onSe
         </div>
       </div>
 
+      {/* Progreso local de hoy y sesiones recientes */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <CalendarCheck className="text-emerald-400" size={18} /> Hoy
+          </h2>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
+              <p className="text-lg font-bold text-white">{today?.items_reviewed ?? 0}</p>
+              <p className="text-[10px] text-slate-400">Ítems repasados</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
+              <p className="text-lg font-bold text-purple-300">{today?.flashcards_reviewed ?? 0}</p>
+              <p className="text-[10px] text-slate-400">Tarjetas</p>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
+              <p className="text-lg font-bold text-indigo-300">{today?.questions_answered ?? 0}</p>
+              <p className="text-[10px] text-slate-400">Preguntas</p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate('review')}
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition"
+          >
+            <Play size={13} /> Iniciar sesión de estudio
+          </button>
+        </div>
+
+        <div className="lg:col-span-2 p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <History className="text-purple-400" size={18} /> Sesiones recientes
+          </h2>
+          {recentSessions.length === 0 ? (
+            <p className="text-xs text-slate-500">Aún no has completado ninguna sesión de estudio.</p>
+          ) : (
+            <ul className="space-y-2">
+              {recentSessions.map(session => (
+                <li key={session.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800 text-xs">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-200 truncate">
+                      {session.resource_title || 'Estudio general'}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {session.cards_reviewed} tarjetas · {session.questions_answered} preguntas
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-medium text-purple-300 shrink-0">{session.duration_minutes} min</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
       {/* Main Content Sections: Cursos en Progreso y Libros */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Cursos en Progreso */}
@@ -109,11 +165,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ kpis, courses, books, onSe
                 className="group p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900 border border-slate-800/80 hover:border-purple-500/40 cursor-pointer transition-all duration-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
               >
                 <div className="flex items-center gap-3">
-                  <img 
-                    src={course.cover_path || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=120'} 
-                    alt={course.title} 
-                    className="w-14 h-14 rounded-lg object-cover border border-slate-700" 
-                  />
+                  {course.cover_path ? (
+                    <img 
+                      src={course.cover_path} 
+                      alt={course.title} 
+                      className="w-14 h-14 rounded-lg object-cover border border-slate-700" 
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-lg bg-purple-950/40 border border-purple-800/40 flex items-center justify-center text-purple-400">
+                      <GraduationCap size={22} />
+                    </div>
+                  )}
                   <div>
                     <h3 className="font-semibold text-sm text-slate-100 group-hover:text-purple-300 transition">
                       {course.title}
@@ -158,11 +220,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ kpis, courses, books, onSe
           <div className="space-y-3">
             {books.slice(0, 3).map(book => (
               <div key={book.id} className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800 flex items-center gap-3">
-                <img 
-                  src={book.cover_path} 
-                  alt={book.title} 
-                  className="w-12 h-16 rounded-md object-cover border border-slate-700 shadow-sm"
-                />
+                {book.cover_path ? (
+                  <img 
+                    src={book.cover_path} 
+                    alt={book.title} 
+                    className="w-12 h-16 rounded-md object-cover border border-slate-700 shadow-sm"
+                  />
+                ) : (
+                  <div className="w-12 h-16 rounded-md bg-indigo-950/40 border border-indigo-800/40 flex items-center justify-center text-indigo-400 shrink-0 shadow-sm">
+                    <BookOpen size={20} />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h4 className="font-semibold text-xs text-slate-200 truncate">{book.title}</h4>
                   <p className="text-[11px] text-slate-400 truncate">{book.author}</p>

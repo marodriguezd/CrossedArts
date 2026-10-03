@@ -5,6 +5,7 @@ from sqlalchemy import ForeignKey, String, Float, Enum, Integer, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
+from backend.app.core.utils import utc_now_naive
 from backend.app.models.base import TimestampMixin, ResourceStatus, CourseDifficulty
 
 class LearningResource(Base, TimestampMixin):
@@ -69,7 +70,7 @@ class MediaAsset(Base):
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     # Relaciones
     resource: Mapped["LearningResource"] = relationship("LearningResource", back_populates="media_assets")

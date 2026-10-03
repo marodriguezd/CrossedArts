@@ -54,15 +54,74 @@ Para un desglose detallado de la filosofía, ciencia cognitiva y arquitectura de
 - Los archivos permanecen en tu disco duro sin duplicación; genera streams efímeros `URL.createObjectURL()` en memoria por sesión y los revoca automáticamente sin persistir URLs temporales `blob:` ni handles nativos en SQLite.
 - La experiencia inicial con datos demo es 100% funcional sin conexión ni dependencias de medios remotos.
 
-### 4. Centro de Repaso Activo (Active Recall & Algoritmo SM-2)
-- Tarjetas nemotécnicas con preguntas y respuestas.
-- Algoritmo matemático **SuperMemo-2 (SM-2)** que calcula automáticamente el Factor de Facilidad (*Ease Factor*), repeticiones e intervalos óptimos según la curva del olvido de Hermann Ebbinghaus.
+### 4. Sesiones de Estudio Locales Unificadas (Repaso Activo, Práctica y Progreso)
+- **Un único flujo coherente:** inicia una sesión de estudio, repasa las tarjetas pendientes, responde preguntas de práctica fundamentadas y termina con un resumen local de progreso.
+- **Modalidades de estudio:** `flashcards` (tarjetas pendientes SM-2), `practice` (preguntas generadas de sesión efímera) y `mixed` (determinista: primero tarjetas pendientes, después práctica).
+- **Algoritmo SuperMemo-2 (SM-2):** se reutiliza como única autoridad de programación, calculando el Factor de Facilidad (mínimo 1.30), repeticiones e intervalos óptimos según la curva del olvido de Hermann Ebbinghaus. Se expone la escala completa 0–5 con el próximo intervalo real calculado.
+- **Ciclo de vida:** `idle → starting → active → paused → completed`, con comportamiento seguro `cancelled`/`failed`. Cada repaso se persiste por tarjeta, por lo que una recarga inesperada nunca los pierde; una sesión solo se reporta como completada cuando la persistencia tiene éxito.
+- **Historial local:** los hechos de la sesión (inicio/fin, modalidad, tarjetas repasadas, preguntas respondidas, aciertos, recurso asociado) se guardan en la tabla existente `learning_session`. No se introduce un segundo historial ni un segundo sistema de programación.
+- **Práctica efímera:** las preguntas y prompts generados nunca se almacenan de forma permanente; solo los contadores agregados forman parte del historial local.
+- **Resumen honesto:** las calificaciones de tarjetas no se reducen a correcto/incorrecto, las preguntas reportan su resultado con normalidad y no se inventa una "puntuación de conocimiento" universal.
 
-### 5. Grafo de Conocimiento Interactivo 2D
-- Visualización conceptual mediante simulación física de partículas impulsada por `vis-network`.
-- Conecta conceptos teóricos, cursos, libros y notas de estudio para navegar tu red de aprendizaje.
+```text
+Sesión de Estudio
+   ↓
+Tarjetas → SM-2 existente → historial de aprendizaje
+   ↓
+Preguntas de práctica → feedback local de sesión
+   ↓
+Resumen de sesión → progreso local
+```
 
-### 6. IA Nativa en Dispositivo (WebLLM + RAG Semántico Híbrido)
+### 5. Espacio de Trabajo de la Lección (Unidad Central de Aprendizaje)
+Cada lección es un espacio de trabajo local completo donde ocurre el aprendizaje, construido íntegramente sobre el modelo relacional existente (sin almacén de contenido paralelo).
+- **Contenido:** Las lecciones tienen un campo editable `content` en texto plano / Markdown almacenado en la tabla existente `lesson` (migrada de forma idempotente). Se renderiza como datos, nunca como HTML arbitrario.
+- **Panel del espacio de trabajo:** Título, contexto de módulo/curso, estado de finalización, duración, contenido, notas, recursos relacionados, medios locales, conceptos y progreso en un solo lugar (`components/lesson/LessonWorkspace.tsx`).
+- **Ordenación:** `Subir` / `Bajar` reordena las lecciones de un módulo de forma determinista, normalizando posiciones a `1..N` sin duplicados y manteniendo los totales del curso consistentes.
+- **Progreso:** `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` determinista según contenido propio, notas asociadas y relaciones explícitas (más el indicador de finalización existente); nunca un porcentaje inventado.
+- **Continuar aprendiendo:** Una acción de continuación determinista elige la primera lección incompleta por orden de módulo/lección (o la última si el curso está completo). Sin puntuaciones de recomendación ni aprendizaje adaptativo.
+- **Estudio e IA locales:** Estudiar, repasar, practicar, explicar y generar flashcards reutilizan el flujo existente de recuperación con ámbito y SM-2, siempre acotado a la lección.
+
+### 6. Grafo de Conocimiento 2.0 y Organización de Recursos
+- **Grafo local canónico:** `KnowledgeGraph.tsx` (carga perezosa, `vis-network`) representa nodos tipados de `course`, `book`, `module`, `lesson`, `note`, `concept` y `resource` importados. Las aristas estructurales (`contains`, `about`, `references`) se derivan deterministamente de las claves foráneas de SQLite; las flashcards y las sesiones de estudio **no** se convierten en nodos del grafo.
+- **Relaciones explícitas controladas por el usuario:** Las conexiones manuales se validan (tipo soportado, nodos existentes, sin auto-enlaces, sin duplicados) y se persisten en la tabla existente `knowledge_connection`. Las relaciones huérfanas se podan sin dejar nodos colgantes.
+- **Filtros, panel de detalle y navegación:** Filtra por categoría de nodo, selecciona uno para ver su tipo, metadatos y relaciones, y vuelve directamente al curso, lección, nota o recurso subyacente. Una lista textual de relaciones mantiene el grafo accesible sin depender del lienzo.
+- **Organización de recursos:** Crea cursos/módulos/lecciones, edita metadatos de libros, asocia notas a recursos/lecciones y detecta documentos importados "sin organizar" para vincularlos a un curso más adelante. Cada recurso huérfano ofrece acciones **Abrir / Organizar / Estudiar**.
+- **Vistas de detalle unificadas:** Cursos, libros, lecciones, notas, recursos importados y conceptos se abren en un destino dedicado. `ResourceDetail.tsx` muestra metadatos, contenido extraído (tratado como datos, nunca como HTML arbitrario), estado de indexación y una sección **Relacionado** construida con el grafo canónico y las relaciones relacionales. Los libros conservan su progreso y edición de metadatos; los recursos importados exponen archivo, huella SHA-256 y fragmentos.
+- **Búsqueda local determinista:** Encuentra cursos, libros, lecciones, notas, conceptos y recursos importados con coincidencia SQL simple, sin embeddings, WebGPU ni LLM, y abre cualquier resultado directamente.
+- **Ámbito de estudio por lección:** Inicia una sesión desde una lección para priorizar esa lección, sus notas/recursos asociados y sus vecinos directos. El ámbito se guarda en la tabla existente `learning_session` (`lesson_id`), de modo que el historial identifica lo estudiado, y fluye por la misma capa de recuperación hacia las acciones de IA fundamentadas (explicar, flashcards, práctica).
+- **Recuperación con ámbito:** Al estudiar dentro de un recurso, el RAG híbrido aplica un impulso determinista y pequeño al recurso seleccionado y sus vecinos directos, sin anular la relevancia léxica/semántica fuerte.
+- **Relaciones canónicas únicamente:** Los tipos de relación válidos están centralizados (`GRAPH_RELATION_TYPES`), las conexiones se validan antes de persistir, las conexiones huérfanas se excluyen del render y solo se podan mediante un camino de limpieza explícito. Las relaciones son datos canónicos locales: sin descubrimiento semántico automático.
+- **Confirmaciones accesibles:** Las acciones destructivas (curso/módulo/lección/relación) usan un `ConfirmDialog` reutilizable con consecuencia explícita, Escape para cancelar, gestión de foco y semántica para lectores de pantalla.
+
+```text
+Curso
+   ↓
+Módulo
+   ↓
+Espacio de trabajo de la lección
+   ├── Contenido
+   ├── Notas
+   ├── Recursos
+   ├── Medios
+   ├── Conceptos
+   ├── Progreso
+   └── Estudio local
+   ↓
+Relaciones canónicas del grafo en SQLite
+   ↓
+Interfaz del Grafo de Conocimiento
+   ↓
+Vista de detalle del recurso
+   ├── Conocimiento relacionado
+   ├── Estudio (SM-2 + práctica)
+   ├── RAG local
+   └── IA local
+   ↓
+flujo de estudio
+```
+
+### 7. IA Nativa en Dispositivo (WebLLM + RAG Semántico Híbrido)
 - **Inferencia 100% on-device:** Motor LLM ejecutado directamente en el navegador con **WebLLM** vía **WebGPU**. Cero llamadas al exterior tras la descarga, sin clave de API y con total privacidad.
 - **Descarga Inicial y Cacheado:** La inferencia local corre en el dispositivo del usuario cuando hay soporte WebGPU. El modelo seleccionado requiere descargarse la primera vez; las inferencias posteriores se ejecutan desde el modelo cacheado localmente en IndexedDB.
 - **Modelos Verificados:** Compatible con `Qwen3-1.7B-q4f16_1-MLC` (por defecto), `Llama-3.2-1B-Instruct-q4f16_1-MLC`, `SmolLM2-1.7B-Instruct-q4f16_1-MLC` y `Qwen3-0.6B-q4f16_1-MLC`.
@@ -77,7 +136,27 @@ Para un desglose detallado de la filosofía, ciencia cognitiva y arquitectura de
   - **Modo Ollama Local:** Conexión directa a tus modelos LLM locales (`http://localhost:11434`).
   - **Modo Proveedores Externos:** Compatible con OpenAI mediante clave en `localStorage`.
 
-### 7. Backend Complementario (Opcional)
+### 7. Ingestión de Documentos Locales y RAG de Extremo a Extremo
+- **Extracción Local sin Nube:** Importa documentos `.txt`, `.md`, `.pdf` y `.epub` directamente en el navegador con 0 peticiones a servidores externos o servicios de OCR remotos.
+- **Recursos de Aprendizaje de Primera Clase:** El contenido extraído se integra en las tablas relacionales de SQLite (`learning_resource` y `note`) con título, autor y metadatos verificables de página y capítulo.
+- **Destino y Asociación de Recursos:** Permite importar como material independiente, nuevos libros en Biblioteca, o vincular notas directamente a cursos y lecciones existentes.
+- **Acciones Pedagógicas Fundamentadas:** Utiliza el asistente en el dispositivo para explicar recursos con citaciones exactas, negándose explícitamente a inventar detalles si el contexto local es insuficiente.
+
+```text
+Archivo local (.txt, .md, .pdf, .epub)
+   ↓
+Parser en navegador (SHA-256 Web Cryptography)
+   ↓
+Recurso de aprendizaje CrossedArts (SQLite WASM)
+   ↓
+Fragmentos deterministas (con página y capítulo)
+   ↓
+RAG híbrido (léxico + embeddings locales)
+   ↓
+Respuesta fundamentada con WebLLM local
+```
+
+### 8. Backend Complementario (Opcional)
 - Servidor REST en `backend/` construido con **FastAPI**, **SQLAlchemy 2.0** y **Alembic**.
 - Diseñado para análisis avanzado, ingesta masiva por lotes (extracción de PDF, EPUB, metadatos y transcripciones de vídeo) y búsqueda semántica vectorial.
 
@@ -93,9 +172,10 @@ CrossedArts/
 │   │   ├── ai/                   # Servicio de tutor IA híbrido (aiService.ts)
 │   │   ├── components/           # Componentes de UI (Navbar, Asistente IA, etc.)
 │   │   ├── db/                   # Puente SQLite WASM, esquemas DDL, DAO y backups
+│   │   ├── lib/                  # Motores de IA local, embeddings, RAG híbrido e ingestión
 │   │   ├── pages/                # Vistas: Dashboard, Biblioteca, Repaso, Grafo, etc.
 │   │   └── types/                # Modelos de datos TypeScript (models.ts)
-│   └── tests/                    # Flota de pruebas de integración Zero-Web-Access (23 tests)
+│   └── tests/                    # Flota de pruebas de integración Zero-Web-Access (143 tests)
 ├── backend/                      # Servidor API complementario opcional (Python / FastAPI)
 │   ├── alembic/                  # Migraciones de base de datos relacional
 │   ├── app/
@@ -137,7 +217,7 @@ npm run dev
 La aplicación estará disponible inmediatamente en `http://localhost:5173`.
 
 ### Ejecutar Pruebas (Flota Zero-Web-Access)
-El proyecto incluye 23 pruebas de integridad que validan la inicialización de SQLite sin red, el algoritmo SM-2, los volcados binarios/JSON y la seguridad offline:
+El proyecto incluye 143 pruebas de integridad que validan la inicialización de SQLite sin red, el algoritmo SM-2, las sesiones de estudio unificadas, el espacio de trabajo de la lección (edición de contenido, ordenación, progreso, continuación), la integridad y migración del grafo de conocimiento, la organización y el detalle de recursos, el estudio con ámbito de lección, las confirmaciones accesibles, los volcados binarios/JSON, la IA local, el RAG híbrido, la ingestión de documentos y la generación de estudio fundamentada:
 
 ```bash
 cd frontend

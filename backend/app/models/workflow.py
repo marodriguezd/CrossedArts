@@ -5,6 +5,7 @@ from sqlalchemy import ForeignKey, String, Integer, Float, DateTime, Boolean, Da
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
+from backend.app.core.utils import utc_now_naive
 from backend.app.models.base import TimestampMixin
 
 class LearningPath(Base, TimestampMixin):
@@ -105,7 +106,7 @@ class GoalProgress(Base):
     )
     value_change: Mapped[float] = mapped_column(Float, nullable=False)
     new_value: Mapped[float] = mapped_column(Float, nullable=False)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     goal: Mapped["Goal"] = relationship("Goal", back_populates="progress_updates")
@@ -139,7 +140,7 @@ class HabitRecord(Base):
     )
     date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     is_completed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
 
     habit: Mapped["LearningHabit"] = relationship("LearningHabit", back_populates="records")
 
@@ -166,7 +167,7 @@ class ReviewItem(Base, TimestampMixin):
     interval_days: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     easiness_factor: Mapped[float] = mapped_column(Float, default=2.5, nullable=False)
     repetitions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    next_review: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    next_review: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
     last_reviewed: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     note: Mapped[Optional["Note"]] = relationship("Note")
@@ -188,7 +189,7 @@ class ReviewHistory(Base):
         ForeignKey("review_item.id", ondelete="CASCADE"),
         nullable=False
     )
-    reviewed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, nullable=False)
     quality: Mapped[int] = mapped_column(Integer, nullable=False)  # 0 to 5
     next_review: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

@@ -6,7 +6,9 @@ def test_health_check(client):
     """Health endpoint must return healthy status."""
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy"}
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "CrossedArts API"
 
 
 def test_lifespan_startup_shutdown():
@@ -34,3 +36,18 @@ def test_sync_client_lifecycle():
     assert not client.is_closed
     client.close()
     assert client.is_closed
+
+
+def test_startup_migration_mode(monkeypatch):
+    """Verify that lifespan respects AUTO_CREATE_TABLES setting without throwing."""
+    from fastapi.testclient import TestClient
+    from backend.app.main import app
+    monkeypatch.setenv("AUTO_CREATE_TABLES", "0")
+    with TestClient(app) as client:
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+
+    monkeypatch.setenv("AUTO_CREATE_TABLES", "1")
+    with TestClient(app) as client:
+        resp = client.get("/api/health")
+        assert resp.status_code == 200

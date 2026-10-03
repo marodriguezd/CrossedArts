@@ -1,3 +1,4 @@
+import os
 import httpx
 from fastapi import FastAPI
 from backend.app.core.database import engine, Base
@@ -10,9 +11,14 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Creación automática de tablas si no existen
-    Base.metadata.create_all(bind=engine)
-    print("[CrossedArts] Base de datos SQLite inicializada correctamente.")
+    # En producción las migraciones deben aplicarse vía Alembic (PYTHONPATH=. alembic -c backend/alembic.ini upgrade head).
+    # La creación automática solo se habilita explícitamente en desarrollo/test mediante AUTO_CREATE_TABLES=1
+    auto_create = os.getenv("AUTO_CREATE_TABLES", "0").lower() in ("1", "true", "yes")
+    if auto_create:
+        Base.metadata.create_all(bind=engine)
+        print("[CrossedArts] Base de datos SQLite inicializada (modo AUTO_CREATE_TABLES).")
+    else:
+        print("[CrossedArts] Inicio en modo migración Alembic (gestión de esquema externa).")
 
     # Initialize shared HTTP client pool (async for LLM calls)
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)

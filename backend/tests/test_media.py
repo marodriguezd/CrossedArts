@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 
 from backend.app.services.thumbnail import ThumbnailService
 from backend.app.services.scanner import CourseScanner, BookScanner, ScannerManager
+from backend.app.models.base import ResourceStatus
 from backend.app.models.resource import Course, Book, MediaAsset
+from backend.app.models.activity import MediaProgress
 from backend.app.models.course_structure import Module, Lesson
 
 def test_thumbnail_resolution_precedence():

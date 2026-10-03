@@ -199,7 +199,7 @@ class LearningInsightsService:
     def generate_insights(db: Session) -> Dict[str, Any]:
         """
         Genera un informe analítico detallado sobre patrones de estudio,
-        conceptos de maestría, brechas de conocimiento y recomendaciones para DomestiK v1.
+        conceptos de maestría, brechas de conocimiento y recomendaciones para CrossedArts v1.
         """
         # 1. Categorías más estudiadas
         stmt_studied = (

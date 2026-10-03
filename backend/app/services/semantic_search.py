@@ -26,7 +26,7 @@ class SemanticSearchService:
         try:
             query_vector = EmbeddingService.get_embedding(query.strip())
         except Exception as e:
-            print(f"[DomestiK] Embedding error for search: {e}")
+            print(f"[CrossedArts] Embedding error for search: {e}")
             return []
 
         # Load all embedding records

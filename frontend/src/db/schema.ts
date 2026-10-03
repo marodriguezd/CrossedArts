@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS lesson (
   id TEXT PRIMARY KEY,
   module_id TEXT NOT NULL REFERENCES module(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
+  content TEXT,
   order_index INTEGER DEFAULT 0,
   duration_minutes INTEGER DEFAULT 0,
   lesson_type TEXT DEFAULT 'VIDEO',
@@ -50,11 +51,17 @@ CREATE TABLE IF NOT EXISTS lesson (
 
 CREATE TABLE IF NOT EXISTS learning_session (
   id TEXT PRIMARY KEY,
-  resource_id TEXT NOT NULL REFERENCES learning_resource(id) ON DELETE CASCADE,
+  resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
+  lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL,
   started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   ended_at DATETIME,
   duration_minutes INTEGER DEFAULT 0,
-  inactive_seconds INTEGER DEFAULT 0
+  inactive_seconds INTEGER DEFAULT 0,
+  mode TEXT DEFAULT 'flashcards',
+  cards_reviewed INTEGER DEFAULT 0,
+  questions_answered INTEGER DEFAULT 0,
+  correct_answers INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'completed'
 );
 
 CREATE TABLE IF NOT EXISTS note (

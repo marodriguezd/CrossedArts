@@ -61,21 +61,27 @@ export async function importJsonBackup(data: Record<string, any[]>): Promise<voi
   await dbBridge.persist();
 }
 
-export async function exportSqliteFile(): Promise<void> {
+export async function exportSqliteFile(): Promise<string> {
   const bytes = dbBridge.exportDatabase();
-  if (typeof document === 'undefined') return;
-  const blob = new Blob([bytes], { type: 'application/x-sqlite3' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `crossedarts-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const filename = `crossedarts-backup-${new Date().toISOString().slice(0, 10)}.crossedarts.sqlite`;
+  if (typeof document !== 'undefined') {
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/x-sqlite3' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  return filename;
 }
 
 export async function importSqliteFile(file: File): Promise<void> {
+  if (file.size > 50 * 1024 * 1024) {
+    throw new Error('El archivo excede el tamaño máximo permitido para respaldos locales (50 MB).');
+  }
   const arrayBuffer = await file.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
   await dbBridge.importDatabase(bytes);

@@ -54,15 +54,73 @@ For an in-depth dive into the system's philosophy, cognitive science foundations
 - Files remain strictly on your local disk; ephemeral `URL.createObjectURL()` streams are generated in-memory per lesson session and revoked on navigation without persisting temporary `blob:` URLs or raw handles into SQLite.
 - Core seeded experience operates 100% offline without remote media dependencies.
 
-### 4. Active Recall & Spaced Repetition (SuperMemo-2 Algorithm)
-- Interactive flashcard review center for rapid memory consolidation.
-- Mathematical **SuperMemo-2 (SM-2)** implementation calculating the Ease Factor (minimum 1.30), repetition streaks, and optimal review intervals based on the Hermann Ebbinghaus forgetting curve.
+### 4. Unified Local Study Sessions (Active Recall, Practice & Progress)
+- **One coherent workflow:** Start a study session, review due flashcards, answer grounded practice questions, and finish with a local progress summary.
+- **Study modes:** `flashcards` (SM-2 due cards), `practice` (session-local generated questions) and `mixed` (deterministic: due flashcards first, then practice).
+- **Mathematical SuperMemo-2 (SM-2):** Reused as the single scheduling authority, calculating the Ease Factor (minimum 1.30), repetition streaks, and optimal review intervals based on the Hermann Ebbinghaus forgetting curve. The full 0–5 grade scale is exposed with the real calculated next interval.
+- **Session lifecycle:** `idle → starting → active → paused → completed`, plus safe `cancelled`/`failed` behavior. Reviews are persisted per card, so an unexpected reload never loses them; a session is only reported as completed when persistence succeeds.
+- **Local history:** Session facts (start/end, mode, cards reviewed, questions answered, correct answers, associated resource) are stored in the existing `learning_session` table. No second history or scheduling system is introduced.
+- **Practice stays ephemeral:** Generated questions and prompts are never permanently stored; only aggregate counters become part of the local history.
+- **Honest summary:** Flashcard grades are not reduced to right/wrong, questions report correctness normally, and no universal "knowledge score" is invented.
 
-### 5. Interactive 2D Knowledge Graph
-- Visual concept mapping with particle-physics force simulation powered by `vis-network`.
-- Map and navigate cross-cutting connections between academic concepts, course lessons, books, and study notes.
+```text
+Study Session
+   ↓
+Flashcards → existing SM-2 → learning history
+   ↓
+Practice Questions → session-local feedback
+   ↓
+Session Summary → local progress
+```
 
-### 6. Local-Native AI & Pedagogical Tutor (WebLLM + Hybrid Local RAG)
+### 5. Lesson Workspace (First-Class Learning Unit)
+Each lesson is a complete local workspace where learning actually happens, built entirely on the existing relational model (no parallel content store).
+- **Content:** Lessons have an editable plain-text / Markdown `content` field stored in the existing `lesson` table (migrated idempotently). It is rendered as data, never as arbitrary HTML.
+- **Workspace panel:** Title, module/course context, completion state, duration, content, notes, related resources, local media, concepts and progress in one place (`components/lesson/LessonWorkspace.tsx`).
+- **Ordering:** Deterministic `Move up` / `Move down` reorders lessons within a module, normalising positions to `1..N` with no duplicates and keeping course totals consistent.
+- **Progress:** Deterministic `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` based on own content, associated notes and explicit relations (plus the existing completion flag) — never an invented percentage.
+- **Continue learning:** A deterministic continuation action selects the first incomplete lesson by module/lesson order (or the last lesson when the course is complete). No recommendation scores or adaptive learning.
+- **Local study & AI:** Study, review, practice, explain and flashcard generation reuse the existing scoped retrieval and SM-2 flow, all scoped to the lesson.
+
+### 6. Knowledge Graph 2.0 & First-Class Resource Organization
+- **Canonical local graph:** The lazy-loaded `KnowledgeGraph.tsx` (powered by `vis-network`) renders typed nodes for `course`, `book`, `module`, `lesson`, `note`, `concept` and imported `resource` entities. Structural edges (`contains`, `about`, `references`) are derived deterministically from SQLite foreign keys; flashcards and study sessions are deliberately **not** turned into graph nodes.
+- **Explicit, user-controlled relationships:** Manual connections are validated (supported relation type, existing endpoints, no self-links, no duplicates) and persisted in the existing `knowledge_connection` table. Dangling relationships are pruned without leaving orphans.
+- **Filters, detail panel & navigation:** Filter nodes by category, select a node to inspect its type, metadata and relationships, and jump straight back to the underlying course, lesson, note or resource. A textual relationship list keeps the graph usable without relying on the canvas.
+- **Resource organization:** Create courses/modules/lessons, edit book metadata, associate notes with resources/lessons, and detect "unorganized" imported documents to link them to a course later. Every orphan resource offers **Open / Organize / Study** actions.
+- **Unified resource detail views:** Courses, books, lessons, notes, imported resources and concepts each open in a dedicated destination. `ResourceDetail.tsx` shows metadata, extracted content (rendered as data, never as arbitrary HTML), indexing status and a **Related** section built from canonical graph + relational data. Books keep their reading progress and metadata editing; imported resources expose filename, SHA-256 fingerprint and fragments.
+- **Deterministic local search:** Find courses, books, lessons, notes, concepts and imported resources with plain SQL matching — no embeddings, WebGPU or LLM required — and open any result directly.
+- **Lesson-level study scope:** Start a study session from a lesson to prioritise that lesson, its associated notes/resources and its direct neighbours. The scope is stored on the existing `learning_session` (`lesson_id`) so history identifies what was studied, and it flows through the same retrieval layer to grounded AI actions (explain, flashcards, practice).
+- **Canonical relationships only:** Valid relationship types are centralised (`GRAPH_RELATION_TYPES`), connections are validated before persistence, dangling connections are excluded from rendering and pruned only by an explicit cleanup path. Relationships are local canonical data — no automatic semantic relationship discovery.
+- **Accessible confirmations:** Destructive actions (course/module/lesson/relationship) use a reusable `ConfirmDialog` with explicit consequence text, Escape-to-cancel, focus management and screen-reader semantics.
+
+```text
+Course
+   ↓
+Module
+   ↓
+Lesson Workspace
+   ├── Content
+   ├── Notes
+   ├── Resources
+   ├── Media
+   ├── Concepts
+   ├── Progress
+   └── Local Study
+   ↓
+SQLite canonical graph relationships
+   ↓
+Knowledge Graph UI
+   ↓
+Resource / Detail View
+   ├── Related knowledge
+   ├── Study (SM-2 + practice)
+   ├── Local RAG
+   └── Local AI
+   ↓
+study workflow
+```
+
+### 7. Local-Native AI & Pedagogical Tutor (WebLLM + Hybrid Local RAG)
 - **Local-Native On-Device Inference (WebLLM / WebGPU):** Run open-source LLMs (default `Qwen3 1.7B`, or `Llama 3.2 1B`, `SmolLM2 1.7B`) 100% on-device directly inside the browser using WebGPU. No API keys or remote servers required.
 - **Initial Download & IndexedDB Caching:** The initial model download requires network access (~1 GB). Once downloaded, model weights are persistently cached in the browser's IndexedDB and execute completely offline without network calls.
 - **Hybrid Semantic Local RAG (Zero Remote Vector DB):**
@@ -72,7 +130,7 @@ For an in-depth dive into the system's philosophy, cognitive science foundations
   - **Calibrated Scoring & Source Deduplication:** Employs calibrated candidate thresholds, Reciprocal Rank Fusion (RRF), and diversity-preserving source deduplication with instant fallback to pure lexical retrieval.
 - **Hybrid Multi-Mode Options:** Choose between On-Device WebGPU (`local`), Offline Heuristic (`demo`), Local Ollama server (`http://localhost:11434`), or direct OpenAI API.
 
-### 7. Local Document Ingestion & End-to-End RAG
+### 8. Local Document Ingestion & End-to-End RAG
 - **Zero-Cloud Document Parsing:** Import `.txt`, `.md`, `.pdf`, and `.epub` documents directly in the browser with 0 external network requests or remote OCR.
 - **First-Class Learning Resources:** Extracted content integrates into canonical SQLite `learning_resource` and `note` records with title, author, and exact page/chapter metadata.
 - **Resource Destination & Association:** Choose to import as standalone knowledge, new library books, or link to existing courses/lessons.
@@ -92,7 +150,7 @@ Hybrid RAG (lexical + local embeddings)
 Local WebLLM grounded response
 ```
 
-### 8. Optional Python Backend Companion
+### 9. Optional Python Backend Companion
 - Auxiliary REST API server in `backend/` built with **FastAPI**, **SQLAlchemy 2.0**, and **Alembic**.
 - Ideal for heavy batch ingestion (bulk PDF/EPUB extraction, video transcript processing) and semantic search with vector embeddings.
 
@@ -111,7 +169,7 @@ CrossedArts/
 │   │   ├── lib/                  # Local LLM, embeddings, hybrid RAG & ingestion
 │   │   ├── pages/                # Views: Dashboard, Library, ReviewCenter, Graph, etc.
 │   │   └── types/                # TypeScript domain models (models.ts)
-│   └── tests/                    # Zero-Web-Access test fleet (82 integration tests)
+│   └── tests/                    # Zero-Web-Access test fleet (143 integrity tests)
 ├── backend/                      # Optional Python Backend Companion (FastAPI)
 │   ├── alembic/                  # Relational database migration scripts
 │   ├── app/
@@ -153,7 +211,7 @@ npm run dev
 Open `http://localhost:5173` in your browser.
 
 ### Run Integrity Tests (Zero-Web-Access Test Fleet)
-The project includes 82 tests verifying offline SQLite initialization, SM-2 math, binary/JSON exports, local AI, hybrid RAG, and document ingestion:
+The project includes 143 tests verifying offline SQLite initialization, SM-2 math, unified study sessions, the lesson workspace (content editing, ordering, progress, continuation), knowledge graph integrity and migrations, resource organization and detail views, lesson-scoped study, accessible confirmations, binary/JSON exports, local AI, hybrid RAG, document ingestion, and grounded study generation:
 
 ```bash
 cd frontend

@@ -88,3 +88,72 @@ test('4.4 JSON backup import wipes and accurately restores all relational record
   const finalCheck = db.exec("SELECT title FROM learning_resource WHERE id = 'c-custom-imported'");
   assert.strictEqual(finalCheck.length, 0);
 });
+
+test('4.5 Corrupt SQLite Backup Rejection: Rejects non-SQLite bytes and invalid headers', async () => {
+  const garbageBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  
+  await assert.rejects(
+    async () => {
+      await dbBridge.importDatabase(garbageBytes);
+    },
+    /SQLite format 3/
+  );
+});
+
+test('4.6 Incompatible Schema Backup Rejection: Rejects valid SQLite without CrossedArts tables', async () => {
+  // Generar un SQLite válido pero con un esquema arbitrario ajeno a CrossedArts
+  const initSqlJs = (await import('sql.js')).default;
+  const SQL = await initSqlJs();
+  const foreignDb = new SQL.Database();
+  foreignDb.run("CREATE TABLE random_user (id INT, name TEXT);");
+  foreignDb.run("INSERT INTO random_user VALUES (1, 'Alice');");
+  const foreignBytes = foreignDb.export();
+  foreignDb.close();
+
+  await assert.rejects(
+    async () => {
+      await dbBridge.importDatabase(foreignBytes);
+    },
+    /learning_resource/
+  );
+});
+
+test('4.7 Storage Status Report & Capability: Reports explicit states and persistence timestamp', async () => {
+  const report = dbBridge.getStorageReport();
+  assert.ok(['loading', 'ready', 'persisting', 'persisted'].includes(report.state));
+  assert.ok(report.databaseSizeBytes > 1000);
+  assert.strictEqual(typeof report.hasIndexedDB, 'boolean');
+});
+
+test('4.8 Seed Protection & Data Survival: Real user modifications survive re-initialization', async () => {
+  const db = dbBridge.getDatabase();
+  // Insertar un recurso legítimo creado por el usuario
+  db.run(`
+    INSERT INTO learning_resource (id, title, description, category, status, type)
+    VALUES ('res-user-persistent', 'Mi Nota Maestra de Estudio', 'Creado por el usuario', 'Personal', 'IN_PROGRESS', 'note');
+  `);
+  await dbBridge.persist();
+
+  // Simular recarga: re-inicializar el bridge
+  const dbAfterReload = await dbBridge.init();
+  const check = dbAfterReload.exec("SELECT title FROM learning_resource WHERE id = 'res-user-persistent'");
+  assert.strictEqual(check.length, 1);
+  assert.strictEqual(check[0].values[0][0], 'Mi Nota Maestra de Estudio');
+
+  // Limpiar
+  db.run("DELETE FROM learning_resource WHERE id = 'res-user-persistent'");
+  await dbBridge.persist();
+});
+
+test('4.9 Local Media Portability Isolation: SQLite backup does not contain blob URLs or File handles', () => {
+  const db = dbBridge.getDatabase();
+  const lessons = db.exec("SELECT media_url FROM lesson WHERE media_url IS NOT NULL");
+  if (lessons.length && lessons[0].values.length) {
+    for (const row of lessons[0].values) {
+      const url = String(row[0]);
+      assert.ok(!url.startsWith('blob:'), 'Persisted media_url must never be a blob: URL');
+      assert.ok(!url.includes('[object File]'), 'Persisted media_url must not serialize raw File handles');
+    }
+  }
+});
+

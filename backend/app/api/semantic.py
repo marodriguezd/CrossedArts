@@ -26,7 +26,7 @@ def semantic_search(
     db: Session = Depends(get_db)
 ):
     """
-    Realiza una búsqueda semántica de conceptos sobre la biblioteca de DomestiK.
+    Realiza una búsqueda semántica de conceptos sobre la biblioteca de CrossedArts.
     """
     return SemanticSearchService.search(db, query=q, resource_type=resource_type)
 

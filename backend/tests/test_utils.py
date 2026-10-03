@@ -15,10 +15,11 @@ def test_utc_now_naive_is_naive():
 
 def test_utc_now_naive_approx_utc():
     from backend.app.core.utils import utc_now_naive
+    from datetime import timezone
     import time
     result = utc_now_naive()
     # Should be within a few seconds of UTC
-    utc_now = datetime.utcnow()
+    utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
     diff = abs((result - utc_now).total_seconds())
     assert diff < 5, f"utc_now_naive() deviated {diff}s from UTC"
 

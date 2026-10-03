@@ -16,7 +16,7 @@ El repositorio se divide en dos componentes independientes y desacoplados:
    - **Pila:** React 19 + TypeScript + Vite + Tailwind CSS + Lucide Icons.
    - **Motor de Datos:** SQLite ejecutado en el navegador vía WebAssembly (`sql.js`) y persistido en `IndexedDB`.
    - **Despliegue:** 100% estático en GitHub Pages a través de GitHub Actions (`.github/workflows/deploy.yml`). No requiere servidor backend para su funcionamiento diario.
-   - **Módulos clave:** Repetición espaciada SuperMemo-2 (`ReviewCenter.tsx`), grafo de conocimiento 2D (`KnowledgeGraph.tsx` con `vis-network`), streaming de vídeos locales mediante la File System Access API (`CourseDetail.tsx`), y tutor pedagógico híbrido (`aiService.ts`).
+   - **Módulos clave:** Sesiones de estudio unificadas con repetición espaciada SuperMemo-2 (`ReviewCenter.tsx` + `services/studySession.ts`), grafo de conocimiento 2D (`KnowledgeGraph.tsx` con `vis-network`), streaming de vídeos locales mediante la File System Access API (`CourseDetail.tsx`), y tutor pedagógico híbrido (`aiService.ts`).
 
 2. **Backend Companion (`backend/`):**
    - **Rol:** Servidor API auxiliar opcional para usuarios que deseen análisis avanzado o procesamiento por lotes en disco local.
@@ -37,8 +37,15 @@ CrossedArts/
 │   │   ├── ai/
 │   │   │   └── aiService.ts        # Motor de IA: Local on-device (WebLLM), Demo, Ollama o OpenAI
 │   │   ├── components/
+│   │   │   ├── common/
+│   │   │   │   └── ConfirmDialog.tsx  # Diálogo de confirmación accesible para acciones destructivas
+│   │   │   ├── lesson/
+│   │   │   │   └── LessonWorkspace.tsx  # Espacio de trabajo de la lección (contenido, notas, recursos, conceptos, estudio)
 │   │   │   ├── ai/
 │   │   │   │   └── AIAssistantDrawer.tsx  # Cajón lateral del tutor pedagógico con citas RAG
+│   │   │   ├── study/
+│   │   │   │   ├── FlashcardGenerationModal.tsx  # Generación y previsualización de flashcards
+│   │   │   │   └── PracticeQuestion.tsx  # Pregunta de práctica accesible (grupo de radios)
 │   │   │   └── layout/
 │   │   │       └── Navbar.tsx      # Barra de navegación principal y selector de pestañas
 │   │   ├── db/
@@ -54,19 +61,21 @@ CrossedArts/
 │   │   ├── pages/
 │   │   │   ├── CourseDetail.tsx    # Reproductor y visor de lecciones y módulos
 │   │   │   ├── Dashboard.tsx       # Métricas de estudio (KPIs), racha y accesos directos
-│   │   │   ├── KnowledgeGraph.tsx  # Grafo interactivo con vis-network
+│   │   │   ├── KnowledgeGraph.tsx  # Grafo 2.0: nodos tipados, filtros, detalle y conexiones manuales
 │   │   │   ├── Library.tsx         # Catálogo de cursos y libros con filtros
 │   │   │   ├── NotesView.tsx       # Editor y visor de notas de estudio en Markdown
-│   │   │   ├── ReviewCenter.tsx    # Centro de repaso activo con tarjetas nemotécnicas (SM-2)
+│   │   │   ├── ResourceDetail.tsx  # Vista de detalle unificada (libro, recurso importado, concepto)
+│   │   │   ├── ReviewCenter.tsx    # Host de la sesión de estudio unificada (SM-2 + práctica)
 │   │   │   └── SettingsView.tsx    # Gestión de BD (backup/restore), IA on-device e índice semántico
 │   │   ├── services/
+│   │   │   ├── studySession.ts        # Máquina de estados pura del ciclo de vida de sesión
 │   │   │   └── localMediaService.ts   # Registro local de medios y matching determinista
 │   │   ├── types/
 │   │   │   └── models.ts           # Interfaces y tipos de datos TypeScript
 │   │   ├── App.tsx                 # Contenedor raíz y ciclo de vida de la aplicación
 │   │   ├── index.css               # Estilos globales y utilidades de Tailwind
 │   │   └── main.tsx                # Entrada de montaje de React en el DOM
-│   ├── tests/                      # Flota de pruebas de frontend (65 tests de integridad)
+│   ├── tests/                      # Flota de pruebas de frontend (143 tests de integridad)
 │   ├── index.html                  # Punto de entrada HTML
 │   ├── package.json                # Dependencias y scripts de Node.js
 │   ├── tailwind.config.js          # Configuración de diseño y colores
@@ -108,7 +117,7 @@ npm install
 # Iniciar servidor de desarrollo en caliente (Vite)
 npm run dev
 
-# Ejecutar la flota de pruebas de integridad (82/82 tests)
+# Ejecutar la flota de pruebas de integridad (143/143 tests)
 npm test
 # O directamente mediante el test runner de Node:
 node --test --experimental-strip-types tests/*.test.ts
@@ -120,7 +129,7 @@ npm run typecheck
 npx vite build
 ```
 
-> **IMPORTANTE:** La flota de 82 pruebas de frontend valida:
+> **IMPORTANTE:** La flota de 143 pruebas de frontend valida:
 > 1. Inicialización de SQLite WASM sin acceso a la red (0 web requests).
 > 2. Precisión del algoritmo de repetición espaciada SuperMemo-2 (`domainLogic.ts` & SM-2).
 > 3. Operaciones CRUD, cálculo de racha real y validación pura de lectura de libros en `dao.ts` y `domainLogic.ts`.
@@ -132,6 +141,11 @@ npx vite build
 > 9. RAG local híbrido determinista con embeddings on-device (`Xenova/multilingual-e5-small` con Transformers.js, licencia MIT), prefijos E5 canónicos (`query: ` / `passage: `), normalización L2 estricta a 384 dimensiones, hashing criptográfico SHA-256 (`crypto.subtle`), versionado de pipeline (`v1.1-e5-sha256`), ranking calibrado con RRF y deduplicación inteligente por fuente (`localEmbeddings/`, `localRag/`).
 > 10. Ingestión local y extracción de texto en navegador para documentos `.txt`, `.md`, `.pdf`, `.epub`, con huella criptográfica SHA-256 anti-duplicados, segmentación en secciones estructuradas con páginas/capítulos, cero almacenamiento de binarios pesados en SQLite y citación precisa en RAG (`localIngestion/`).
 > 11. Conversión de documentos importados en recursos de aprendizaje de primera clase (`learning_resource`), previsualización interactiva con estimación de palabras, selección de destino (standalone, curso, lección, libro), visor de origen de recursos con huella SHA-256 y acción pedagógica fundamentada `explainResource` con rechazo honesto ante contexto insuficiente.
+> 12. Generación formativa fundamentada (flashcards y evaluaciones tipo test) con validación heurística de fundamentación (grounding check), previsualización editable antes de persistir en SQLite, inserción en ciclo SM-2 (`dao.createFlashcards`), y sesiones efímeras de preguntas de práctica con feedback inmediato (`studyGeneration/`).
+13. Sesiones de estudio locales unificadas (`flashcards`, `practice`, `mixed`) reutilizando la tabla `learning_session`: ciclo de vida explícito (`idle → starting → active → paused → completed/cancelled/failed`), persistencia por repaso (supervivencia a recarga), nunca se reporta finalización si la persistencia falla, cancelación que conserva los repasos ya guardados, preguntas de práctica efímeras, resumen sin "puntuación de conocimiento" universal, agregación diaria y de sesiones recientes en el Dashboard, integridad de racha e integración con el SM-2 existente (`services/studySession.ts`, `dao.ts`, `ReviewCenter.tsx`).
+14. Grafo de conocimiento 2.0 y organización de recursos de primera clase: nodos tipados (`course`, `book`, `module`, `lesson`, `note`, `concept`, `resource`), aristas estructurales derivadas de claves foráneas (`contains`, `about`, `references`), conexiones manuales tipadas y validadas en `knowledge_connection` (sin auto-enlaces ni duplicados, con poda de relaciones huérfanas), filtros deterministas, panel de detalle con representación textual accesible, navegación bidireccional, CRUD ligero de cursos/módulos/lecciones, edición de libros, asociación de notas, detección de recursos sin organizar, búsqueda local determinista sin embeddings, y ámbito de recuperación RAG acotado (`dao.ts`, `services/domainLogic.ts`, `KnowledgeGraph.tsx`, `Library.tsx`, `CourseDetail.tsx`, `NotesView.tsx`, `lib/localRag/retrieval.ts`).
+15. Vistas de detalle de recursos y consistencia de la experiencia de aprendizaje: destino dedicado para curso, libro, lección, nota, recurso importado y concepto; `ResourceDetail.tsx` (`dao.getResourceDetail`, `dao.getRelatedKnowledge`, `dao.getNodeSummaries`) muestra metadatos, contenido extraído como datos e indexación, con una sección "Relacionado" construida solo con relaciones canónicas (explícitas + derivadas de claves foráneas, sin descubrimiento semántico automático); búsqueda y grafo convierten cada resultado/nodo en una acción determinista (`resolveSearchResultDestination`, `resolveGraphNodeDestination`); ámbito de estudio/recuperación a nivel de lección persistido en `learning_session.lesson_id` y propagado por `aiService`/`localRag`; `ConfirmDialog.tsx` reemplaza el confirm nativo en acciones destructivas; los tipos de relación se centralizan en `GRAPH_RELATION_TYPES`. La navegación y el detalle funcionan sin backend, WebGPU, embeddings ni WebLLM (`ResourceDetail.tsx`, `components/common/ConfirmDialog.tsx`, `dao.ts`, `services/domainLogic.ts`, `services/studySession.ts`).
+16. Espacio de trabajo de la lección como unidad central de aprendizaje: campo `content` (texto/Markdown como datos) en la tabla `lesson` con migración idempotente (`migrateLessonContent`), edición de título/contenido/duración vía `dao.updateLesson` con validación, ordenación determinista `dao.moveLesson` (posiciones normalizadas 1..N sin duplicados), agregación `dao.getLessonWorkspace` (notas, recursos, conceptos, progreso `NOT_STARTED`/`IN_PROGRESS`/`COMPLETED` basado en actividad real), continuación determinista `dao.getNextLessonForCourse`, integración del contenido en la recuperación léxica y en el chunking semántico (SHA-256; un cambio de contenido invalida solo ese chunk), acciones de estudio/IA reutilizando `aiService`/RAG con ámbito de lección, y `components/lesson/LessonWorkspace.tsx` (`dao.ts`, `lib/localRag/retrieval.ts`, `lib/localEmbeddings/chunking.ts`, `CourseDetail.tsx`). Corrige además un defecto real de `sql.js`: `db.export()` reinicia `PRAGMA foreign_keys`, por lo que se reafirma tras cada persistencia y se cachea el tamaño de BD sin exportar (`sqliteBridge.ts`).
 
 ### 3.2. Backend Companion (Python + FastAPI)
 

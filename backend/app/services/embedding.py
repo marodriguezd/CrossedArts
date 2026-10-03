@@ -62,34 +62,40 @@ class EmbeddingService:
                     openai_api_base=settings.openai_api_base,
                 )
             except ImportError:
-                print("[DomestiK] langchain-openai not installed. Using mock embeddings.")
+                print("[CrossedArts] langchain-openai not installed. Using mock embeddings.")
                 cls._embeddings = MockEmbeddingProvider()
         elif provider == "ollama":
             try:
-                from langchain_community.embeddings import OllamaEmbeddings
+                try:
+                    from langchain_ollama import OllamaEmbeddings
+                except ImportError:
+                    from langchain_community.embeddings import OllamaEmbeddings
                 base_url = settings.ollama_embed_url.replace("/api/embeddings", "")
                 cls._embeddings = OllamaEmbeddings(
                     model=settings.ollama_embed_model,
                     base_url=base_url,
                 )
             except ImportError:
-                print("[DomestiK] langchain-community not installed. Using mock embeddings.")
+                print("[CrossedArts] langchain-ollama/langchain-community not installed. Using mock embeddings.")
                 cls._embeddings = MockEmbeddingProvider()
         elif provider == "huggingface":
             try:
-                from langchain_community.embeddings import HuggingFaceEmbeddings
+                try:
+                    from langchain_huggingface import HuggingFaceEmbeddings
+                except ImportError:
+                    from langchain_community.embeddings import HuggingFaceEmbeddings
                 cls._embeddings = HuggingFaceEmbeddings(
                     model_name=settings.huggingface_embed_model,
                 )
             except Exception as e:
-                print(f"[DomestiK] Error initializing HuggingFace embeddings: {e}. Using mock embeddings.")
+                print(f"[CrossedArts] Error initializing HuggingFace embeddings: {e}. Using mock embeddings.")
                 cls._embeddings = MockEmbeddingProvider()
         else:
             cls._embeddings = MockEmbeddingProvider()
             
         cls._initialized = True
         mode = provider if not isinstance(cls._embeddings, MockEmbeddingProvider) else "mock"
-        print(f"[DomestiK] Embedding Service initialized: {mode}")
+        print(f"[CrossedArts] Embedding Service initialized: {mode}")
 
     @classmethod
     def initialize_from_env(cls, client=None) -> None:
@@ -154,7 +160,7 @@ class EmbeddingService:
             vector = cls.get_embedding(clean_text)
             vector_json = json.dumps(vector)
         except Exception as e:
-            print(f"[DomestiK] Embedding error for {entity_type}:{entity_id}: {e}")
+            print(f"[CrossedArts] Embedding error for {entity_type}:{entity_id}: {e}")
             return
 
         if existing:
@@ -200,7 +206,7 @@ class EmbeddingService:
                 try:
                     cls.index_entity(db, note.id, "note", note.content, commit=False)
                 except Exception as e:
-                    print(f"[DomestiK] Error indexing note {note.id}: {e}")
+                    print(f"[CrossedArts] Error indexing note {note.id}: {e}")
             db.commit()
         
         # Similar for transcript segments and content index

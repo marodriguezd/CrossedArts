@@ -68,25 +68,33 @@ class LLMService:
                     max_tokens=2048,
                 )
             except ImportError:
-                print("[DomestiK] langchain-openai not installed. Using mock LLM.")
+                print("[CrossedArts] langchain-openai not installed. Using mock LLM.")
                 cls._chat_model = None
         elif provider == "ollama":
             try:
-                from langchain_community.llms import Ollama
-                base_url = settings.ollama_api_url.replace("/api/generate", "")
-                cls._chat_model = Ollama(
-                    model=settings.ollama_model,
-                    base_url=base_url,
-                )
+                try:
+                    from langchain_ollama import OllamaLLM
+                    base_url = settings.ollama_api_url.replace("/api/generate", "")
+                    cls._chat_model = OllamaLLM(
+                        model=settings.ollama_model,
+                        base_url=base_url,
+                    )
+                except ImportError:
+                    from langchain_community.llms import Ollama
+                    base_url = settings.ollama_api_url.replace("/api/generate", "")
+                    cls._chat_model = Ollama(
+                        model=settings.ollama_model,
+                        base_url=base_url,
+                    )
             except ImportError:
-                print("[DomestiK] langchain-community not installed. Using mock LLM.")
+                print("[CrossedArts] langchain-ollama/langchain-community not installed. Using mock LLM.")
                 cls._chat_model = None
         else:
             cls._chat_model = None  # Mock mode
 
         cls._initialized = True
         mode = provider if cls._chat_model else "mock"
-        print(f"[DomestiK] LLM Service initialized: {mode}")
+        print(f"[CrossedArts] LLM Service initialized: {mode}")
 
     @classmethod
     def initialize_from_env(cls, client=None) -> None:
@@ -129,7 +137,7 @@ class LLMService:
             result = await cls._chat_model.ainvoke(messages)
             return result.content
         except Exception as e:
-            print(f"[DomestiK] LLM error: {e}. Falling back to mock.")
+            print(f"[CrossedArts] LLM error: {e}. Falling back to mock.")
             return cls._mock_response(prompt)
 
     @classmethod
@@ -151,7 +159,7 @@ class LLMService:
             result = await structured_model.ainvoke(messages)
             return result
         except Exception as e:
-            print(f"[DomestiK] LLM structured output error: {e}")
+            print(f"[CrossedArts] LLM structured output error: {e}")
             return None
 
     @classmethod
@@ -174,7 +182,7 @@ class LLMService:
                 if chunk.content:
                     yield chunk.content
         except Exception as e:
-            print(f"[DomestiK] LLM stream error: {e}")
+            print(f"[CrossedArts] LLM stream error: {e}")
             yield cls._mock_response(prompt)
 
     @classmethod
@@ -200,7 +208,7 @@ class LLMService:
         elif "flashcard" in prompt_lower:
             return '[{"front":"Pregunta de ejemplo","back":"Respuesta de ejemplo"}]'
         else:
-            return "Esta es una respuesta de ejemplo del Tutor de DomestiK (modo mock). Para obtener respuestas reales, configura un proveedor de LLM en ~/.domestik/.env"
+            return "Esta es una respuesta de ejemplo del Tutor de CrossedArts (modo mock). Para obtener respuestas reales, configura un proveedor de LLM en tu entorno o en ~/.crossedarts/.env"
 
     @classmethod
     def get_model_name(cls) -> str:

@@ -5,14 +5,18 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class DomestiKSettings(BaseSettings):
+class CrossedArtsSettings(BaseSettings):
     """
-    Centralized configuration for DomestiK.
-    Loads from ~/.domestik/.env automatically.
+    Centralized configuration for CrossedArts.
+    Loads from ~/.crossedarts/.env or legacy ~/.domestik/.env automatically.
     All values can be overridden via environment variables.
     """
     model_config = SettingsConfigDict(
-        env_file=str(Path.home() / ".domestik" / ".env"),
+        env_file=str(
+            (Path.home() / ".crossedarts" / ".env")
+            if (Path.home() / ".crossedarts" / ".env").exists()
+            else (Path.home() / ".domestik" / ".env")
+        ),
         env_file_encoding="utf-8",
         extra="ignore",
         env_file_optional=True,  # Don't fail if .env doesn't exist
@@ -46,7 +50,7 @@ class DomestiKSettings(BaseSettings):
     # === LangChain (optional) ===
     langchain_tracing_v2: bool = Field(default=False, description="Enable LangSmith tracing")
     langchain_api_key: str = Field(default="", description="LangSmith API key")
-    langchain_project: str = Field(default="domestik", description="LangSmith project name")
+    langchain_project: str = Field(default="crossedarts", description="LangSmith project name")
 
     def model_post_init(self, __context) -> None:
         """Auto-compute derived fields after initialization."""
@@ -56,18 +60,29 @@ class DomestiKSettings(BaseSettings):
 
         # Auto-compute database_url if not explicitly set
         if not self.database_url:
-            db_path = self.data_dir / "domestik.db"
+            db_path = self.db_path
             object.__setattr__(self, 'database_url', f"sqlite:///{db_path}")
 
     @property
     def data_dir(self) -> Path:
-        """User data directory: ~/.domestik/"""
-        return Path.home() / ".domestik"
+        """
+        User data directory.
+        Defaults to ~/.crossedarts/, with fallback to ~/.domestik/ if existing.
+        """
+        legacy_dir = Path.home() / ".domestik"
+        primary_dir = Path.home() / ".crossedarts"
+        if legacy_dir.exists() and not primary_dir.exists():
+            return legacy_dir
+        return primary_dir
 
     @property
     def db_path(self) -> Path:
         """Path to the SQLite database file."""
-        return self.data_dir / "domestik.db"
+        legacy_db = self.data_dir / "domestik.db"
+        primary_db = self.data_dir / "crossedarts.db"
+        if legacy_db.exists() and not primary_db.exists():
+            return legacy_db
+        return primary_db
 
     @property
     def media_dir(self) -> Path:
@@ -91,5 +106,7 @@ class DomestiKSettings(BaseSettings):
         self.covers_dir.mkdir(parents=True, exist_ok=True)
 
 
-# Singleton instance
-settings = DomestiKSettings()
+# Singleton instance and backward-compatibility alias
+settings = CrossedArtsSettings()
+DomestiKSettings = CrossedArtsSettings
+

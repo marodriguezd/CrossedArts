@@ -68,7 +68,7 @@ CrossedArts ejecuta un motor SQLite compilado a WebAssembly (`sql.js`) directame
   * `note`: Anotaciones de estudio enriquecidas con etiquetas y vinculación contextual.
   * `flashcard`: Tarjetas nemotécnicas con métricas de repetición espaciada.
   * `concept`, `knowledge_connection`: Nodos y aristas direccionales ponderadas del grafo de conocimiento.
-  * `learning_session`: Registro cronológico y duración de sesiones de estudio.
+  * `learning_session`: Sesiones de estudio unificadas (modo, inicio/fin, duración, tarjetas repasadas, preguntas respondidas, aciertos, recurso asociado y estado `active`/`completed`/`cancelled`). Es el único historial de aprendizaje, por lo que no se duplica la infraestructura de progreso.
 
 ### 3.2. File System Access API: Integración de Carpetas Locales
 Uno de los mayores retos de los LMS basados en navegador es la gestión de cursos con gigabytes de vídeo en alta resolución. 
@@ -77,7 +77,9 @@ CrossedArts incorpora la **File System Access API** (`window.showDirectoryPicker
 * El servicio `localMediaService.ts` recorre recursivamente el directorio, descubre archivos de medios soportados (`.mp4`, `.webm`, etc.) y aplica reglas de emparejamiento deterministas (por ruta relativa o por tallo de título/archivo).
 * Los reproductores de vídeo consumen streams efímeros en memoria (`URL.createObjectURL(file)`) que se revocan proactivamente al cambiar de lección o salir del curso. Los handles nativos y URLs temporales nunca se persisten en SQLite, garantizando aislamiento estricto y cero duplicación de almacenamiento.
 
-### 3.3. Centro de Repaso Cognitivo: Algoritmo SuperMemo-2 (SM-2)
+### 3.3. Centro de Estudio Unificado: Algoritmo SuperMemo-2 (SM-2)
+Las interacciones de estudio de CrossedArts se articulan como un **flujo coherente**: una sesión de estudio local puede repasar tarjetas pendientes con SM-2, plantear preguntas de práctica fundamentadas y finalizar con un resumen de progreso. Existen tres modalidades deterministas (`flashcards`, `practice` y `mixed`), sin algoritmos adaptativos ni gamificación.
+
 La memoria humana sigue la curva del olvido descubierta por Hermann Ebbinghaus. Para contrarrestar la pérdida de retención, CrossedArts implementa el algoritmo matemático **SuperMemo-2 (SM-2)**:
 * **Calificaciones de Repaso (Grades 0 a 5):**
   * `0`: Apagón mental absoluto.
@@ -89,13 +91,38 @@ La memoria humana sigue la curva del olvido descubierta por Hermann Ebbinghaus. 
 * **Cálculo de Intervalos y Factor de Facilidad:**
   $$\text{EF}' = \max\left(1.3, \text{EF} + (0.1 - (5 - q) \times (0.08 + (5 - q) \times 0.02))\right)$$
   Donde $q$ es la calificación obtenida y $\text{EF}$ es el Ease Factor (iniciado en 2.5). Los intervalos crecen exponencialmente para fijar el conocimiento en la memoria de largo plazo.
+* **Ciclo de vida de la sesión:** `idle → starting → active → paused → completed`, con cancelación segura (`cancelled`). Cada repaso se persiste de inmediato en SQLite, de modo que una recarga del navegador no los pierde; la sesión nunca se reporta como completada si la persistencia falla. Las preguntas de práctica son efímeras por defecto y solo los contadores agregados se incorporan al historial local.
+* **Integridad de la racha:** una sesión solo cuenta si hubo actividad real de estudio, varias sesiones del mismo día cuentan como un único día, los registros con fecha futura no cuentan y se mantiene el cálculo determinista existente.
 
-### 3.4. Grafo de Conocimiento Interactivo (2D Force-Directed)
-Impulsado por `vis-network`, el grafo de conocimiento renderiza un mapa visual conceptual con simulación física dinámica:
-* Permite descubrir conexiones transversales entre lecciones de cursos técnicos, capítulos de libros y conceptos fundamentales.
-* Los nodos representan conceptos o recursos formativos y las aristas representan relaciones tipadas (`requires`, `builds_on`, `related_to`) con pesos de afinidad.
+### 3.4. Espacio de Trabajo de la Lección (Unidad Central de Aprendizaje)
+La lección deja de ser solo una fila de metadatos para convertirse en el lugar donde realmente ocurre el aprendizaje. Todo se construye sobre el modelo relacional existente, sin crear un almacén de contenido paralelo.
+* **Contenido editable:** la tabla `lesson` incorpora un campo `content` (texto plano / Markdown) añadido por migración idempotente. Se muestra como datos y nunca se interpreta como HTML arbitrario.
+* **Panel único:** título, contexto de módulo/curso, estado, duración, contenido, notas, recursos, medios locales, conceptos y progreso conviven en `components/lesson/LessonWorkspace.tsx`.
+* **Ordenación determinista:** `Subir`/`Bajar` reordena las lecciones de un módulo normalizando posiciones a `1..N` sin duplicados y recalculando los totales del curso mediante `recalculateCourseTotals()`.
+* **Progreso honesto:** `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` se derivan de actividad real (contenido propio, notas asociadas, relaciones explícitas) más el indicador de finalización existente. No se inventa ningún porcentaje sin significado subyacente.
+* **Continuar aprendiendo:** una acción determinista selecciona la primera lección incompleta por orden de módulo/lección (o la última si el curso está completo). Sin puntuaciones de recomendación ni aprendizaje adaptativo.
+* **Contenido como texto canónico:** el contenido de la lección participa en la recuperación léxica y en el chunking semántico con SHA-256. Editar una lección invalida únicamente su fragmento, no todo el índice.
+* **Estudio local:** estudiar, repasar, practicar, explicar y generar flashcards reutilizan el flujo existente (RAG con ámbito + WebLLM) sin rutas específicas de lección.
 
-### 3.5. Tutor Académico Pedagógico (Asistente Híbrido con RAG Semántico Local)
+### 3.5. Grafo de Conocimiento 2.0 (2D Force-Directed, Local-First)
+Impulsado por `vis-network` y cargado de forma perezosa, el grafo de conocimiento ya no es una visualización aislada de conceptos: representa la estructura real de aprendizaje almacenada en SQLite.
+* **Tipos de nodo:** `course`, `book`, `module`, `lesson`, `note`, `concept` y `resource` (documentos importados). Las flashcards y las sesiones de estudio no se exponen como nodos porque no representan conocimiento estructurado.
+* **Aristas estructurales derivadas:** `course → contains → module`, `module → contains → lesson`, `lesson → references → note` y `note → about → resource` se calculan deterministamente desde las claves foráneas existentes (no se duplican relaciones).
+* **Relaciones explícitas del usuario:** se almacenan en la tabla canónica `knowledge_connection` con tipos validados (`contains`, `references`, `teaches`, `discusses`, `related_to`, `requires`, `builds_on`, `about`). La creación manual valida existencia de extremos, ausencia de auto-enlaces y de duplicados; las relaciones colgantes se podan al eliminar recursos.
+* **Navegación e integración de estudio:** cada nodo permite volver al curso, lección, nota o recurso correspondiente y lanzar las acciones de estudio/revisión/práctica/explicación existentes. El grafo es una capa de navegación alrededor del sistema de aprendizaje, no una segunda aplicación.
+* **Accesibilidad:** además del lienzo, el panel de detalle ofrece una representación textual seleccionable de las relaciones del nodo, de modo que comprender el grafo no depende solo de la inspección visual.
+* **Integración con el RAG:** la recuperación híbrida puede recibir un ámbito (recurso o lección activos) y aplicar un impulso determinista y acotado al recurso seleccionado y sus vecinos directos, sin sobreescribir arbitrariamente la relevancia léxica/semántica.
+
+### 3.6. Vistas de Detalle de Recursos
+Cada entidad de aprendizaje tiene un destino coherente. La búsqueda local y el grafo convierten cualquier resultado o nodo en una acción determinista sin depender de IA ni de red.
+* **Destinos por tipo:** curso (`CourseDetail`), lección (lección activa dentro del curso), nota (`NotesView`), y libro, recurso importado y concepto (vista unificada `ResourceDetail`).
+* **Detalle del recurso:** `ResourceDetail` muestra título, tipo, categoría, estado, autor, archivo, huella SHA-256, fecha de importación, número de fragmentos indexados y la sección "Relacionado". El contenido extraído se inspecciona como texto plano (datos), nunca como HTML arbitrario.
+* **Relaciones canónicas:** la sección "Relacionado" se construye exclusivamente con relaciones explícitas (`knowledge_connection`) y derivadas de claves foráneas. No existe descubrimiento semántico automático de relaciones.
+* **Ámbito de lección:** iniciar el estudio desde una lección prioriza esa lección y su contenido asociado, y el ámbito se registra en `learning_session.lesson_id`, de modo que el historial identifica lo estudiado sin crear una segunda tabla.
+* **Confirmaciones accesibles:** las acciones destructivas (curso, módulo, lección, relación) usan un `ConfirmDialog` reutilizable con consecuencia explícita, Escape para cancelar y gestión de foco.
+* **Local-first:** navegación, detalle, búsqueda y edición de relaciones funcionan sin backend, WebGPU, embeddings ni WebLLM.
+
+### 3.7. Tutor Académico Pedagógico (Asistente Híbrido con RAG Semántico Local)
 El asistente virtual (`aiService.ts`) ofrece cuatro modalidades pedagógicas de interacción:
 1. **Modo Local On-Device (WebLLM + WebGPU):** Inferencia 100% en dispositivo mediante modelos SLM como `Qwen3 1.7B`, `Llama 3.2 1B` o `SmolLM2 1.7B`. Descarga los pesos a la caché de IndexedDB y no requiere servidor ni clave de API.
 2. **RAG Local Híbrido con Embeddings en Navegador:** Recuperación de contexto combinando similitud léxica con embeddings matemáticos on-device (`Xenova/multilingual-e5-small` basado en `intfloat/multilingual-e5-small`, licencia MIT, en ONNX). Los vectores se aíslan en la base de datos `CrossedArts_Embeddings` de IndexedDB con versionado de pipeline (`v1.1-e5-sha256`) y los fragmentos se invalidan de forma incremental mediante hashing criptográfico SHA-256 (`crypto.subtle`). Aplica prefijos canónicos (`query: ` / `passage: `) y normalización L2 estricta a 384 dimensiones.

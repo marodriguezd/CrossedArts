@@ -16,7 +16,9 @@ test('5.2 aiService.saveSettings persists configuration updates', () => {
     ollamaUrl: 'http://127.0.0.1:11434',
     ollamaModel: 'mistral:latest',
     apiKey: '',
-    apiModel: 'gpt-4o'
+    apiModel: 'gpt-4o',
+    localModelId: 'Qwen3-1.7B-q4f16_1-MLC',
+    localAiEnabled: false
   };
 
   aiService.saveSettings(customConfig);
@@ -30,7 +32,9 @@ test('5.2 aiService.saveSettings persists configuration updates', () => {
     ollamaUrl: 'http://localhost:11434',
     ollamaModel: 'llama3:8b',
     apiKey: '',
-    apiModel: 'gemini-1.5-flash'
+    apiModel: 'gpt-4o-mini',
+    localModelId: 'Qwen3-1.7B-q4f16_1-MLC',
+    localAiEnabled: false
   });
 });
 
@@ -40,11 +44,13 @@ test('5.3 aiService.askTutor executes 100% offline with zero network requests', 
   ];
 
   const startTime = Date.now();
-  const reply = await aiService.askTutor(messages, 'C1: React 18');
+  const res = await aiService.askTutor(messages, 'C1: React 18');
   const elapsed = Date.now() - startTime;
 
-  assert.ok(reply.length > 20, 'Reply should contain substantial educational content');
-  assert.ok(reply.includes('SM-2') || reply.includes('repaso') || reply.includes('Recuperación'), 'Should mention SM-2 or active recall');
+  assert.ok(res.answer.length > 20, 'Reply should contain substantial educational content');
+  assert.ok(res.answer.includes('SM-2') || res.answer.includes('repaso') || res.answer.includes('Recuperación'), 'Should mention SM-2 or active recall');
+  assert.strictEqual(res.providerUsed, 'demo');
+  assert.strictEqual(res.isLocalOnDevice, true);
   assert.ok(elapsed < 1000, `Execution should complete swiftly offline, took ${elapsed}ms`);
 });
 
@@ -53,12 +59,12 @@ test('5.4 aiService.askTutor provides domain-specific answers for technical topi
     { role: 'user', content: 'Explícame el hook useTransition en react' }
   ];
 
-  const reactReply = await aiService.askTutor(reactMessages, 'React 18 & TypeScript Masterclass');
-  assert.ok(reactReply.includes('React 18') || reactReply.includes('Fiber'), 'Should answer React-specific concepts');
+  const reactRes = await aiService.askTutor(reactMessages, 'React 18 & TypeScript Masterclass');
+  assert.ok(reactRes.answer.includes('React 18') || reactRes.answer.includes('Fiber'), 'Should answer React-specific concepts');
 
   const generalMessages: AIChatMessage[] = [
     { role: 'user', content: '¿Qué debería estudiar a continuación?' }
   ];
-  const generalReply = await aiService.askTutor(generalMessages, 'Bases de Datos');
-  assert.ok(generalReply.includes('Tutor CrossedArts') || generalReply.includes('CrossedArts'), 'Should return structured tutor feedback');
+  const generalRes = await aiService.askTutor(generalMessages, 'Bases de Datos');
+  assert.ok(generalRes.answer.includes('Tutor CrossedArts') || generalRes.answer.includes('CrossedArts'), 'Should return structured tutor feedback');
 });

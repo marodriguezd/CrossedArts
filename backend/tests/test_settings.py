@@ -4,12 +4,16 @@ from pathlib import Path
 
 def test_data_dir_property():
     from backend.app.core.settings import settings
-    assert settings.data_dir == Path.home() / ".domestik"
+    # Default is ~/.crossedarts (or fallback ~/.domestik if existing)
+    assert settings.data_dir in (Path.home() / ".crossedarts", Path.home() / ".domestik")
 
 
 def test_db_path_property():
     from backend.app.core.settings import settings
-    assert settings.db_path == settings.data_dir / "domestik.db"
+    assert settings.db_path in (
+        settings.data_dir / "crossedarts.db",
+        settings.data_dir / "domestik.db"
+    )
 
 
 def test_media_dir_property():
@@ -57,7 +61,7 @@ def test_default_host():
 def test_database_url_auto_computed():
     from backend.app.core.settings import settings
     assert "sqlite:///" in settings.database_url
-    assert "domestik.db" in settings.database_url
+    assert "crossedarts.db" in settings.database_url or "domestik.db" in settings.database_url
 
 
 def test_api_base_url_auto_computed():

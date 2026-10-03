@@ -5,6 +5,7 @@ from sqlalchemy import ForeignKey, String, Integer, Float, DateTime, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
+from backend.app.core.utils import utc_now_naive
 
 class ExtractedMetadata(Base):
     __tablename__ = "extracted_metadata"
@@ -21,7 +22,7 @@ class ExtractedMetadata(Base):
     page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     toc: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True) # Table of contents
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True) # Full extracted text content
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     # Relación
     media_asset: Mapped["MediaAsset"] = relationship("MediaAsset", back_populates="extracted_metadata")
@@ -38,7 +39,7 @@ class Transcript(Base):
         unique=True
     )
     language: Mapped[str] = mapped_column(String(10), default="es", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     # Relaciones
     media_asset: Mapped["MediaAsset"] = relationship("MediaAsset", back_populates="transcript")
@@ -81,7 +82,7 @@ class ContentIndex(Base):
     )
     section_identifier: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. "page_1", "transcript"
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     # Relación
     media_asset: Mapped["MediaAsset"] = relationship("MediaAsset")
@@ -96,7 +97,7 @@ class EmbeddingRecord(Base):
     vector: Mapped[List[float]] = mapped_column(JSON, nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     hash_content: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
 
 class Quiz(Base):
@@ -110,7 +111,7 @@ class Quiz(Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     questions: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, nullable=False) # List of question objects
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     # Relación
     resource: Mapped["LearningResource"] = relationship("LearningResource")

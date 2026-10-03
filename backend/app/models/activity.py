@@ -5,6 +5,7 @@ from sqlalchemy import ForeignKey, String, Integer, DateTime, Boolean, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
+from backend.app.core.utils import utc_now_naive
 from backend.app.models.base import TimestampMixin
 
 class LearningSession(Base):
@@ -18,7 +19,7 @@ class LearningSession(Base):
     )
     started_at: Mapped[datetime] = mapped_column(
         DateTime, 
-        default=datetime.utcnow, 
+        default=utc_now_naive, 
         nullable=False
     )
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

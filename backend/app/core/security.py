@@ -59,7 +59,7 @@ def is_safe_path(path: Union[str, Path]) -> bool:
         if in_workspace:
             parts = Path(resolved_path).parts
             for part in parts:
-                if part.startswith('.') and part != '.domestik':
+                if part.startswith('.') and part not in ('.domestik', '.crossedarts'):
                     return False
                 if part in BLOCKED_HIDDEN_DIR_NAMES:
                     return False
@@ -76,10 +76,10 @@ def is_safe_path(path: Union[str, Path]) -> bool:
                     return False
                 
         # 3. Validar que no contenga carpetas/archivos ocultos en sus componentes
-        # Bloquea cualquier parte que empiece con '.' excepto '.domestik'
+        # Bloquea cualquier parte que empiece con '.' excepto '.domestik' y '.crossedarts'
         parts = Path(resolved_path).parts
         for part in parts:
-            if part.startswith('.') and part != '.domestik':
+            if part.startswith('.') and part not in ('.domestik', '.crossedarts'):
                 return False
             if part in BLOCKED_HIDDEN_DIR_NAMES:
                 return False
