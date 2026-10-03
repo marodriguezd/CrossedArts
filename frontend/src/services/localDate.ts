@@ -30,9 +30,17 @@ export interface LocalDayResolution {
   utcOffsetModifier: string;
 }
 
-/** Formatea un número de minutos como modificador de fecha de SQLite. */
+/**
+ * Formatea un número de minutos como modificador de fecha de SQLite.
+ *
+ * IMPORTANTE: para un desplazamiento de 0 NO se devuelve una cadena vacía. SQLite
+ * trata `''` como un modificador inválido y hace que `date(x, '')` devuelva NULL
+ * para TODAS las filas, lo que dejaba el resumen de "hoy" y la racha siempre a
+ * cero para cualquier usuario en UTC (huso +00:00). `'0 minutes'` es válido y
+ * equivale a no desplazar nada.
+ */
 function formatUtcOffsetModifier(offsetMinutes: number): string {
-  if (offsetMinutes === 0) return '';
+  if (offsetMinutes === 0) return '0 minutes';
   const sign = offsetMinutes > 0 ? '+' : '-';
   return `${sign}${Math.abs(offsetMinutes)} minutes`;
 }

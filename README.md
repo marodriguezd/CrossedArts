@@ -218,7 +218,7 @@ npm run dev
 Open `http://localhost:5173` in your browser.
 
 ### Run Integrity Tests (Zero-Web-Access Test Fleet)
-The project includes 184 tests verifying offline SQLite initialization, SM-2 math, unified study sessions, the lesson workspace (content editing, ordering, progress, continuation), knowledge graph integrity and migrations, resource organization and detail views, lesson-scoped study with note isolation and study-history lesson scope, relational integrity (foreign key enforcement, ON DELETE behaviour, graph index migration), accessible confirmations, binary/JSON exports, local AI, hybrid RAG, document ingestion, grounded study generation, concurrency-safe database initialization, local-calendar-day streak logic, multi-tab coordination, and JSON backup validation:
+The project includes 185 tests verifying offline SQLite initialization, SM-2 math, unified study sessions, the lesson workspace (content editing, ordering, progress, continuation), knowledge graph integrity and migrations, resource organization and detail views, lesson-scoped study with note isolation and study-history lesson scope, relational integrity (foreign key enforcement, ON DELETE behaviour, graph index migration), accessible confirmations, binary/JSON exports, local AI, hybrid RAG, document ingestion, grounded study generation, concurrency-safe database initialization, local-calendar-day streak logic, multi-tab coordination, and JSON backup validation:
 
 ```bash
 cd frontend

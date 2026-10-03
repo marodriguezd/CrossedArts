@@ -256,14 +256,45 @@ test('16.12 Local day resolution is deterministic and honours an explicit UTC of
   assert.equal(madrid.day, '2026-10-04');
   assert.equal(madrid.utcOffsetModifier, '+120 minutes');
 
+  // Desplazamiento cero: el modificador DEBE ser '0 minutes', nunca ''.
+  // SQLite trata '' como modificador inválido y `date(x, '')` devuelve NULL para
+  // todas las filas, lo que ponia la racha y el resumen de "hoy" a cero para
+  // cualquier usuario en UTC. Este fallo solo se manifiestaba en husos con
+  // desplazamiento distinto de cero, por eso se fija de forma explicita.
   const utc = resolveLocalDay(instant, '+00:00');
   assert.equal(utc.day, '2026-10-03', 'Sin desplazamiento el día es el UTC');
-  assert.equal(utc.utcOffsetModifier, '');
+  assert.equal(utc.utcOffsetModifier, '0 minutes');
+  assert.notEqual(utc.utcOffsetModifier, '', 'Un modificador vacío haría fallar la consulta en SQLite');
 
   // Un huso negativo también cruza el límite de día correctamente.
   const ny = resolveLocalDay(new Date('2026-10-04T02:15:00Z'), '-05:00');
   assert.equal(ny.day, '2026-10-03');
   assert.equal(ny.utcOffsetModifier, '-300 minutes');
+});
+
+test('16.12b A zero UTC offset still matches today sessions in SQLite', async () => {
+  // Regresión del defecto anterior: con el modificador vacío, `date(started_at, ?)`
+  // devolvía NULL en UTC y ni el resumen de hoy ni la racha encontraban nada.
+  await dbBridge.init();
+  const db = dbBridge.getDatabase();
+
+  const { day, utcOffsetModifier } = resolveLocalDay(new Date(), '+00:00');
+  db.run(
+    `INSERT INTO learning_session (id, resource_id, started_at, duration_minutes, mode, cards_reviewed, status)
+     VALUES ('test-ss-utc-16', 'c1-react', datetime('now'), 30, 'flashcards', 4, 'completed')`
+  );
+
+  const matched = db.exec(
+    `SELECT COUNT(*) FROM learning_session WHERE date(started_at, ?) = ? AND id = 'test-ss-utc-16'`,
+    [utcOffsetModifier, day]
+  );
+  assert.equal(Number(matched[0].values[0][0]), 1, 'Una sesión de hoy debe coincidir también con desfase 0');
+
+  // Y el modificador no puede ser una cadena vacía (sería NULL en SQLite).
+  assert.notEqual(utcOffsetModifier, '', 'El modificador de desfase cero no puede estar vacío');
+
+  db.run("DELETE FROM learning_session WHERE id = 'test-ss-utc-16'");
+  await dbBridge.persist();
 });
 
 test('16.13 parseUtcOffsetToMinutes rejects malformed offsets', () => {

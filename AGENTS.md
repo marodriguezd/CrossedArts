@@ -122,7 +122,7 @@ npm install
 # Iniciar servidor de desarrollo en caliente (Vite)
 npm run dev
 
-# Ejecutar la flota de pruebas de integridad (184/184 tests)
+# Ejecutar la flota de pruebas de integridad (185/185 tests)
 npm test
 # O directamente mediante el test runner de Node:
 node --test --experimental-strip-types tests/*.test.ts
@@ -134,7 +134,7 @@ npm run typecheck
 npx vite build
 ```
 
-> **IMPORTANTE:** La flota de 184 pruebas de frontend valida:
+> **IMPORTANTE:** La flota de 185 pruebas de frontend valida:
 > 1. Inicialización de SQLite WASM sin acceso a la red (0 web requests).
 > 2. Precisión del algoritmo de repetición espaciada SuperMemo-2 (`domainLogic.ts` & SM-2).
 > 3. Operaciones CRUD, cálculo de racha real y validación pura de lectura de libros en `dao.ts` y `domainLogic.ts`.
