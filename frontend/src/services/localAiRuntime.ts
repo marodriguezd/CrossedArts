@@ -529,7 +529,7 @@ export class LocalAiRuntime {
    * Indexación en segundo plano tras importar contenido. Nunca lanza: si falla,
    * la recuperación léxica sigue funcionando.
    */
-  public scheduleIndexing(provider: LocalProviderId = 'local'): void {
+  public scheduleIndexing(provider: LocalProviderId): void {
     void this.ensureSemanticIndexReady(provider).catch(() => { /* degradación silenciosa y segura */ });
   }
 
