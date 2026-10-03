@@ -1,5 +1,6 @@
 import React, { useState, lazy, Suspense } from 'react';
 import { dao } from './db/dao.ts';
+import { dbBridge } from './db/sqliteBridge.ts';
 import { Shell } from './components/layout/Shell.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
 import { Library } from './pages/Library.tsx';
@@ -229,10 +230,19 @@ export const App: React.FC = () => {
             >
               Recargar la aplicación
             </Button>
+            {initError.code === 'corrupt-storage' && (
+              <Button
+                variant="outline"
+                onClick={() => void dbBridge.exportPersistedRecovery()}
+              >
+                Guardar copia de recuperación
+              </Button>
+            )}
           </div>
           <p className="text-micro text-faint">
-            Tus datos no se han eliminado. Si el problema continúa, restaura un respaldo desde
-            Ajustes una vez que la aplicación vuelva a cargar.
+            Tus datos persistidos no se eliminan automáticamente. Cuando una base guardada no
+            puede abrirse de forma segura, puedes conservar una copia de recuperación antes de
+            intentar reparar o restaurar los datos.
           </p>
         </div>
       </div>
