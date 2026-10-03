@@ -81,7 +81,8 @@ CrossedArts/
 ├── .github/workflows/deploy.yml    # Pipeline CI/CD para GitHub Pages
 ├── .gitignore                      # Reglas de exclusión de Git
 ├── ABOUT.md                        # Manifiesto, filosofía y arquitectura detallada
-└── README.md                       # Documentación pública del repositorio
+├── README.md                       # Documentación principal en inglés
+└── README.es.md                    # Documentación en español
 ```
 
 ---

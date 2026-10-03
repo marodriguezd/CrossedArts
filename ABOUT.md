@@ -1,6 +1,14 @@
 # 🏛️ CrossedArts — Acerca del Proyecto y Manifiesto
 
+<p align="center">
+  <a href="https://marodriguezd.github.io/CrossedArts/">
+    <img src="https://img.shields.io/badge/🚀%20Web%20App-Acceder%20a%20CrossedArts%20en%20GitHub%20Pages-7c3aed?style=for-the-badge&logo=githubpages&logoColor=white" alt="Acceder a GitHub Pages" />
+  </a>
+</p>
+
 > **"Un Learning Operating System personal, libre, privado y local-first donde el conocimiento pertenece exclusivamente a quien lo cultiva."**
+
+🌐 **Despliegue Oficial en Vivo:** [https://marodriguezd.github.io/CrossedArts/](https://marodriguezd.github.io/CrossedArts/)
 
 ---
 

@@ -1,7 +1,12 @@
 # 🏛️ CrossedArts — Learning Operating System
 
 <p align="center">
-  <img src="https://img.shields.io/badge/GitHub%20Pages-Live%20Deploy-7c3aed?style=flat&logo=githubpages&logoColor=white" alt="GitHub Pages" />
+  <a href="https://marodriguezd.github.io/CrossedArts/">
+    <img src="https://img.shields.io/badge/🚀%20Web%20App-Try%20on%20GitHub%20Pages-7c3aed?style=for-the-badge&logo=githubpages&logoColor=white" alt="Try on GitHub Pages" />
+  </a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Frontend-Vite%20%2B%20React%2019%20%2B%20TS-61dafb?style=flat&logo=react" alt="React 19" />
   <img src="https://img.shields.io/badge/Database-SQLite%20WASM%20%2B%20IndexedDB-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite WASM" />
   <img src="https://img.shields.io/badge/Active%20Recall-SuperMemo--2%20(SM--2)-10b981" alt="SM-2 Algorithm" />
@@ -10,164 +15,173 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License MIT" />
 </p>
 
----
-
-**CrossedArts** es un **Learning Operating System** (sistema operativo de aprendizaje personal) *local-first*, modular y diseñado con arquitectura **GitHub Pages First**.
-
-Permite centralizar cursos multimedia, libros técnicos, notas de estudio en Markdown, tarjetas nemotécnicas de repetición espaciada (**SuperMemo-2**) y un grafo de conocimiento interactivo 2D, ejecutando toda la base de datos relacional SQLite directamente dentro de tu navegador web sin requerir servidores ni suscripciones externas.
-
-Para una inmersión completa en la filosofía y diseño del sistema, consulta el documento [ABOUT.md](ABOUT.md).
+<p align="center">
+  <b>🇬🇧 English</b> • <a href="README.es.md">🇪🇸 Versión en Español</a>
+</p>
 
 ---
 
-## ✨ Características Principales
+🌐 **Live Application:** [https://marodriguezd.github.io/CrossedArts/](https://marodriguezd.github.io/CrossedArts/)
 
-### 1. Despliegue Estático en GitHub Pages (100% Client-Side)
-- Funciona como una Single Page Application (SPA) ultra rápida sin necesidad de levantar contenedores, servidores o servicios en la nube.
-- Despliegue continuo automatizado con GitHub Actions en `.github/workflows/deploy.yml`.
+**CrossedArts** is a personal, modular, local-first **Learning Operating System (LMS)** designed with a **GitHub Pages First** architecture.
 
-### 2. Motor SQLite en WebAssembly + IndexedDB
-- Motor SQLite compilado a WebAssembly (`sql.js`) ejecutado en el navegador.
-- Sincronización transparente con `IndexedDB` para persistir los datos permanentemente entre sesiones.
-- Esquema relacional completo (`learning_resource`, `course`, `book`, `module`, `lesson`, `note`, `flashcard`, `concept`, `knowledge_connection`, `learning_session`).
-- Portabilidad garantizada: exportación e importación de bases de datos binarias `.sqlite` / `.db` y volcados universales en formato JSON.
+It centralizes structured multimedia courses, technical books, Markdown study notes, spaced repetition flashcards powered by the **SuperMemo-2 (SM-2)** algorithm, and an interactive 2D knowledge graph—running an entire relational SQLite database directly inside your web browser with zero mandatory backend servers or cloud subscriptions.
 
-### 3. Acceso a Medios Locales sin Duplicación de Disco
-- Integración con la **File System Access API** (`window.showDirectoryPicker`) en navegadores compatibles.
-- Permite seleccionar tus carpetas locales de cursos en disco y reproducir vídeos en streaming mediante blobs de memoria efímeros, sin saturar la memoria ni duplicar gigabytes en tu almacenamiento.
-
-### 4. Centro de Repaso Activo (Active Recall & Algoritmo SM-2)
-- Sistema de tarjetas de estudio con preguntas y respuestas.
-- Algoritmo matemático **SuperMemo-2 (SM-2)** que calcula automáticamente el Factor de Facilidad (*Ease Factor*), repeticiones e intervalos óptimos según tu curva del olvido.
-
-### 5. Grafo de Conocimiento Interactivo 2D
-- Visualización conceptual mediante simulación física de partículas impulsada por `vis-network`.
-- Descubre y navega las conexiones entre conceptos teóricos, cursos y temas de especialización.
-
-### 6. Tutor Académico RAG Híbrido
-- Asistente de estudio accesible desde cualquier vista de la aplicación.
-- **Modo Demo Heurístico:** 100% desconectado, cero llamadas de red y respuestas socráticas adaptadas al contexto de estudio.
-- **Modo Ollama Local:** Conexión directa a tus modelos LLM locales (`http://localhost:11434`) con privacidad absoluta.
-- **Modo Proveedores Externos:** Compatible con APIs de OpenAI y Gemini mediante clave almacenada de forma segura en tu navegador (`localStorage`).
-
-### 7. Backend Complementario (Opcional)
-- Servidor REST en `backend/` construido con **FastAPI**, **SQLAlchemy 2.0** y **Alembic**.
-- Diseñado para análisis avanzado, ingesta masiva por lotes (extracción de PDF, EPUB, metadatos y transcripciones de vídeo) y búsqueda semántica vectorial.
+For an in-depth dive into the system's philosophy, cognitive science foundations, and architecture, explore [ABOUT.md](ABOUT.md).
 
 ---
 
-## 📁 Estructura del Repositorio
+## ✨ Key Features
+
+### 1. 100% Client-Side Static Deployment (GitHub Pages First)
+- Runs entirely as a lightning-fast Single Page Application (SPA) without requiring containers or servers.
+- Automated CI/CD deployment via GitHub Actions in `.github/workflows/deploy.yml`.
+- Try it instantly without installing anything: [marodriguezd.github.io/CrossedArts](https://marodriguezd.github.io/CrossedArts/).
+
+### 2. In-Browser SQLite Engine (WASM + IndexedDB)
+- Full SQLite engine compiled to WebAssembly (`sql.js`) executing in the browser main thread.
+- Transparent synchronization with `IndexedDB` (`CrossedArts_IDB`) to persist relational states across sessions.
+- Full relational schema (`learning_resource`, `course`, `book`, `module`, `lesson`, `note`, `flashcard`, `concept`, `knowledge_connection`, `learning_session`).
+- Total data portability: native binary `.sqlite` / `.db` import/export and structured JSON backups.
+
+### 3. Local Media Streaming (Zero Disk Duplication)
+- Native integration with the **File System Access API** (`window.showDirectoryPicker`) for Chromium-based browsers (Chrome, Edge, Brave).
+- Mount your local course folders from your hard drive and stream video lessons using ephemeral in-memory object URLs without uploading large files or duplicating gigabytes of storage.
+
+### 4. Active Recall & Spaced Repetition (SuperMemo-2 Algorithm)
+- Interactive flashcard review center for rapid memory consolidation.
+- Mathematical **SuperMemo-2 (SM-2)** implementation calculating the Ease Factor (minimum 1.30), repetition streaks, and optimal review intervals based on the Hermann Ebbinghaus forgetting curve.
+
+### 5. Interactive 2D Knowledge Graph
+- Visual concept mapping with particle-physics force simulation powered by `vis-network`.
+- Map and navigate cross-cutting connections between academic concepts, course lessons, books, and study notes.
+
+### 6. Hybrid Pedagogical AI Tutor
+- Context-aware study assistant accessible from any view in the drawer.
+- **Offline Demo Mode:** 100% disconnected, zero network calls, offering Socratic answers and study advice.
+- **Local Ollama Mode:** Connects directly to local Ollama models (`http://localhost:11434`) for private offline inference.
+- **External API Providers:** Compatible with OpenAI and Gemini API keys stored securely in your browser's `localStorage`.
+
+### 7. Optional Python Backend Companion
+- Auxiliary REST API server in `backend/` built with **FastAPI**, **SQLAlchemy 2.0**, and **Alembic**.
+- Ideal for heavy batch ingestion (bulk PDF/EPUB extraction, video transcript processing) and semantic search with vector embeddings.
+
+---
+
+## 📁 Repository Map
 
 ```text
 CrossedArts/
-├── frontend/                     # Aplicación Web Client-Side (React 19 + Vite)
-│   ├── public/                   # Binarios WASM (sql-wasm.wasm) y recursos públicos
+├── frontend/                     # Client-Side Web Application (React 19 + Vite)
+│   ├── public/                   # WASM binary (sql-wasm.wasm) & favicon
 │   ├── src/
-│   │   ├── ai/                   # Servicio de tutor IA híbrido (aiService.ts)
-│   │   ├── components/           # Componentes de UI (Navbar, Asistente IA, etc.)
-│   │   ├── db/                   # Puente SQLite WASM, esquemas DDL, DAO y backups
-│   │   ├── pages/                # Vistas: Dashboard, Biblioteca, Repaso, Grafo, etc.
-│   │   └── types/                # Modelos de datos TypeScript (models.ts)
-│   └── tests/                    # Flota de pruebas de integración Zero-Web-Access (23 tests)
-├── backend/                      # Servidor API complementario opcional (Python / FastAPI)
-│   ├── alembic/                  # Migraciones de base de datos relacional
+│   │   ├── ai/                   # Hybrid AI tutor engine (aiService.ts)
+│   │   ├── components/           # UI components (Navbar, AIAssistantDrawer, etc.)
+│   │   ├── db/                   # SQLite WASM bridge, schema, DAO & backups
+│   │   ├── pages/                # Views: Dashboard, Library, ReviewCenter, Graph, etc.
+│   │   └── types/                # TypeScript domain models (models.ts)
+│   └── tests/                    # Zero-Web-Access test fleet (23 integration tests)
+├── backend/                      # Optional Python Backend Companion (FastAPI)
+│   ├── alembic/                  # Relational database migration scripts
 │   ├── app/
-│   │   ├── api/                  # Endpoints REST (/api/v1)
-│   │   ├── core/                 # Configuración, base de datos y utilidades
-│   │   ├── models/               # Modelos ORM de SQLAlchemy
-│   │   ├── schemas/              # Esquemas Pydantic
-│   │   └── services/             # Lógica de negocio (ingesta, embeddings, LLM, escáner)
-│   └── tests/                    # Pruebas unitarias y de integración de backend
-├── static/                       # Portadas y recursos multimedia compartidos
-├── .github/workflows/deploy.yml  # Automatización de despliegue a GitHub Pages
-├── ABOUT.md                      # Filosofía, arquitectura y diseño conceptual
-├── AGENTS.md                     # Guía técnica maestra para agentes y desarrolladores
-└── README.md                     # Esta documentación
+│   │   ├── api/                  # REST endpoints (/api/v1)
+│   │   ├── core/                 # Config, settings, database, utilities
+│   │   ├── models/               # SQLAlchemy ORM models
+│   │   ├── schemas/              # Pydantic schemas
+│   │   └── services/             # Ingestion, embeddings, LLM, scanner services
+│   └── tests/                    # Backend unit & integration tests
+├── static/                       # Covers & shared media assets
+├── .github/workflows/deploy.yml  # Automated GitHub Pages CI/CD pipeline
+├── ABOUT.md                      # Philosophy, architecture & manifesto
+├── AGENTS.md                     # Technical reference guide for agents and devs
+├── README.md                     # This English documentation
+└── README.es.md                  # Spanish documentation
 ```
 
 ---
 
-## 🚀 Inicio Rápido: Aplicación Web
+## 🚀 Quick Start: Web Application
 
-### Requisitos
-- **Node.js:** Versión 20 o superior
-- **Navegador Moderno:** Chrome, Edge, Brave o Firefox con soporte para WebAssembly
+### Prerequisites
+- **Node.js:** v20 or higher
+- **Modern Browser:** Chrome, Edge, Brave, or Firefox with WebAssembly support
 
-### Desarrollo Local
+### Local Development
 ```bash
-# 1. Clonar el repositorio
+# 1. Clone the repository
 git clone https://github.com/marodriguezd/CrossedArts.git
 cd CrossedArts/frontend
 
-# 2. Instalar dependencias
+# 2. Install dependencies
 npm install
 
-# 3. Iniciar el servidor de desarrollo
+# 3. Start Vite development server
 npm run dev
 ```
 
-La aplicación estará disponible inmediatamente en `http://localhost:5173`.
+Open `http://localhost:5173` in your browser.
 
-### Ejecutar Pruebas (Flota Zero-Web-Access)
-El proyecto incluye 23 pruebas de integridad que validan la inicialización de SQLite sin red, el algoritmo SM-2, los volcados binarios/JSON, y la seguridad offline:
+### Run Integrity Tests (Zero-Web-Access Test Fleet)
+The project includes 23 tests verifying offline SQLite initialization, SM-2 math, binary/JSON exports, and offline security:
 
 ```bash
 cd frontend
 npm test
-# O alternativamente con el runner nativo de Node:
+# Or execute directly via Node test runner:
 node --test --experimental-strip-types tests/*.test.ts
 ```
 
-### Compilar para Producción
+### Build & Local Production Preview
 ```bash
 cd frontend
 npm run build
+npm run preview
 ```
-Los archivos optimizados para publicación estática se generarán en `frontend/dist/`.
+Production assets are generated in `frontend/dist/`.
 
 ---
 
-## 🌐 Publicación en GitHub Pages
+## 🌐 GitHub Pages Deployment
 
-1. Haz un **Fork** o clona este repositorio en tu cuenta de GitHub.
-2. Ve a la pestaña **Settings** > **Pages** de tu repositorio.
-3. En la sección **Build and deployment** > **Source**, selecciona **GitHub Actions**.
-4. Cada `git push` a la rama `main` compilará y desplegará automáticamente la aplicación en `https://<tu-usuario>.github.io/<tu-repo>/`.
+1. Fork or push this repository to your GitHub account.
+2. Navigate to **Settings** > **Pages** in your GitHub repository.
+3. Under **Build and deployment** > **Source**, select **GitHub Actions**.
+4. Every push to the `main` branch will automatically build and publish the application to `https://<your-username>.github.io/<your-repo>/`.
 
 ---
 
-## 🐍 Backend Complementario (Opcional)
+## 🐍 Optional Backend Companion
 
-Si deseas utilizar el servidor Python para ingesta local masiva de archivos o búsqueda semántica:
+To run the optional Python FastAPI server for batch ingestion and semantic embeddings:
 
 ```bash
-# 1. Crear y activar entorno virtual en la raíz del proyecto
+# 1. Create and activate virtual environment at project root
 python -m venv .venv
-source .venv/bin/activate  # En Windows: .venv\Scripts\activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# 2. Instalar dependencias
+# 2. Install dependencies
 pip install -r backend/requirements.txt
 
-# 3. Aplicar migraciones de base de datos
+# 3. Run database migrations
 PYTHONPATH=. alembic -c backend/alembic.ini upgrade head
 
-# 4. Iniciar el servidor FastAPI (sirve la API y monta frontend/dist si está compilado)
+# 4. Start the FastAPI server (serves the API and mounts frontend/dist if built)
 python -m backend.app.main
 ```
-El servidor API se iniciará en `http://127.0.0.1:8080` (con documentación interactiva en `/docs`).
+The API server starts at `http://127.0.0.1:8080` (interactive documentation available at `/docs`).
 
 ---
 
-## 💾 Copias de Seguridad y Portabilidad
+## 💾 Data Backups & Digital Sovereignty
 
-En la pestaña **Ajustes** de CrossedArts puedes gestionar tu información con total soberanía:
-* **Exportar SQLite (.sqlite):** Descarga el archivo de base de datos relacional nativo que puedes abrir directamente con aplicaciones como DB Browser for SQLite.
-* **Importar SQLite (.sqlite):** Restaura cualquier base de datos previa al instante.
-* **Exportar Respaldo JSON:** Genera un volcado estructurado con todas las tablas y relaciones.
-* **Restaurar Respaldo JSON:** Recupera tus datos desde cualquier volcado de texto JSON.
+Inside the **Settings** view in CrossedArts, you retain total ownership of your data:
+* **Export SQLite (.sqlite):** Download a standard SQLite database file openable in any tool like DB Browser for SQLite.
+* **Import SQLite (.sqlite):** Instantly restore previous databases.
+* **Export JSON Backup:** Generate an open structured dump of all relational tables.
+* **Restore JSON Backup:** Wipe and restore relational records from any JSON dump.
 
 ---
 
-## 📄 Licencia
+## 📄 License
 
-Distribuido bajo la Licencia **MIT**. Consulta el archivo `LICENSE` para más información.
+Distributed under the **MIT** License. See `LICENSE` for details.
