@@ -91,11 +91,17 @@ class LLMService:
             except ImportError:
                 cls._provider_error = "Ollama está configurado pero no hay una integración LangChain compatible instalada."
                 cls._chat_model = None
+        elif provider == "mock":
+            cls._chat_model = None
+        elif provider == "openai":
+            cls._chat_model = None
+            cls._provider_error = "OpenAI está configurado pero no hay una clave de API."
         else:
-            cls._chat_model = None  # Mock mode
+            cls._chat_model = None
+            cls._provider_error = f"Proveedor LLM no soportado: {provider}"
 
         cls._initialized = True
-        mode = provider if cls._chat_model else "mock"
+        mode = provider if cls._chat_model else (provider if provider != "mock" else "mock")
         print(f"[CrossedArts] LLM Service initialized: {mode}")
 
     @classmethod
