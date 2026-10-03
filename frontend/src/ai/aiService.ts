@@ -38,7 +38,7 @@ export interface AssistantResponse {
   sources: string[];
   providerUsed: AIProvider;
   isLocalOnDevice: boolean;
-  retrievalMode?: 'hybrid' | 'lexical';
+  retrievalMode?: 'hybrid' | 'lexical' | 'semantic';
 }
 
 /** Construye un ámbito de recuperación solo cuando hay al menos un ancla válida. */
