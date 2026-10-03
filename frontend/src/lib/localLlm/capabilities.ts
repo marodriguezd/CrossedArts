@@ -4,6 +4,16 @@ export interface WebGPUCapabilityReport {
   state: WebGPUCapabilityState;
   adapterInfo?: string;
   reason?: string;
+  /**
+   * Features reportadas EXPLÍCITAMENTE por el adaptador. `undefined` significa
+   * desconocido: la selección de modelo no asumirá soporte. Solo diagnóstico.
+   */
+  supportedFeatures?: string[];
+  /**
+   * Pista conservadora de gama derivada de límites holgados del adaptador.
+   * NO es una medición de VRAM: los navegadores no la exponen.
+   */
+  deviceTier?: 'high' | 'unknown';
 }
 
 /**
@@ -47,9 +57,41 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
       }
     }
 
+    // Features explícitamente soportadas (si el adaptador las expone).
+    let supportedFeatures: string[] | undefined;
+    try {
+      const features = (adapter as any).features;
+      if (features && typeof features.has === 'function') {
+        supportedFeatures = Array.from(features as Set<string>);
+      }
+    } catch {
+      /* Features no legibles: se trata como desconocido. */
+    }
+
+    // Pista conservadora de gama: solo con límites holgados y explícitos. No es
+    // VRAM exacta; por eso el valor por defecto es 'unknown'.
+    let deviceTier: 'high' | 'unknown' = 'unknown';
+    try {
+      const limits = (adapter as any).limits;
+      const gb = 1024 * 1024 * 1024;
+      if (
+        limits &&
+        typeof limits.maxBufferSize === 'number' &&
+        limits.maxBufferSize >= 2 * gb &&
+        typeof limits.maxStorageBufferBindingSize === 'number' &&
+        limits.maxStorageBufferBindingSize >= gb
+      ) {
+        deviceTier = 'high';
+      }
+    } catch {
+      /* Límites no legibles: se conserva el perfil conservador. */
+    }
+
     return {
       state: 'supported',
-      adapterInfo
+      adapterInfo,
+      supportedFeatures,
+      deviceTier
     };
   } catch (err: any) {
     return {

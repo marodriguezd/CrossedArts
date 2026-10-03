@@ -3,6 +3,7 @@ import { localEmbeddingEngine, cosineSimilarity } from '../localEmbeddings/engin
 import { embeddingCache } from '../localEmbeddings/cache.ts';
 import { createSemanticChunksFromResourcesAsync } from '../localEmbeddings/chunking.ts';
 import { DEFAULT_EMBEDDING_MODEL_ID } from '../localEmbeddings/registry.ts';
+import { localAiRuntime } from '../../services/localAiRuntime.ts';
 
 export interface RetrievedDocument {
   id: string;
@@ -144,10 +145,20 @@ export function deduplicateAndDiversify(
  * Recupera documentos relevantes de la base de datos local SQLite de CrossedArts
  * basándose en una estrategia HÍBRIDA (léxica + semántica con embeddings on-device).
  */
+export interface RetrievalOptions {
+  /**
+   * Solicita recuperación semántica cuando aporte valor. La preparación de
+   * embeddings y la indexación de contenido faltante ocurren automáticamente;
+   * si no es posible, la recuperación léxica permanece intacta.
+   */
+  semantic?: boolean;
+}
+
 export async function retrieveLocalContext(
   query: string,
   limit: number = 4,
-  scope?: RetrievalScope
+  scope?: RetrievalScope,
+  options?: RetrievalOptions
 ): Promise<RetrievalResult> {
   const tokens = tokenizeLexical(query);
   if (!tokens.length) {
@@ -289,8 +300,19 @@ export async function retrieveLocalContext(
 
   // 6. Búsqueda semántica usando el caché de vectores (si el motor o caché están disponibles)
   let semanticMatches: { chunkId: string; score: number; entry: any }[] = [];
-  const isSemanticReady = localEmbeddingEngine.getStatus() === 'ready';
+  let isSemanticReady = localEmbeddingEngine.getStatus() === 'ready';
   let modeUsed: 'lexical' | 'hybrid' = 'lexical';
+
+  // Preparación automática de embeddings cuando la recuperación semántica es
+  // útil. Si falla, se degrada con honestidad a recuperación léxica.
+  if (!isSemanticReady && options?.semantic) {
+    try {
+      const semantic = await localAiRuntime.ensureSemanticIndexReady();
+      isSemanticReady = semantic.stage === 'ready' && localEmbeddingEngine.getStatus() === 'ready';
+    } catch {
+      isSemanticReady = false;
+    }
+  }
 
   if (isSemanticReady) {
     try {

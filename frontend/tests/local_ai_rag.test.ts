@@ -162,10 +162,13 @@ test('8.8 Local AI Provider Routing: Returns honest failure when local engine is
     { role: 'user', content: '¿Qué es el algoritmo SM-2?' }
   ]);
 
-  // Debe retornar mensaje explicativo de modelo no cargado, NO invocar a OpenAI ni Ollama
+  // Debe retornar un estado honesto y accionable de IA local, NO invocar a OpenAI ni Ollama
   assert.strictEqual(response.providerUsed, 'local');
   assert.strictEqual(response.isLocalOnDevice, true);
-  assert.ok(response.answer.includes('no está cargado') || response.answer.includes('Ajustes'));
+  assert.ok(
+    response.answer.toLowerCase().includes('ia local') || response.answer.includes('no está disponible'),
+    `Mensaje controlado de IA local esperado, recibido: ${response.answer}`
+  );
 
   // Restaurar a demo
   aiService.saveSettings({

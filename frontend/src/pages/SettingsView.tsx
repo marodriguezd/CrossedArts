@@ -10,6 +10,7 @@ import { localEmbeddingEngine, EmbeddingEngineStatus } from '../lib/localEmbeddi
 import { embeddingCache } from '../lib/localEmbeddings/cache.ts';
 import { createSemanticChunksFromResourcesAsync } from '../lib/localEmbeddings/chunking.ts';
 import { EMBEDDING_MODELS_REGISTRY } from '../lib/localEmbeddings/registry.ts';
+import { localAiRuntime, type LocalAiStatus } from '../services/localAiRuntime.ts';
 import { dao } from '../db/dao.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { ThemeToggle } from '../components/common/ThemeToggle.tsx';
@@ -28,6 +29,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(localLlmEngine.getStatus());
   const [engineProgress, setEngineProgress] = useState<ModelLoadingProgress>(localLlmEngine.getProgress());
   const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<LocalAiStatus>(localAiRuntime.getStatus());
 
   // Semantic Embedding & Indexing state
   const [embStatus, setEmbStatus] = useState<EmbeddingEngineStatus>(localEmbeddingEngine.getStatus());
@@ -60,9 +62,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       setEmbError(localEmbeddingEngine.getLastError());
     });
 
+    const unsubscribeRuntime = localAiRuntime.subscribe(setRuntimeStatus);
+
     return () => {
       unsubscribeLlm();
       unsubscribeEmb();
+      unsubscribeRuntime();
     };
   }, []);
 
@@ -117,12 +122,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     aiService.saveSettings(aiConfig);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
+
+    // Enabling local AI prepares everything automatically if consent already exists.
+    if (aiConfig.provider === 'local' && localAiRuntime.hasConsent()) {
+      void localAiRuntime.prepareForTutor(
+        'local',
+        aiConfig.localModelId
+      );
+    }
+  };
+
+  const handleActivateLocalAi = () => {
+    localAiRuntime.grantConsent();
+    void localAiRuntime.prepareForTutor('local', aiConfig.localModelId);
   };
 
   const handleLoadLocalModel = async () => {
     setLoadingError(null);
     try {
-      await localLlmEngine.loadModel(aiConfig.localModelId);
+      // Advanced control: force preparation through the same coordinator.
+      const status = await localAiRuntime.prepareForTutor('local', aiConfig.localModelId);
+      if (status.stage !== 'ready' && status.stage !== 'preparing' && status.stage !== 'downloading' && status.stage !== 'compiling') {
+        setLoadingError(status.message);
+      }
     } catch (err: any) {
       setLoadingError(err?.message || 'Error cargando el modelo local');
     }
@@ -385,6 +407,48 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
           {/* Sección específica de IA Local WebLLM */}
           {aiConfig.provider === 'local' && (
             <div className="space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
+              {/* Estado de producto: la preparación es automática. */}
+              <div className="rounded-lg border border-line bg-surface p-3" role="status" aria-live="polite">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-meta font-semibold text-ink">IA local</span>
+                  <Badge
+                    tone={
+                      runtimeStatus.stage === 'ready'
+                        ? 'success'
+                        : runtimeStatus.stage === 'unsupported' || runtimeStatus.stage === 'error'
+                          ? 'error'
+                          : 'info'
+                    }
+                  >
+                    {runtimeStatus.stage === 'ready'
+                      ? 'Lista'
+                      : runtimeStatus.stage === 'unsupported'
+                        ? 'No disponible'
+                        : runtimeStatus.stage === 'consent-required'
+                          ? 'Pendiente de activación'
+                          : runtimeStatus.stage === 'error'
+                            ? 'Requiere atención'
+                            : runtimeStatus.stage === 'idle'
+                              ? 'En reposo'
+                              : 'Preparando…'}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-secondary text-muted">{runtimeStatus.message}</p>
+                {runtimeStatus.stage !== 'ready' && runtimeStatus.stage !== 'unsupported' && (
+                  <div className="mt-2">
+                    <Button size="sm" variant="solid" disabled={engineStatus === 'loading'} onClick={handleActivateLocalAi}>
+                      {runtimeStatus.stage === 'consent-required' ? 'Activar IA local' : 'Preparar IA local'}
+                    </Button>
+                  </div>
+                )}
+                {runtimeStatus.errorAction && (
+                  <p className="mt-1 text-micro text-muted">{runtimeStatus.errorAction}</p>
+                )}
+              </div>
+
+              <p className="border-t border-line pt-3 text-micro font-semibold uppercase tracking-wide text-faint">
+                Opciones avanzadas
+              </p>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-meta font-semibold text-ink">
                   <Cpu size={14} aria-hidden="true" /> Estado de hardware y WebGPU:
@@ -472,7 +536,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                       onClick={handleLoadLocalModel}
                     >
                       {engineStatus === 'loading' ? <RefreshCw size={13} className="animate-spin" aria-hidden="true" /> : <Cpu size={13} aria-hidden="true" />}
-                      {engineStatus === 'loading' ? 'Cargando modelo…' : 'Cargar en WebGPU'}
+                      {engineStatus === 'loading' ? 'Cargando modelo…' : 'Cargar modelo (avanzado)'}
                     </Button>
                   )}
                 </div>
@@ -570,9 +634,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                   Índice semántico local (embeddings en navegador)
                 </h4>
                 <p className="type-meta mt-0.5 max-w-xl">
-                  Genera vectores matemáticos con Transformers.js (
-                  <span className="font-mono text-accent">Xenova/multilingual-e5-small</span>) para
-                  búsqueda conceptual precisa sin servidores externos.
+                  La búsqueda semántica se prepara e indexa automáticamente al usarla o al importar
+                  contenido. Este panel es una acción avanzada de mantenimiento o recuperación.
                 </p>
               </div>
               <Badge tone={embCount > 0 ? 'success' : 'neutral'}>
@@ -610,7 +673,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                       ) : (
                         <Database size={12} aria-hidden="true" />
                       )}
-                      {embStatus === 'loading' ? 'Cargando modelo…' : 'Indexar contenido local'}
+                      {embStatus === 'loading' ? 'Preparando…' : 'Reindexar contenido (avanzado)'}
                     </Button>
                   )}
                 </div>

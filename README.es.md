@@ -122,6 +122,7 @@ flujo de estudio
 ```
 
 ### 7. IA Nativa en Dispositivo (WebLLM + RAG Semántico Híbrido)
+- **IA local de configuración cero:** No gestionas modelos, WebGPU, VRAM, embeddings, runtimes ni cachés. Al seleccionar o usar la IA local, CrossedArts detecta las capacidades del dispositivo, elige automáticamente el modelo compatible más seguro, pide confirmación una única vez antes de la primera descarga grande, lo prepara todo en segundo plano y después completa tu acción original (preguntar, explicar, generar flashcards o preguntas). Un coordinador mínimo (`src/services/localAiRuntime.ts`) comparte la preparación en vuelo entre llamadas concurrentes y nunca envía trabajo a un proveedor remoto. Los controles avanzados (elegir/recargar/liberar modelo, reconstruir índice, vaciar cachés, diagnóstico) permanecen en Ajustes para usuarios avanzados.
 - **Inferencia 100% on-device:** Motor LLM ejecutado directamente en el navegador con **WebLLM** vía **WebGPU**. Cero llamadas al exterior tras la descarga, sin clave de API y con total privacidad.
 - **Descarga Inicial y Cacheado:** La inferencia local corre en el dispositivo del usuario cuando hay soporte WebGPU. El modelo seleccionado requiere descargarse la primera vez; las inferencias posteriores se ejecutan desde el modelo cacheado localmente en IndexedDB.
 - **Modelos Verificados:** Compatible con `Qwen3-1.7B-q4f16_1-MLC` (por defecto), `Llama-3.2-1B-Instruct-q4f16_1-MLC`, `SmolLM2-1.7B-Instruct-q4f16_1-MLC` y `Qwen3-0.6B-q4f16_1-MLC`.
@@ -224,7 +225,7 @@ npm run dev
 La aplicación estará disponible inmediatamente en `http://localhost:5173`.
 
 ### Ejecutar Pruebas (Flota Zero-Web-Access)
-El proyecto incluye 148 pruebas de integridad que validan la inicialización de SQLite sin red, el algoritmo SM-2, las sesiones de estudio unificadas, el espacio de trabajo de la lección (edición de contenido, ordenación, progreso, continuación), la integridad y migración del grafo de conocimiento, la organización y el detalle de recursos, el estudio con ámbito de lección (aislamiento de notas por lección y ámbito del historial), la integridad relacional (activación de claves foráneas, comportamiento `ON DELETE`, migración de índices del grafo), las confirmaciones accesibles, los volcados binarios/JSON, la IA local, el RAG híbrido, la ingestión de documentos y la generación de estudio fundamentada:
+El proyecto incluye 223 pruebas de integridad que validan la inicialización de SQLite sin red, el algoritmo SM-2, las sesiones de estudio unificadas, el espacio de trabajo de la lección (edición de contenido, ordenación, progreso, continuación), la integridad y migración del grafo de conocimiento, la organización y el detalle de recursos, el estudio con ámbito de lección (aislamiento de notas por lección y ámbito del historial), la integridad relacional (activación de claves foráneas, comportamiento `ON DELETE`, migración de índices del grafo), las confirmaciones accesibles, los volcados binarios/JSON, la IA local, el RAG híbrido, la ingestión de documentos y la generación de estudio fundamentada:
 
 ```bash
 cd frontend

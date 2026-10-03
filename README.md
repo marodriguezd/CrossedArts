@@ -121,6 +121,7 @@ study workflow
 ```
 
 ### 7. Local-Native AI & Pedagogical Tutor (WebLLM + Hybrid Local RAG)
+- **Zero-Configuration Local AI:** You never manage models, WebGPU, VRAM, embeddings, runtimes or caches. When local AI is selected or used, CrossedArts detects device capabilities, automatically selects the safest compatible model, asks once before the first large download, prepares everything in the background and then completes your original action (ask, explain, generate flashcards or practice). A small coordinator (`src/services/localAiRuntime.ts`) reuses in-flight preparation between concurrent callers and never sends work to a remote provider. Advanced controls (choose/reload/unload model, rebuild index, clear caches, diagnostics) remain available in Settings for power users.
 - **Local-Native On-Device Inference (WebLLM / WebGPU):** Run open-source LLMs (default `Qwen3 1.7B`, or `Llama 3.2 1B`, `SmolLM2 1.7B`) 100% on-device directly inside the browser using WebGPU. No API keys or remote servers required.
 - **Initial Download & IndexedDB Caching:** The initial model download requires network access (~1 GB). Once downloaded, model weights are persistently cached in the browser's IndexedDB and execute completely offline without network calls.
 - **Hybrid Semantic Local RAG (Zero Remote Vector DB):**

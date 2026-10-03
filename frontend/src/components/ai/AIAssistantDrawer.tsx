@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle } from 'lucide-react';
 import { aiService, AIChatMessage, AssistantResponse } from '../../ai/aiService.ts';
-import { cn } from '../ui/index.tsx';
+import { cn, Button, ProgressBar } from '../ui/index.tsx';
 import { MessageBody, SourceTitle } from './MarkdownMessage.ts';
+import { localAiRuntime, type LocalAiStatus } from '../../services/localAiRuntime.ts';
 
 interface MessageItem extends AIChatMessage {
   sources?: string[];
@@ -37,6 +38,8 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [runtimeStatus, setRuntimeStatus] = useState<LocalAiStatus>(localAiRuntime.getStatus());
+  const [consentDismissed, setConsentDismissed] = useState(false);
   const currentSettings = aiService.getSettings();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -52,11 +55,30 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
+  // La preparación de IA local es automática: se refleja en la UI sin que el
+  // usuario gestione modelos, WebGPU ni índices.
+  useEffect(() => localAiRuntime.subscribe(setRuntimeStatus), []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (currentSettings.provider !== 'local') return;
+    void localAiRuntime.prepareForTutor('local');
+    // Solo al abrir el cajón / cambiar de proveedor: nunca descarga por arrancar la app.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentSettings.provider]);
+
   if (!isOpen) return null;
 
   const isOnDevice = currentSettings.provider === 'local' || currentSettings.provider === 'demo';
   const isRemote = currentSettings.provider === 'openai';
   const isLocalServer = currentSettings.provider === 'ollama';
+
+  const isLocalProvider = currentSettings.provider === 'local';
+  const preparingLocal =
+    isLocalProvider && ['preparing', 'downloading', 'compiling'].includes(runtimeStatus.stage);
+  const needsConsent = isLocalProvider && runtimeStatus.stage === 'consent-required';
+  const localUnavailable = isLocalProvider && runtimeStatus.stage === 'unsupported';
+  const sendBlocked = preparingLocal || (needsConsent && !consentDismissed);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -219,6 +241,51 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
         )}
       </div>
 
+      {/* Estado de preparación automática de IA local: estados de producto, sin jerga */}
+      {isLocalProvider && (preparingLocal || localUnavailable) && (
+        <div className="border-t border-line bg-canvas px-4 py-2" role="status" aria-live="polite">
+          <div className="flex items-center gap-2 text-meta text-accent">
+            {preparingLocal && <RefreshCw size={13} className="animate-spin" aria-hidden="true" />}
+            <span className="min-w-0 flex-1 truncate">{runtimeStatus.message}</span>
+            {runtimeStatus.stage === 'downloading' && (
+              <span className="shrink-0 font-semibold">{runtimeStatus.progress}%</span>
+            )}
+          </div>
+          {runtimeStatus.stage === 'downloading' && (
+            <ProgressBar
+              className="mt-1.5"
+              value={runtimeStatus.progress}
+              label="Progreso de preparación de IA local"
+            />
+          )}
+          {localUnavailable && runtimeStatus.errorAction && (
+            <p className="mt-0.5 text-micro text-muted">{runtimeStatus.errorAction}</p>
+          )}
+        </div>
+      )}
+
+      {/* Consentimiento único de primera descarga (solo si es imprescindible) */}
+      {needsConsent && !consentDismissed && (
+        <div className="border-t border-line bg-accent-soft/40 px-4 py-3" role="status" aria-live="polite">
+          <p className="text-secondary text-ink">{runtimeStatus.message}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="solid"
+              onClick={() => {
+                localAiRuntime.grantConsent();
+                void localAiRuntime.prepareForTutor('local');
+              }}
+            >
+              Activar IA local
+            </Button>
+            <Button size="sm" variant="quiet" onClick={() => setConsentDismissed(true)}>
+              Ahora no
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Acción rápida: Explicar este recurso */}
       {activeContext && activeContext !== 'General' && activeContext !== 'dashboard' && activeContext !== 'settings' && (
         <div className="flex items-center justify-between border-t border-line bg-canvas px-3 pb-1 pt-2">
@@ -280,7 +347,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
         />
         <button
           type="submit"
-          disabled={loading || !input.trim()}
+          disabled={loading || !input.trim() || sendBlocked}
           aria-label="Enviar mensaje"
           className="rounded-lg bg-accent p-2.5 text-on-accent transition hover:opacity-90 disabled:opacity-40"
         >

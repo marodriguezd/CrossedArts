@@ -80,7 +80,7 @@ CrossedArts/
 │   │   ├── App.tsx                 # Contenedor raíz y ciclo de vida de la aplicación
 │   │   ├── index.css               # Estilos globales y utilidades de Tailwind
 │   │   └── main.tsx                # Entrada de montaje de React en el DOM
-│   ├── tests/                      # Flota de pruebas de frontend (148 tests de integridad)
+│   ├── tests/                      # Flota de pruebas de frontend (223 tests de integridad)
 │   ├── index.html                  # Punto de entrada HTML
 │   ├── package.json                # Dependencias y scripts de Node.js
 │   ├── tailwind.config.js          # Configuración de diseño y colores
@@ -122,7 +122,7 @@ npm install
 # Iniciar servidor de desarrollo en caliente (Vite)
 npm run dev
 
-# Ejecutar la flota de pruebas de integridad (185/185 tests)
+# Ejecutar la flota de pruebas de integridad (223/223 tests)
 npm test
 # O directamente mediante el test runner de Node:
 node --test --experimental-strip-types tests/*.test.ts
@@ -134,7 +134,7 @@ npm run typecheck
 npx vite build
 ```
 
-> **IMPORTANTE:** La flota de 185 pruebas de frontend valida:
+> **IMPORTANTE:** La flota de 223 pruebas de frontend valida:
 > 1. Inicialización de SQLite WASM sin acceso a la red (0 web requests).
 > 2. Precisión del algoritmo de repetición espaciada SuperMemo-2 (`domainLogic.ts` & SM-2).
 > 3. Operaciones CRUD, cálculo de racha real y validación pura de lectura de libros en `dao.ts` y `domainLogic.ts`.
@@ -152,6 +152,8 @@ npx vite build
 15. Vistas de detalle de recursos y consistencia de la experiencia de aprendizaje: destino dedicado para curso, libro, lección, nota, recurso importado y concepto; `ResourceDetail.tsx` (`dao.getResourceDetail`, `dao.getRelatedKnowledge`, `dao.getNodeSummaries`) muestra metadatos, contenido extraído como datos e indexación, con una sección "Relacionado" construida solo con relaciones canónicas (explícitas + derivadas de claves foráneas, sin descubrimiento semántico automático); búsqueda y grafo convierten cada resultado/nodo en una acción determinista (`resolveSearchResultDestination`, `resolveGraphNodeDestination`); ámbito de estudio/recuperación a nivel de lección persistido en `learning_session.lesson_id` y propagado por `aiService`/`localRag`; `ConfirmDialog.tsx` reemplaza el confirm nativo en acciones destructivas; los tipos de relación se centralizan en `GRAPH_RELATION_TYPES`. La navegación y el detalle funcionan sin backend, WebGPU, embeddings ni WebLLM (`ResourceDetail.tsx`, `components/common/ConfirmDialog.tsx`, `dao.ts`, `services/domainLogic.ts`, `services/studySession.ts`).
 16. Espacio de trabajo de la lección como unidad central de aprendizaje: campo `content` (texto/Markdown como datos) en la tabla `lesson` con migración idempotente (`migrateLessonContent`), edición de título/contenido/duración vía `dao.updateLesson` con validación, ordenación determinista `dao.moveLesson` (posiciones normalizadas 1..N sin duplicados), agregación `dao.getLessonWorkspace` (notas, recursos, conceptos, progreso `NOT_STARTED`/`IN_PROGRESS`/`COMPLETED` basado en actividad real), continuación determinista `dao.getNextLessonForCourse`, integración del contenido en la recuperación léxica y en el chunking semántico (SHA-256; un cambio de contenido invalida solo ese chunk), acciones de estudio/IA reutilizando `aiService`/RAG con ámbito de lección, y `components/lesson/LessonWorkspace.tsx` (`dao.ts`, `lib/localRag/retrieval.ts`, `lib/localEmbeddings/chunking.ts`, `CourseDetail.tsx`). Corrige además un defecto real de `sql.js`: `db.export()` reinicia `PRAGMA foreign_keys`, por lo que se reafirma tras cada persistencia y se cachea el tamaño de BD sin exportar (`sqliteBridge.ts`).
 17. Endurecimiento de integridad local y aislamiento por ámbito: notas del espacio de trabajo acotadas estrictamente a su lección (`dao.getNotesForLesson`; `dao.getNotesForResource` con ámbito de lección filtra solo por `lesson_id`) para que el progreso de una lección no se contamine con notas de lecciones hermanas ni con la nota general del curso; historial de estudio con ámbito de lección preservado y mostrado en el Dashboard (`learning_session.lesson_id` + `lesson_title` en `getRecentStudySessions`, sin inventar lección en sesiones de curso); refuerzo verificado de `PRAGMA foreign_keys` mediante prueba de efecto tras `init`, `persist` y roundtrip export/import binario, con `ON DELETE SET NULL` real en `note` y `learning_session` al borrar una lección; índices deterministas y tripleta única en `knowledge_connection` con migración de deduplicación idempotente (`migrateKnowledgeConnectionIndex`, conservando la fila de id menor); invalidación perezosa de vectores cacheados en la recuperación por SHA-256 + versión de pipeline (`isCachedVectorFresh`); cero diálogos nativos del navegador (`alert`/`confirm` sustituidos por `ConfirmDialog` y avisos `aria-live` en `SettingsView`/`App`/`CourseDetail`); y `.gitignore` con las reglas heredadas de plantilla Python `lib/` ancladas a la raíz (`/lib/`) para que `frontend/src/lib/` (22 ficheros del motor local RAG/LLM/embeddings/ingestión) permanezca versionado (`schema_and_ddl.test.ts`, `lesson_workspace.test.ts`, `study_session.test.ts`, `.gitignore`).
+
+18. IA local de configuración cero y preparación automática: coordinador mínimo `services/localAiRuntime.ts` que orquesta los motores existentes sin reemplazarlos ni introducir un store global. Detecta capacidades WebGPU de forma conservadora (features explícitas y pista tosca de gama; nunca VRAM exacta), selecciona el modelo compatible más seguro de forma determinista (`lib/localLlm/selection.ts`), comparte una única promesa de preparación entre llamantes concurrentes (una sola descarga/carga), solicita un consentimiento único y persistente antes de la primera descarga grande, reutiliza modelos ya cacheados y funciona offline si ya se preparó. La búsqueda semántica (embeddings) se prepara e indexa automáticamente cuando la recuperación la necesita o al importar contenido, con deduplicación de trabajos, cancelación y degradación honesta a recuperación léxica si falla. Límites de proveedor explícitos: `demo`, `ollama` y `openai` nunca cargan WebLLM ni cambian de proveedor en silencio (`localAiRuntime.ts`, `localLlm/capabilities.ts`, `localLlm/selection.ts`, `localRag/retrieval.ts`, `ai/aiService.ts`, `components/ai/AIAssistantDrawer.tsx`, `pages/SettingsView.tsx`).
 
 ### 3.2. Backend Companion (Python + FastAPI)
 

@@ -4,6 +4,7 @@ import { buildAssistantPrompt, buildExplainPrompt, buildSummarizePrompt } from '
 import { retrieveLocalContext } from '../lib/localRag/retrieval.ts';
 import type { RetrievalScope } from '../lib/localRag/retrieval.ts';
 import { buildRagContext } from '../lib/localRag/contextBuilder.ts';
+import { localAiRuntime } from '../services/localAiRuntime.ts';
 
 export type AIProvider = 'demo' | 'local' | 'ollama' | 'openai';
 
@@ -149,19 +150,37 @@ export const aiService = {
     const settings = this.getSettings();
     const lastUserQuery = messages[messages.length - 1]?.content || '';
 
-    // 1. Recuperación RAG local de SQLite (con ámbito determinista opcional)
-    const retrieval = await retrieveLocalContext(lastUserQuery, 3, scope);
+    // 1. Recuperación RAG local de SQLite (con ámbito determinista opcional).
+    // La recuperación semántica se prepara automáticamente solo para el proveedor local.
+    const retrieval = await retrieveLocalContext(lastUserQuery, 3, scope, {
+      semantic: settings.provider === 'local' && localAiRuntime.hasConsent()
+    });
     const rag = buildRagContext(retrieval.documents);
     const combinedContext = [contextInfo, rag.formattedContextText].filter(Boolean).join('\n\n');
 
     // 2. Proveedor LOCAL (WebLLM / WebGPU on-device)
     if (settings.provider === 'local') {
-      if (localLlmEngine.getStatus() !== 'ready') {
+      // Preparación automática (modelo + embeddings). El usuario no gestiona nada.
+      const readiness = await localAiRuntime.ensureLocalAiReady({
+        provider: 'local',
+        overrideModelId: settings.localModelId && settings.localModelId !== DEFAULT_LOCAL_MODEL_ID ? settings.localModelId : undefined
+      });
+      if (readiness.stage === 'consent-required') {
         return {
-          answer: '⚠️ El modelo de IA local no está cargado o listo. Ve a **Ajustes** y carga el modelo local WebGPU antes de consultar.',
+          answer: `Para activar la IA local necesitamos descargar aproximadamente ${readiness.downloadSize || 'los recursos necesarios'}. Después podrás usarla sin conexión. Abre el tutor o Ajustes para activarla.`,
           sources: rag.sourceTitles,
           providerUsed: 'local',
-          isLocalOnDevice: true
+          isLocalOnDevice: true,
+          retrievalMode: retrieval.retrievalMode
+        };
+      }
+      if (readiness.stage !== 'ready') {
+        return {
+          answer: `⚠️ ${readiness.message}${readiness.errorAction ? ` ${readiness.errorAction}` : ''}`,
+          sources: rag.sourceTitles,
+          providerUsed: 'local',
+          isLocalOnDevice: true,
+          retrievalMode: retrieval.retrievalMode
         };
       }
 
@@ -187,7 +206,7 @@ export const aiService = {
         };
       } catch (err: any) {
         return {
-          answer: `⚠️ Error en inferencia local WebGPU: ${err?.message || 'Fallo desconocido'}. Verifica los recursos de tu navegador.`,
+          answer: `⚠️ La IA local no pudo completar la respuesta. ${err?.message || 'Fallo desconocido'}`,
           sources: rag.sourceTitles,
           providerUsed: 'local',
           isLocalOnDevice: true,
@@ -369,7 +388,9 @@ export const aiService = {
     const difficulty = options.difficulty || 'medium';
     const query = [options.resourceTitle, options.topic].filter(Boolean).join(' ') || 'conceptos clave';
 
-    const retrieval = await retrieveLocalContext(query, 4, buildRetrievalScope(options.resourceId, options.lessonId));
+    const retrieval = await retrieveLocalContext(query, 4, buildRetrievalScope(options.resourceId, options.lessonId), {
+      semantic: this.getSettings().provider === 'local' && localAiRuntime.hasConsent()
+    });
     if (!retrieval.hasContext || retrieval.documents.length === 0) {
       return {
         cards: [],
@@ -388,12 +409,18 @@ export const aiService = {
     let rawOutput = '';
 
     if (settings.provider === 'local') {
-      if (localLlmEngine.getStatus() !== 'ready') {
+      const readiness = await localAiRuntime.ensureLocalAiReady({
+        provider: 'local',
+        overrideModelId: settings.localModelId && settings.localModelId !== DEFAULT_LOCAL_MODEL_ID ? settings.localModelId : undefined
+      });
+      if (readiness.stage !== 'ready') {
         return {
           cards: [],
           sourceIds,
           sourceTitles: rag.sourceTitles,
-          error: 'El modelo local WebGPU no está inicializado. Actívalo en Ajustes.'
+          error: readiness.stage === 'consent-required'
+            ? 'Activa la IA local para generar tarjetas automáticamente.'
+            : readiness.message
         };
       }
       rawOutput = await localLlmEngine.generateChat([
@@ -467,7 +494,9 @@ export const aiService = {
     const difficulty = options.difficulty || 'medium';
     const query = [options.resourceTitle, options.topic].filter(Boolean).join(' ') || 'conceptos clave';
 
-    const retrieval = await retrieveLocalContext(query, 4, buildRetrievalScope(options.resourceId, options.lessonId));
+    const retrieval = await retrieveLocalContext(query, 4, buildRetrievalScope(options.resourceId, options.lessonId), {
+      semantic: this.getSettings().provider === 'local' && localAiRuntime.hasConsent()
+    });
     if (!retrieval.hasContext || retrieval.documents.length === 0) {
       return {
         questions: [],
@@ -486,12 +515,18 @@ export const aiService = {
     let rawOutput = '';
 
     if (settings.provider === 'local') {
-      if (localLlmEngine.getStatus() !== 'ready') {
+      const readiness = await localAiRuntime.ensureLocalAiReady({
+        provider: 'local',
+        overrideModelId: settings.localModelId && settings.localModelId !== DEFAULT_LOCAL_MODEL_ID ? settings.localModelId : undefined
+      });
+      if (readiness.stage !== 'ready') {
         return {
           questions: [],
           sourceIds,
           sourceTitles: rag.sourceTitles,
-          error: 'El modelo local WebGPU no está inicializado. Actívalo en Ajustes.'
+          error: readiness.stage === 'consent-required'
+            ? 'Activa la IA local para generar preguntas automáticamente.'
+            : readiness.message
         };
       }
       rawOutput = await localLlmEngine.generateChat([
