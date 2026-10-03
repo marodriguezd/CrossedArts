@@ -60,7 +60,7 @@ CrossedArts/
 │   │   │   ├── seedDemo.ts         # Datos de demostración iniciales
 │   │   │   └── sqliteBridge.ts     # Carga de WASM, sincronización con IndexedDB y puente SQL
 │   │   ├── lib/
-│   │   │   ├── localEmbeddings/    # Motor de embeddings on-device (Transformers.js), hashing SHA-256 y caché IndexedDB
+│   │   │   ├── localEmbeddings/    # Motor de embeddings on-device (Transformers.js), SHA-256 para contenido y caché IndexedDB
 │   │   │   ├── localLlm/           # Motor WebLLM on-device, registro, prompts y validadores
 │   │   │   └── localRag/           # RAG híbrido (léxico + semántico con embeddings) sobre SQLite local
 │   │   ├── pages/
@@ -143,7 +143,7 @@ npx vite build
 > 6. Emparejamiento jerárquico determinista y asociación individual de medios locales (`localMediaService.ts`).
 > 7. Parámetro `base: './'` en `vite.config.ts`, manifest PWA y Service Worker offline (`sw.js`).
 > 8. Motor de IA on-device con WebLLM, detección WebGPU, máquina de estados resiliente, prompts pedagógicos delimitados contra injection, validación anti-alucinación y garantía de cero peticiones de red (`localLlm/`).
-> 9. RAG local híbrido determinista con embeddings on-device (`Xenova/multilingual-e5-small` con Transformers.js, licencia MIT), prefijos E5 canónicos (`query: ` / `passage: `), normalización L2 estricta a 384 dimensiones, hashing criptográfico SHA-256 (`crypto.subtle`), versionado de pipeline (`v1.1-e5-sha256`), ranking calibrado con RRF y deduplicación inteligente por fuente (`localEmbeddings/`, `localRag/`).
+> 9. RAG local híbrido determinista con embeddings on-device (`Xenova/multilingual-e5-small` con Transformers.js, licencia MIT), prefijos E5 canónicos (`query: ` / `passage: `), normalización L2 estricta a 384 dimensiones, hashing criptográfico SHA-256 (`crypto.subtle`), versionado de pipeline (`v1.1-e5-sha256`), ranking calibrado con fusión RRF y deduplicación inteligente por fuente (`localEmbeddings/`, `localRag/`).
 > 10. Ingestión local y extracción de texto en navegador para documentos `.txt`, `.md`, `.pdf`, `.epub`, con huella criptográfica SHA-256 anti-duplicados, segmentación en secciones estructuradas con páginas/capítulos, cero almacenamiento de binarios pesados en SQLite y citación precisa en RAG (`localIngestion/`).
 > 11. Conversión de documentos importados en recursos de aprendizaje de primera clase (`learning_resource`), previsualización interactiva con estimación de palabras, selección de destino (standalone, curso, lección, libro), visor de origen de recursos con huella SHA-256 y acción pedagógica fundamentada `explainResource` con rechazo honesto ante contexto insuficiente.
 > 12. Generación formativa fundamentada (flashcards y evaluaciones tipo test) con validación heurística de fundamentación (grounding check), previsualización editable antes de persistir en SQLite, inserción en ciclo SM-2 (`dao.createFlashcards`), y sesiones efímeras de preguntas de práctica con feedback inmediato (`studyGeneration/`).
