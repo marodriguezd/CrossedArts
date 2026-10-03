@@ -1532,7 +1532,9 @@ export const dao = {
 
   async addNote(note: Partial<Note>): Promise<void> {
     const db = dbBridge.getDatabase();
-    const id = 'note-' + Date.now();
+    // Sufijo aleatorio: dos notas creadas en el mismo milisegundo no deben
+    // colisionar en la clave primaria (patrón idéntico al resto de entidades).
+    const id = 'note-' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const title = note.title || 'Nueva Nota';
     const content = note.content || '';
     const tags = note.tags || '';
@@ -1587,7 +1589,7 @@ export const dao = {
     };
   }): Promise<string> {
     const db = dbBridge.getDatabase();
-    const resourceId = `doc-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const resourceId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const category = params.category || (params.importAsBook ? 'Lecturas' : 'Documentos');
     const sourcePath = `local://${params.fileName}#sha256=${params.fingerprint}`;
     const destination = params.destination || { type: params.importAsBook ? 'book' : 'standalone' };
