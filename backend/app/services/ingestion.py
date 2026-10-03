@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import hashlib
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any
 from sqlalchemy.orm import Session
@@ -201,14 +202,28 @@ class IngestionService:
 
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = dest_dir / source_file.name
+        source_resolved = source_file.resolve()
+
+        # Preserve identical basenames from different source folders without
+        # silently pointing two lessons at the first physical file.
+        if os.path.lexists(dest_file):
+            try:
+                existing_resolved = Path(os.path.realpath(dest_file))
+                if existing_resolved != source_resolved:
+                    stem = source_file.stem
+                    suffix = source_file.suffix
+                    fingerprint = hashlib.sha256(str(source_resolved).encode('utf-8')).hexdigest()[:10]
+                    dest_file = dest_dir / f'{stem}_{fingerprint}{suffix}'
+            except OSError:
+                raise ValueError(f'No se pudo validar el destino de almacenamiento: {dest_file}')
 
         if strategy == StorageStrategy.SYMLINK:
             if not os.path.lexists(dest_file):
-                dest_file.symlink_to(source_file.resolve())
+                dest_file.symlink_to(source_resolved)
             return dest_file
         elif strategy == StorageStrategy.COPY:
             if not os.path.lexists(dest_file):
-                shutil.copy2(source_file, dest_file)
+                shutil.copy2(source_resolved, dest_file)
             return dest_file
 
         return source_file.resolve()
