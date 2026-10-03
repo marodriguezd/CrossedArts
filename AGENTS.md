@@ -60,7 +60,7 @@ CrossedArts/
 │   │   │   ├── seedDemo.ts         # Datos de demostración iniciales
 │   │   │   └── sqliteBridge.ts     # Carga de WASM, sincronización con IndexedDB y puente SQL
 │   │   ├── lib/
-│   │   │   ├── localEmbeddings/    # Motor de embeddings on-device (Transformers.js), hashing FNV-1a y caché IndexedDB
+│   │   │   ├── localEmbeddings/    # Motor de embeddings on-device (Transformers.js), hashing SHA-256 y caché IndexedDB
 │   │   │   ├── localLlm/           # Motor WebLLM on-device, registro, prompts y validadores
 │   │   │   └── localRag/           # RAG híbrido (léxico + semántico con embeddings) sobre SQLite local
 │   │   ├── pages/
@@ -122,7 +122,7 @@ npm install
 # Iniciar servidor de desarrollo en caliente (Vite)
 npm run dev
 
-# Ejecutar la flota de pruebas de integridad (223/223 tests)
+# Ejecutar la flota completa de pruebas de integridad
 npm test
 # O directamente mediante el test runner de Node:
 node --test --experimental-strip-types tests/*.test.ts
@@ -134,7 +134,7 @@ npm run typecheck
 npx vite build
 ```
 
-> **IMPORTANTE:** La flota de 223 pruebas de frontend valida:
+> **IMPORTANTE:** La flota de pruebas de frontend valida:
 > 1. Inicialización de SQLite WASM sin acceso a la red (0 web requests).
 > 2. Precisión del algoritmo de repetición espaciada SuperMemo-2 (`domainLogic.ts` & SM-2).
 > 3. Operaciones CRUD, cálculo de racha real y validación pura de lectura de libros en `dao.ts` y `domainLogic.ts`.
