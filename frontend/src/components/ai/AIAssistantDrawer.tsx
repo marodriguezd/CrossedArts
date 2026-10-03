@@ -8,7 +8,7 @@ import { localAiRuntime, type LocalAiStatus } from '../../services/localAiRuntim
 interface MessageItem extends AIChatMessage {
   sources?: string[];
   isLocalOnDevice?: boolean;
-  retrievalMode?: 'hybrid' | 'lexical';
+  retrievalMode?: 'hybrid' | 'lexical' | 'semantic';
 }
 
 interface AIAssistantDrawerProps {
@@ -210,10 +210,12 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
                             'rounded px-1.5 py-0.5 font-medium',
                             m.retrievalMode === 'hybrid'
                               ? 'border border-accent/30 bg-accent-soft text-accent'
-                              : 'border border-line bg-canvas text-muted'
+                              : m.retrievalMode === 'semantic'
+                                ? 'border border-success/30 bg-success-soft text-success'
+                                : 'border border-line bg-canvas text-muted'
                           )}
                         >
-                          {m.retrievalMode === 'hybrid' ? '⚡ Híbrido' : 'Léxico'}
+                          {m.retrievalMode === 'hybrid' ? '⚡ Híbrido' : m.retrievalMode === 'semantic' ? 'Semántico' : 'Léxico'}
                         </span>
                       )}
                     </span>
