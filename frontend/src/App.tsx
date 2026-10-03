@@ -11,6 +11,7 @@ import { SettingsView } from './pages/SettingsView.tsx';
 import { AIAssistantDrawer } from './components/ai/AIAssistantDrawer.tsx';
 import { localMediaService } from './services/localMediaService.ts';
 import { localAiRuntime } from './services/localAiRuntime.ts';
+import { aiService } from './ai/aiService.ts';
 import { useAppData } from './hooks/useAppData.ts';
 import { Loader2, AlertTriangle, X, RotateCcw } from 'lucide-react';
 import { Button } from './components/ui/index.tsx';
@@ -179,7 +180,7 @@ export const App: React.FC = () => {
     setGraphVersion(v => v + 1);
     // Tras importar/cambiar contenido, el índice semántico se regenera en segundo
     // plano de forma automática y deduplicada (sin bloquear la interfaz).
-    localAiRuntime.scheduleIndexing();
+    localAiRuntime.scheduleIndexing(aiService.getSettings().provider);
   };
 
   if (loading) {
