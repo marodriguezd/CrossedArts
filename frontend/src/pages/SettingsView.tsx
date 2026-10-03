@@ -125,16 +125,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
     // Enabling local AI prepares everything automatically if consent already exists.
     if (aiConfig.provider === 'local' && localAiRuntime.hasConsent()) {
-      void localAiRuntime.prepareForTutor(
-        'local',
-        aiConfig.localModelId
-      );
+      void localAiRuntime.prepareForTutor('local');
     }
   };
 
   const handleActivateLocalAi = () => {
     localAiRuntime.grantConsent();
-    void localAiRuntime.prepareForTutor('local', aiConfig.localModelId);
+    void localAiRuntime.prepareForTutor('local');
   };
 
   const handleLoadLocalModel = async () => {
