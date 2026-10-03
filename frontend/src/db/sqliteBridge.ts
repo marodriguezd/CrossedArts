@@ -339,7 +339,7 @@ class SQLiteBridge {
         try {
           this.db = new SQL.Database(savedBytes);
           this.db.run('PRAGMA foreign_keys = ON;');
-          this.validateDatabaseSchema(this.db);
+          this.validateDatabaseSchema(this.db, false);
           // Migraciones idempotentes para bases de datos existentes
           const migratedSession = this.migrateLearningSession(this.db);
           const migratedLesson = this.migrateLessonContent(this.db);
@@ -555,7 +555,7 @@ class SQLiteBridge {
     try {
       tempDb = new SQL.Database(bytes);
       tempDb.run('PRAGMA foreign_keys = ON;');
-      this.validateDatabaseSchema(tempDb);
+      this.validateDatabaseSchema(tempDb, false);
       this.migrateLearningSession(tempDb);
       this.migrateLessonContent(tempDb);
       this.migrateKnowledgeConnectionIndex(tempDb);
@@ -580,7 +580,7 @@ class SQLiteBridge {
       throw new Error(err?.message || 'No se pudo importar la base de datos SQLite.');
     }
   }
-  private validateDatabaseSchema(db: Database): void {
+  private validateDatabaseSchema(db: Database, strict = true): void {
     const requiredColumns: Record<string, string[]> = {
       learning_resource: ['id', 'title', 'description', 'cover_path', 'category', 'status', 'source_path', 'type', 'created_at', 'updated_at'],
       course: ['id', 'instructor', 'difficulty', 'total_duration_minutes', 'total_lessons', 'completed_lessons'],
@@ -596,6 +596,7 @@ class SQLiteBridge {
     for (const [table, columns] of Object.entries(requiredColumns)) {
       const info = db.exec(`PRAGMA table_info(${table})`);
       if (!info.length || !info[0].values.length) throw new Error(`Falta la tabla requerida: ${table}`);
+      if (!strict) continue;
       const present = new Set(info[0].values.map(row => String(row[1])));
       const missing = columns.filter(column => !present.has(column));
       if (missing.length) throw new Error(`La tabla ${table} no contiene las columnas requeridas: ${missing.join(', ')}`);
