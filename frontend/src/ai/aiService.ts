@@ -161,10 +161,7 @@ export const aiService = {
     // 2. Proveedor LOCAL (WebLLM / WebGPU on-device)
     if (settings.provider === 'local') {
       // Preparación automática (modelo + embeddings). El usuario no gestiona nada.
-      const readiness = await localAiRuntime.ensureLocalAiReady({
-        provider: 'local',
-        overrideModelId: settings.localModelId && settings.localModelId !== DEFAULT_LOCAL_MODEL_ID ? settings.localModelId : undefined
-      });
+      const readiness = await localAiRuntime.ensureLocalAiReady({ provider: 'local' });
       if (readiness.stage === 'consent-required') {
         return {
           answer: `Para activar la IA local necesitamos descargar aproximadamente ${readiness.downloadSize || 'los recursos necesarios'}. Después podrás usarla sin conexión. Abre el tutor o Ajustes para activarla.`,
@@ -421,10 +418,7 @@ export const aiService = {
     let rawOutput = '';
 
     if (settings.provider === 'local') {
-      const readiness = await localAiRuntime.ensureLocalAiReady({
-        provider: 'local',
-        overrideModelId: settings.localModelId && settings.localModelId !== DEFAULT_LOCAL_MODEL_ID ? settings.localModelId : undefined
-      });
+      const readiness = await localAiRuntime.ensureLocalAiReady({ provider: 'local' });
       if (readiness.stage !== 'ready') {
         return {
           cards: [],
@@ -527,10 +521,7 @@ export const aiService = {
     let rawOutput = '';
 
     if (settings.provider === 'local') {
-      const readiness = await localAiRuntime.ensureLocalAiReady({
-        provider: 'local',
-        overrideModelId: settings.localModelId && settings.localModelId !== DEFAULT_LOCAL_MODEL_ID ? settings.localModelId : undefined
-      });
+      const readiness = await localAiRuntime.ensureLocalAiReady({ provider: 'local' });
       if (readiness.stage !== 'ready') {
         return {
           questions: [],
