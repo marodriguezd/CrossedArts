@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle, XCircle, ArrowRight, BookOpen } from 'lucide-react';
 import type { GeneratedQuestion } from '../../lib/studyGeneration/types.ts';
+import { Button, cn } from '../ui/index.tsx';
 
 interface PracticeQuestionProps {
   question: GeneratedQuestion;
@@ -32,25 +33,30 @@ export const PracticeQuestion: React.FC<PracticeQuestionProps> = ({
 
   const optionStyle = (idx: number) => {
     if (isAnswerSubmitted) {
-      if (idx === question.correctIndex) return 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300 font-semibold';
-      if (idx === selectedOption) return 'border-rose-500/50 bg-rose-500/20 text-rose-300';
-      return 'border-slate-800/50 bg-slate-950/30 text-slate-500';
+      if (idx === question.correctIndex) return 'border-success/50 bg-success-soft text-success font-semibold';
+      if (idx === selectedOption) return 'border-error/50 bg-error-soft text-error';
+      return 'border-line/60 bg-canvas text-faint';
     }
-    if (selectedOption === idx) return 'border-indigo-500 bg-indigo-500/20 text-white font-medium';
-    return 'border-slate-800 bg-slate-900/50 hover:bg-slate-800/80 text-slate-200';
+    if (selectedOption === idx) return 'border-accent bg-accent-soft text-ink font-medium';
+    return 'border-line bg-canvas text-ink hover:border-line-strong hover:bg-surface';
   };
 
   return (
     <div className="space-y-4">
-      <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-        <h3 className="text-sm font-semibold text-white leading-relaxed">{question.question}</h3>
+      <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
+        <h3 className="text-body font-semibold leading-relaxed text-ink">{question.question}</h3>
       </div>
 
       <div role="radiogroup" aria-label="Opciones de respuesta" className="space-y-2">
         {question.options.map((opt, idx) => (
           <label
             key={idx}
-            className={`w-full text-left p-3 rounded-xl border text-xs transition flex items-start gap-3 cursor-pointer focus-within:ring-2 focus-within:ring-indigo-500 ${optionStyle(idx)} ${isAnswerSubmitted ? 'cursor-default' : ''}`}
+            className={cn(
+              'flex w-full cursor-pointer items-start gap-3 rounded-xl border p-3 text-body transition-colors duration-fast',
+              'focus-within:ring-2 focus-within:ring-focus',
+              optionStyle(idx),
+              isAnswerSubmitted ? 'cursor-default' : ''
+            )}
           >
             <input
               type="radio"
@@ -61,7 +67,7 @@ export const PracticeQuestion: React.FC<PracticeQuestionProps> = ({
               onChange={() => onSelectOption(idx)}
               className="sr-only"
             />
-            <span aria-hidden="true" className="w-5 h-5 rounded-full border border-current flex items-center justify-center shrink-0 text-[10px] font-bold">
+            <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current text-micro font-bold">
               {String.fromCharCode(65 + idx)}
             </span>
             <span className="flex-1">{opt}</span>
@@ -70,25 +76,25 @@ export const PracticeQuestion: React.FC<PracticeQuestionProps> = ({
       </div>
 
       {isAnswerSubmitted && (
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3" aria-live="polite">
+        <div className="space-y-3 rounded-xl border border-line bg-surface p-4" aria-live="polite">
           <div className="flex items-center gap-2">
             {isCorrect ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                <CheckCircle size={15} /> ¡Correcto!
+              <span className="inline-flex items-center gap-1.5 text-meta font-semibold text-success">
+                <CheckCircle size={15} aria-hidden="true" /> ¡Correcto!
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-400">
-                <XCircle size={15} /> Incorrecto
+              <span className="inline-flex items-center gap-1.5 text-meta font-semibold text-error">
+                <XCircle size={15} aria-hidden="true" /> Incorrecto
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-300 leading-relaxed">{question.explanation}</p>
+          <p className="text-body leading-relaxed text-ink">{question.explanation}</p>
           {question.sourceTitles.length > 0 && (
-            <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] text-slate-400 font-medium">Fuentes respaldadas:</span>
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-2">
+              <span className="text-micro font-medium">Fuentes respaldadas:</span>
               {question.sourceTitles.map((t, i) => (
-                <span key={i} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-indigo-300">
-                  <BookOpen size={10} /> {t}
+                <span key={i} className="inline-flex items-center gap-1 rounded-full border border-line bg-canvas px-2 py-0.5 text-micro text-muted">
+                  <BookOpen size={10} aria-hidden="true" /> {t}
                 </span>
               ))}
             </div>
@@ -98,22 +104,13 @@ export const PracticeQuestion: React.FC<PracticeQuestionProps> = ({
 
       <div className="flex justify-end">
         {!isAnswerSubmitted ? (
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={selectedOption === null}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-indigo-600/20 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-          >
+          <Button variant="solid" onClick={onSubmit} disabled={selectedOption === null}>
             Comprobar respuesta
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            onClick={onNext}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-          >
-            {nextLabel || (isLast ? 'Ver resumen' : 'Siguiente pregunta')} <ArrowRight size={14} />
-          </button>
+          <Button variant="solid" onClick={onNext}>
+            {nextLabel || (isLast ? 'Ver resumen' : 'Siguiente pregunta')} <ArrowRight size={14} aria-hidden="true" />
+          </Button>
         )}
       </div>
     </div>

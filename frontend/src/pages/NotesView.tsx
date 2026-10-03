@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Note, LearningResource } from '../types/models.ts';
 import { FileText, Plus, Tag, Calendar, Save, Link2, GraduationCap } from 'lucide-react';
 import { dao } from '../db/dao.ts';
+import { Button, SearchInput, Badge, EmptyState, cn } from '../components/ui/index.tsx';
 
 interface NotesViewProps {
   notes: Note[];
@@ -19,6 +20,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
   const [isCreating, setIsCreating] = useState(false);
   const [resources, setResources] = useState<LearningResource[]>([]);
   const [lessons, setLessons] = useState<Array<{ id: string; title: string; courseTitle: string }>>([]);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -72,78 +74,119 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
   const resourceName = (id?: string) => resources.find(r => r.id === id)?.title;
   const lessonName = (id?: string) => lessons.find(l => l.id === id)?.title;
 
+  // Filtro local sobre títulos, contenido y etiquetas (sin red, sobre datos existentes).
+  const filteredNotes = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return notes;
+    return notes.filter(n =>
+      n.title.toLowerCase().includes(q) ||
+      n.content.toLowerCase().includes(q) ||
+      (n.tags || '').toLowerCase().includes(q)
+    );
+  }, [notes, query]);
+
+  const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
+  const LABEL_CLS = 'mb-1 block text-meta font-medium text-muted';
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="animate-fade-in space-y-6">
+      {/* Cabecera */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
-            <FileText size={24} className="text-purple-400" /> Notas de Estudio & Cuaderno
-          </h1>
-          <p className="text-xs text-slate-400">Toma de apuntes vinculados a tus recursos y lecciones</p>
+          <h1 className="type-display text-ink">Notas</h1>
+          <p className="type-secondary mt-1">Tus notas, ideas y referencias siempre a mano.</p>
         </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/25 transition"
-        >
-          <Plus size={15} /> Nueva Nota
-        </button>
+        <Button variant="solid" onClick={() => setIsCreating(true)}>
+          <Plus size={15} aria-hidden="true" /> Nueva nota
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Notes sidebar */}
-        <div className="space-y-2 md:col-span-1 max-h-[600px] overflow-y-auto">
-          {notes.map(note => {
-            const isSelected = selectedNote?.id === note.id && !isCreating;
-            return (
-              <div
-                key={note.id}
-                onClick={() => { setSelectedNote(note); setIsCreating(false); }}
-                className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                  isSelected
-                    ? 'bg-purple-600/20 border-purple-500/40 text-purple-200 shadow-md'
-                    : 'bg-slate-900/50 hover:bg-slate-900 border-slate-800 text-slate-300'
-                }`}
-              >
-                <h4 className="font-semibold text-xs text-slate-100 truncate">{note.title}</h4>
-                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{note.content}</p>
-                <div className="flex items-center gap-2 mt-2 text-[10px] text-slate-500">
-                  <span className="flex items-center gap-1"><Calendar size={10} /> {note.created_at?.slice(0, 10)}</span>
-                  {note.tags && <span className="flex items-center gap-1 text-purple-400"><Tag size={10} /> {note.tags}</span>}
-                </div>
-              </div>
-            );
-          })}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        {/* Lista de notas (izquierda) */}
+        <div className="md:col-span-1">
+          <SearchInput
+            label="Buscar notas"
+            placeholder="Buscar notas…"
+            value={query}
+            onChange={setQuery}
+            className="mb-3"
+          />
+          <div className="max-h-[600px] space-y-2 overflow-y-auto pr-1">
+            {filteredNotes.length === 0 ? (
+              <p className="type-meta px-1">
+                {notes.length === 0 ? 'Aún no hay notas.' : 'Sin coincidencias para esa búsqueda.'}
+              </p>
+            ) : (
+              filteredNotes.map(note => {
+                const isSelected = selectedNote?.id === note.id && !isCreating;
+                return (
+                  <button
+                    key={note.id}
+                    onClick={() => { setSelectedNote(note); setIsCreating(false); }}
+                    aria-current={isSelected ? 'true' : undefined}
+                    className={cn(
+                      'w-full rounded-xl border p-3.5 text-left transition-colors duration-fast',
+                      isSelected
+                        ? 'border-accent/40 bg-accent-soft shadow-card'
+                        : 'border-line bg-surface hover:border-line-strong'
+                    )}
+                  >
+                    <h4 className="truncate text-meta font-semibold text-ink">{note.title}</h4>
+                    <p className="mt-1 line-clamp-2 text-meta text-muted">{note.content}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-micro">
+                      <span className="flex items-center gap-1">
+                        <Calendar size={10} aria-hidden="true" /> {note.created_at?.slice(0, 10)}
+                      </span>
+                      {note.tags && (
+                        <span className="flex items-center gap-1 text-accent">
+                          <Tag size={10} aria-hidden="true" /> {note.tags}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
 
-        {/* Note Editor or Reader */}
-        <div className="md:col-span-2 rounded-2xl bg-slate-900/50 border border-slate-800 p-6 min-h-[450px]">
+        {/* Lector / editor del documento (derecha) */}
+        <div className="min-h-[450px] rounded-xl border border-line bg-surface p-6 shadow-card md:col-span-2 sm:p-8">
           {isCreating ? (
             <form onSubmit={handleCreateNote} className="space-y-4">
-              <h3 className="text-sm font-bold text-white">Crear Nueva Nota</h3>
-              <input
-                type="text"
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-                placeholder="Título del apunte o concepto..."
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-purple-500"
-                required
-              />
-              <input
-                type="text"
-                value={newTags}
-                onChange={e => setNewTags(e.target.value)}
-                placeholder="Etiquetas (separadas por coma, ej: react, hooks, arquitectura)"
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-purple-500"
-              />
+              <h3 className="type-section text-ink">Crear nueva nota</h3>
+              <div>
+                <label className={LABEL_CLS} htmlFor="note-title">Título</label>
+                <input
+                  id="note-title"
+                  type="text"
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  placeholder="Título del apunte o concepto…"
+                  className={INPUT_CLS}
+                  required
+                />
+              </div>
+              <div>
+                <label className={LABEL_CLS} htmlFor="note-tags">Etiquetas</label>
+                <input
+                  id="note-tags"
+                  type="text"
+                  value={newTags}
+                  onChange={e => setNewTags(e.target.value)}
+                  placeholder="Separadas por coma, ej: react, hooks, arquitectura"
+                  className={INPUT_CLS}
+                />
+              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1" htmlFor="note-resource">Asociar a recurso (opcional)</label>
+                  <label className={LABEL_CLS} htmlFor="note-resource">Asociar a recurso (opcional)</label>
                   <select
                     id="note-resource"
                     value={newResourceId}
                     onChange={e => setNewResourceId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+                    className={INPUT_CLS}
                   >
                     <option value="">Sin recurso</option>
                     {resources.map(r => (
@@ -152,12 +195,12 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1" htmlFor="note-lesson">Asociar a lección (opcional)</label>
+                  <label className={LABEL_CLS} htmlFor="note-lesson">Asociar a lección (opcional)</label>
                   <select
                     id="note-lesson"
                     value={newLessonId}
                     onChange={e => setNewLessonId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+                    className={INPUT_CLS}
                   >
                     <option value="">Sin lección</option>
                     {lessons.map(l => (
@@ -167,65 +210,64 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                 </div>
               </div>
 
-              <textarea
-                value={newContent}
-                onChange={e => setNewContent(e.target.value)}
-                placeholder="Escribe tus notas y reflexiones aquí..."
-                rows={10}
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500 font-mono"
-              />
+              <div>
+                <label className={LABEL_CLS} htmlFor="note-content">Contenido</label>
+                <textarea
+                  id="note-content"
+                  value={newContent}
+                  onChange={e => setNewContent(e.target.value)}
+                  placeholder="Escribe tus notas y reflexiones aquí…"
+                  rows={10}
+                  className={cn(INPUT_CLS, 'resize-y font-mono text-secondary')}
+                />
+              </div>
               <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreating(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white"
-                >
+                <Button variant="quiet" onClick={() => setIsCreating(false)}>
                   Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30"
-                >
-                  <Save size={14} /> Guardar Nota en SQLite
-                </button>
+                </Button>
+                <Button variant="solid" type="submit">
+                  <Save size={14} aria-hidden="true" /> Guardar nota en SQLite
+                </Button>
               </div>
             </form>
           ) : selectedNote ? (
-            <div className="space-y-4">
-              <div className="border-b border-slate-800 pb-4">
-                <h2 className="text-xl font-bold text-white">{selectedNote.title}</h2>
-                <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-400">
-                  <span>Fecha: {selectedNote.created_at}</span>
-                  {selectedNote.tags && (
-                    <span className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 text-[10px]">
-                      {selectedNote.tags}
-                    </span>
-                  )}
+            <article className="space-y-4">
+              {/* Cabecera documental de la nota */}
+              <header className="border-b border-line pb-4">
+                <h2 className="font-serif text-title font-bold text-ink">{selectedNote.title}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="text-meta">Fecha: {selectedNote.created_at}</span>
+                  {selectedNote.tags && <Badge tone="accent">{selectedNote.tags}</Badge>}
                 </div>
                 {(selectedNote.resource_id || selectedNote.lesson_id) && (
-                  <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px]">
-                    <span className="inline-flex items-center gap-1 text-slate-400"><Link2 size={11} /> Asociada a:</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-meta">
+                    <span className="inline-flex items-center gap-1 text-faint">
+                      <Link2 size={11} aria-hidden="true" /> Asociada a:
+                    </span>
                     {resourceName(selectedNote.resource_id) && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-indigo-300 border border-slate-700">
-                        <GraduationCap size={10} /> {resourceName(selectedNote.resource_id)}
-                      </span>
+                      <Badge tone="info">
+                        <GraduationCap size={10} aria-hidden="true" /> {resourceName(selectedNote.resource_id)}
+                      </Badge>
                     )}
                     {lessonName(selectedNote.lesson_id) && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-purple-300 border border-slate-700">
-                        <FileText size={10} /> {lessonName(selectedNote.lesson_id)}
-                      </span>
+                      <Badge tone="neutral">
+                        <FileText size={10} aria-hidden="true" /> {lessonName(selectedNote.lesson_id)}
+                      </Badge>
                     )}
                   </div>
                 )}
-              </div>
-              <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed font-sans">
+              </header>
+              {/* Contenido con tipografía de lectura */}
+              <div className="max-w-[68ch] whitespace-pre-wrap break-words text-body text-ink" style={{ lineHeight: 1.75 }}>
                 {selectedNote.content}
               </div>
-            </div>
+            </article>
           ) : (
-            <div className="h-full flex items-center justify-center text-xs text-slate-500">
-              Selecciona una nota para leer o haz clic en 'Nueva Nota'.
-            </div>
+            <EmptyState
+              icon={<FileText size={30} aria-hidden="true" />}
+              title="Selecciona una nota"
+              hint="Elige una nota de la lista para leerla o pulsa «Nueva nota» para crearla."
+            />
           )}
         </div>
       </div>

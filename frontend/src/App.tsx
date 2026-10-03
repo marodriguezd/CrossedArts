@@ -1,6 +1,6 @@
 import React, { useState, lazy, Suspense } from 'react';
 import { dao } from './db/dao.ts';
-import { Navbar } from './components/layout/Navbar.tsx';
+import { Shell } from './components/layout/Shell.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
 import { Library } from './pages/Library.tsx';
 import { CourseDetail } from './pages/CourseDetail.tsx';
@@ -29,6 +29,7 @@ export const App: React.FC = () => {
   const [scanReport, setScanReport] = useState<any>(null);
   const [graphVersion, setGraphVersion] = useState(0);
   const [appNotice, setAppNotice] = useState<string | null>(null);
+  const [globalQuery, setGlobalQuery] = useState('');
 
   const {
     loading,
@@ -56,6 +57,7 @@ export const App: React.FC = () => {
     setSelectedResourceId(null);
     setStudyResourceId(null);
     setStudyLessonId(null);
+    setGlobalQuery('');
     setCurrentTab(tab);
   };
 
@@ -175,35 +177,38 @@ export const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100 gap-3">
-        <Loader2 className="animate-spin text-purple-500" size={36} />
-        <p className="text-sm font-semibold tracking-wide text-slate-300">Inicializando SQLite en WebAssembly...</p>
-        <span className="text-xs text-slate-500">Cargando base de datos y esquemas relacionales</span>
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-canvas text-ink gap-3">
+        <Loader2 className="animate-spin text-accent" size={36} />
+        <p className="text-secondary font-semibold tracking-wide">Inicializando SQLite en WebAssembly...</p>
+        <span className="text-meta">Cargando base de datos y esquemas relacionales</span>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-purple-600 selection:text-white">
-      <Navbar
-        currentTab={currentTab}
-        setCurrentTab={handleNavigateTab}
-        openAIPanel={() => { setAiResource(null); setIsAIOpen(true); }}
-      />
-
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <>
+    <Shell
+      currentTab={currentTab}
+      onNavigate={handleNavigateTab}
+      onOpenAI={() => { setAiResource(null); setIsAIOpen(true); }}
+      onGlobalSearch={(q) => {
+        handleNavigateTab('library');
+        setGlobalQuery(q);
+      }}
+    >
+      <>
         {appNotice && (
           <div
             role="status"
             aria-live="polite"
-            className="mb-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2"
+            className="mb-6 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5 text-secondary text-ink"
           >
-            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-warning" />
             <span className="flex-1">{appNotice}</span>
             <button
               onClick={() => setAppNotice(null)}
-              className="shrink-0 text-amber-200 hover:text-white"
               aria-label="Cerrar aviso"
+              className="shrink-0 text-faint hover:text-ink"
             >
               <X size={14} />
             </button>
@@ -225,6 +230,7 @@ export const App: React.FC = () => {
           <Library
             courses={courses}
             books={books}
+            initialQuery={globalQuery}
             onSelectCourse={handleSelectCourse}
             onMountLocalFolder={handleMountLocalFolder}
             scanReport={scanReport}
@@ -279,8 +285,8 @@ export const App: React.FC = () => {
 
         {currentTab === 'graph' && (
           <Suspense fallback={
-            <div className="flex flex-col items-center justify-center py-24 text-slate-400">
-              <Loader2 className="w-8 h-8 animate-spin mb-3 text-purple-500" />
+            <div className="flex flex-col items-center justify-center py-24 text-muted">
+              <Loader2 className="w-8 h-8 animate-spin mb-3 text-accent" />
               <p className="text-sm">Cargando motor de grafo de conocimiento...</p>
             </div>
           }>
@@ -304,7 +310,8 @@ export const App: React.FC = () => {
         {currentTab === 'settings' && (
           <SettingsView onDataReset={refreshData} />
         )}
-      </main>
+      </>
+    </Shell>
 
       <AIAssistantDrawer
         isOpen={isAIOpen}
@@ -313,6 +320,6 @@ export const App: React.FC = () => {
         activeResourceId={aiResource?.id || selectedCourse?.id}
         activeLessonId={aiResource?.lessonId}
       />
-    </div>
+    </>
   );
 };

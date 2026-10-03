@@ -29,6 +29,7 @@ import {
   formatNextReviewInterval,
   summarizeStudySession
 } from '../services/domainLogic.ts';
+import { Button, InlineStatus, ProgressBar, cn } from '../components/ui/index.tsx';
 
 interface ReviewCenterProps {
   flashcards: Flashcard[];
@@ -45,13 +46,18 @@ type StudyItem =
   | { key: string; kind: 'flashcard'; card: Flashcard }
   | { key: string; kind: 'practice'; question: GeneratedQuestion };
 
+/**
+ * Tonos de calificación SM-2: 0-2 son fallo de memorización (error), 3 es
+ * difícil (aviso), 4 bien (informativo) y 5 perfecto (éxito). El color nunca
+ * va solo: cada botón muestra grado, etiqueta y descripción.
+ */
 const GRADE_OPTIONS: Array<{ grade: number; label: string; hint: string; tone: string }> = [
-  { grade: 0, label: '0 · Apagón', hint: 'Sin recuerdo alguno', tone: 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30' },
-  { grade: 1, label: '1 · Olvidado', hint: 'Error tras esfuerzo', tone: 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30' },
-  { grade: 2, label: '2 · Dudoso', hint: 'Incorrecta, familiar', tone: 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-300 border-orange-500/30' },
-  { grade: 3, label: '3 · Difícil', hint: 'Correcta con esfuerzo', tone: 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30' },
-  { grade: 4, label: '4 · Bien', hint: 'Correcta con duda', tone: 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
-  { grade: 5, label: '5 · Perfecto', hint: 'Retención instantánea', tone: 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30' }
+  { grade: 0, label: '0 · Apagón', hint: 'Sin recuerdo alguno', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
+  { grade: 1, label: '1 · Olvidado', hint: 'Error tras esfuerzo', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
+  { grade: 2, label: '2 · Dudoso', hint: 'Incorrecta, familiar', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
+  { grade: 3, label: '3 · Difícil', hint: 'Correcta con esfuerzo', tone: 'border-warning/30 bg-warning-soft text-warning hover:bg-warning-soft/70' },
+  { grade: 4, label: '4 · Bien', hint: 'Correcta con duda', tone: 'border-info/30 bg-info-soft text-info hover:bg-info-soft/70' },
+  { grade: 5, label: '5 · Perfecto', hint: 'Retención instantánea', tone: 'border-success/30 bg-success-soft text-success hover:bg-success-soft/70' }
 ];
 
 const MODE_LABELS: Record<StudySessionMode, string> = {
@@ -368,54 +374,48 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
 
   const isActive = state.phase === 'active' || state.phase === 'paused';
 
+  const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
+
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="text-center space-y-3">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-semibold">
-          <Brain size={14} /> Sesión de Estudio Local · SM-2
-        </div>
-        <h1 className="text-2xl font-extrabold text-white">Centro de Estudio Unificado</h1>
-        <p className="text-xs text-slate-400">
-          Repasa tarjetas con intervalos SM-2, practica con preguntas fundamentadas y conserva un historial local de tu progreso.
+    <div className="mx-auto max-w-3xl animate-fade-in space-y-6">
+      {/* Cabecera */}
+      <header className="border-b border-line pb-5 text-center">
+        <h1 className="type-display text-ink">Centro de repaso</h1>
+        <p className="type-secondary mx-auto mt-2 max-w-xl">
+          Repasa tarjetas con intervalos SM-2, practica con preguntas fundamentadas y conserva un
+          historial local de tu progreso.
         </p>
-      </div>
+      </header>
 
       {/* Banner de sesión activa pendiente (reanudación tras recarga) */}
       {state.phase === 'idle' && pendingResume && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <CalendarClock size={20} className="text-amber-300 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-amber-200">Tienes una sesión de estudio sin finalizar</p>
-              <p className="text-xs text-amber-300/80">
+        <InlineStatus tone="warning" className="justify-between">
+          <span className="flex min-w-0 items-start gap-3">
+            <CalendarClock size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>
+              <strong>Tienes una sesión de estudio sin finalizar</strong>
+              <span className="mt-0.5 block">
                 {MODE_LABELS[pendingResume.mode]} · {pendingResume.cards_reviewed} tarjetas · {pendingResume.questions_answered} preguntas registradas
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleResume}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white transition"
-            >
+              </span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <Button size="sm" variant="solid" onClick={handleResume}>
               Reanudar
-            </button>
-            <button
-              onClick={handleDiscardPending}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-amber-200 hover:text-white bg-slate-900 hover:bg-slate-800 border border-amber-500/30 transition"
-            >
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleDiscardPending}>
               Descartar
-            </button>
-          </div>
-        </div>
+            </Button>
+          </span>
+        </InlineStatus>
       )}
 
       {/* Panel de inicio */}
       {(state.phase === 'idle' || state.phase === 'failed') && !isPreparing && (
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-5">
+        <section className="space-y-5 rounded-xl border border-line bg-surface p-5 shadow-card sm:p-6" aria-label="Configuración de la sesión">
           <div className="space-y-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Modalidad</span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <span className="type-micro">Modalidad</span>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {([
                 { id: 'flashcards', label: 'Tarjetas SM-2', icon: Layers, desc: `${dueCount} pendientes` },
                 { id: 'practice', label: 'Práctica', icon: ListChecks, desc: 'Preguntas generadas' },
@@ -427,28 +427,32 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                   <button
                     key={opt.id}
                     onClick={() => setMode(opt.id)}
-                    className={`p-3 rounded-xl border text-left transition ${
-                      active ? 'bg-purple-600/20 border-purple-500/50 text-white' : 'bg-slate-950/40 border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
+                    aria-pressed={active}
+                    className={cn(
+                      'rounded-xl border p-3 text-left transition-colors duration-fast',
+                      active
+                        ? 'border-accent/50 bg-accent-soft font-semibold text-ink shadow-card'
+                        : 'border-line bg-canvas text-muted hover:border-line-strong hover:text-ink'
+                    )}
                   >
-                    <span className="flex items-center gap-2 text-xs font-semibold">
-                      <Icon size={15} /> {opt.label}
+                    <span className="flex items-center gap-2 text-secondary">
+                      <Icon size={15} className={active ? 'text-accent' : ''} aria-hidden="true" /> {opt.label}
                     </span>
-                    <span className="block text-[10px] text-slate-400 mt-1">{opt.desc}</span>
+                    <span className="mt-1 block text-meta">{opt.desc}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1" htmlFor="study-resource">Recurso (opcional)</label>
+              <label className="mb-1 block text-meta font-medium text-muted" htmlFor="study-resource">Recurso (opcional)</label>
               <select
                 id="study-resource"
                 value={selectedResourceId}
                 onChange={e => setSelectedResourceId(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-purple-500"
+                className={INPUT_CLS}
               >
                 <option value="">Todos los recursos</option>
                 {resources.map(r => (
@@ -456,43 +460,49 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                 ))}
               </select>
               {selectedLessonId && (
-                <p className="mt-1.5 text-[10px] text-purple-300 flex items-center gap-1">
+                <p className="mt-1.5 flex items-center gap-1 text-meta text-accent">
                   Ámbito de lección activo: {lessonOptions.find(l => l.id === selectedLessonId)?.title || 'lección seleccionada'}
-                  <button type="button" onClick={() => setSelectedLessonId('')} className="underline text-slate-400 hover:text-white">quitar</button>
+                  <button type="button" onClick={() => setSelectedLessonId('')} className="underline text-muted hover:text-ink">
+                    quitar
+                  </button>
                 </p>
               )}
             </div>
 
             {(mode === 'practice' || mode === 'mixed') && (
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1" htmlFor="study-topic">Tema o consulta guía</label>
+                <label className="mb-1 block text-meta font-medium text-muted" htmlFor="study-topic">Tema o consulta guía</label>
                 <input
                   id="study-topic"
                   type="text"
                   value={topic}
                   onChange={e => setTopic(e.target.value)}
-                  placeholder="Ej. Repetición espaciada, Hooks..."
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  placeholder="Ej. Repetición espaciada, Hooks…"
+                  className={INPUT_CLS}
                 />
               </div>
             )}
           </div>
 
           {(mode === 'practice' || mode === 'mixed') && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Número de preguntas ({count})</label>
-                <input type="range" min="3" max="6" value={count} onChange={e => setCount(parseInt(e.target.value, 10))} className="w-full accent-purple-500 cursor-pointer" />
+                <label className="mb-1 block text-meta font-medium text-muted" htmlFor="study-count">Número de preguntas ({count})</label>
+                <input id="study-count" type="range" min="3" max="6" value={count} onChange={e => setCount(parseInt(e.target.value, 10))} className="w-full cursor-pointer accent-accent" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Dificultad</label>
-                <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                <span className="mb-1 block text-meta font-medium text-muted" id="study-difficulty-label">Dificultad</span>
+                <div className="grid grid-cols-3 gap-1 rounded-xl border border-line bg-canvas p-1" role="group" aria-labelledby="study-difficulty-label">
                   {(['easy', 'medium', 'hard'] as StudyDifficulty[]).map(d => (
                     <button
                       key={d}
                       type="button"
                       onClick={() => setDifficulty(d)}
-                      className={`py-1 rounded-lg text-[11px] font-medium capitalize transition ${difficulty === d ? 'bg-purple-600 text-white font-semibold' : 'text-slate-400 hover:text-white'}`}
+                      aria-pressed={difficulty === d}
+                      className={cn(
+                        'rounded-lg py-1.5 text-meta capitalize transition-colors',
+                        difficulty === d ? 'bg-ink font-semibold text-canvas' : 'text-muted hover:text-ink'
+                      )}
                     >
                       {d === 'easy' ? 'Fácil' : d === 'medium' ? 'Media' : 'Difícil'}
                     </button>
@@ -502,36 +512,30 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2.5 pt-1">
-            <button
-              onClick={handleStart}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/30 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
-            >
-              <Play size={14} /> Iniciar sesión
-            </button>
-            <button
-              onClick={() => setIsFlashcardModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-950/60 hover:bg-slate-800 text-purple-300 border border-purple-500/40 transition"
-            >
-              <Sparkles size={14} /> Generar Flashcards
-            </button>
+          <div className="flex flex-wrap items-center gap-2.5 border-t border-line pt-4">
+            <Button variant="solid" onClick={handleStart}>
+              <Play size={14} aria-hidden="true" /> Iniciar sesión
+            </Button>
+            <Button variant="outline" onClick={() => setIsFlashcardModalOpen(true)}>
+              <Sparkles size={14} aria-hidden="true" /> Generar flashcards
+            </Button>
           </div>
 
           {state.phase === 'failed' && state.error && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
-              <AlertCircle size={15} className="shrink-0 mt-0.5" />
+            <InlineStatus tone="error">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span>{state.error}</span>
-            </div>
+            </InlineStatus>
           )}
-        </div>
+        </section>
       )}
 
       {/* Preparando / starting */}
       {(isPreparing || state.phase === 'starting') && (
-        <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3">
-          <Loader2 size={28} className="animate-spin text-purple-400 mx-auto" />
-          <p className="text-sm text-slate-300">Preparando tu sesión de estudio local...</p>
-          <p className="text-xs text-slate-500">Recuperando tarjetas pendientes y contexto local de SQLite</p>
+        <div className="space-y-3 rounded-xl border border-line bg-surface p-8 text-center shadow-card">
+          <Loader2 size={26} className="mx-auto animate-spin text-accent" aria-hidden="true" />
+          <p className="text-body text-ink">Preparando tu sesión de estudio local…</p>
+          <p className="type-meta">Recuperando tarjetas pendientes y contexto local de SQLite</p>
         </div>
       )}
 
@@ -539,49 +543,44 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       {isActive && !isPreparing && (
         <div className="space-y-5">
           {/* Barra superior de sesión */}
-          <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center gap-2 text-xs text-slate-300">
-              <Clock size={14} className="text-purple-400" />
-              <span className="font-semibold">{MODE_LABELS[state.mode]}</span>
-              {selectedResource && <span className="text-slate-500">· {selectedResource.title}</span>}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2 text-meta text-muted">
+              <Clock size={14} className="text-accent" aria-hidden="true" />
+              <span className="font-semibold text-ink">{MODE_LABELS[state.mode]}</span>
+              {selectedResource && <span className="truncate">· {selectedResource.title}</span>}
               {selectedLessonId && (
-                <span className="text-slate-500">· Lección: {lessonOptions.find(l => l.id === selectedLessonId)?.title || 'ámbito de lección'}</span>
+                <span className="truncate">· Lección: {lessonOptions.find(l => l.id === selectedLessonId)?.title || 'ámbito de lección'}</span>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => dispatch({ type: state.phase === 'paused' ? 'RESUME' : 'PAUSE' })}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-slate-300 bg-slate-950/60 hover:bg-slate-800 border border-slate-800 transition"
-              >
-                {state.phase === 'paused' ? <><Play size={12} /> Reanudar</> : <><Pause size={12} /> Pausar</>}
-              </button>
-              <button
-                onClick={handleCancel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition"
-              >
-                <X size={12} /> Cancelar sesión
-              </button>
+              <Button size="sm" variant="quiet" onClick={() => dispatch({ type: state.phase === 'paused' ? 'RESUME' : 'PAUSE' })}>
+                {state.phase === 'paused' ? <><Play size={12} aria-hidden="true" /> Reanudar</> : <><Pause size={12} aria-hidden="true" /> Pausar</>}
+              </Button>
+              <Button size="sm" variant="danger" onClick={handleCancel}>
+                <X size={12} aria-hidden="true" /> Cancelar sesión
+              </Button>
             </div>
           </div>
 
           {state.phase === 'paused' ? (
-            <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3">
-              <Pause size={28} className="text-amber-300 mx-auto" />
-              <p className="text-sm text-slate-300">Sesión en pausa</p>
-              <p className="text-xs text-slate-500">Tus repasos ya guardados permanecen intactos. Reanuda cuando quieras continuar.</p>
+            <div className="space-y-3 rounded-xl border border-line bg-surface p-8 text-center shadow-card">
+              <Pause size={26} className="mx-auto text-warning" aria-hidden="true" />
+              <p className="text-body text-ink">Sesión en pausa</p>
+              <p className="type-meta mx-auto max-w-sm">
+                Tus repasos ya guardados permanecen intactos. Reanuda cuando quieras continuar.
+              </p>
             </div>
           ) : currentItem ? (
             <>
-              <div className="flex items-center justify-between text-xs text-slate-400">
+              <div className="flex items-center justify-between text-meta text-muted">
                 <span>Ítem {itemIndex + 1} de {items.length}</span>
                 <span>{currentCard ? `Factor de facilidad: ${currentCard.ease_factor}` : 'Práctica efímera'}</span>
               </div>
-              <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
-                <div
-                  className="bg-purple-600 h-full rounded-full transition-all duration-300"
-                  style={{ width: `${((itemIndex + 1) / items.length) * 100}%` }}
-                />
-              </div>
+              <ProgressBar
+                value={itemIndex + 1}
+                max={items.length}
+                label="Progreso de la sesión"
+              />
 
               {currentCard && (
                 <div className="space-y-4">
@@ -590,51 +589,57 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                     onClick={() => setShowAnswer(v => !v)}
                     aria-expanded={showAnswer}
                     aria-label={showAnswer ? 'Ocultar respuesta de la tarjeta' : 'Revelar respuesta de la tarjeta'}
-                    className="w-full min-h-[240px] p-8 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-purple-950/30 border border-purple-500/30 shadow-2xl flex flex-col justify-between text-left hover:border-purple-400/50 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+                    className="flex min-h-[240px] w-full flex-col justify-between rounded-xl border border-line bg-raised p-7 text-left shadow-pop transition-colors duration-fast hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:p-9"
                   >
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400">
+                      <span className="type-micro text-accent">
                         {showAnswer ? 'Reverso / Respuesta' : 'Anverso / Pregunta'}
                       </span>
-                      <h2 className="text-lg md:text-xl font-bold text-white mt-4 leading-relaxed">{currentCard.front}</h2>
+                      <h2 className="mt-4 font-serif text-xl font-bold leading-relaxed text-ink md:text-2xl">
+                        {currentCard.front}
+                      </h2>
                     </div>
                     {showAnswer ? (
-                      <div className="mt-6 pt-6 border-t border-purple-500/20">
-                        <p className="text-sm md:text-base text-slate-200 leading-relaxed font-normal">{currentCard.back}</p>
+                      <div className="mt-6 border-t border-line pt-6">
+                        <p className="text-body leading-relaxed text-ink" style={{ lineHeight: 1.7 }}>
+                          {currentCard.back}
+                        </p>
                       </div>
                     ) : (
-                      <div className="text-center pt-8">
-                        <span className="text-xs text-purple-300/70 inline-flex items-center gap-1.5">
-                          <Sparkles size={13} /> Pulsa o presiona Enter para revelar la respuesta
+                      <div className="pt-8 text-center">
+                        <span className="inline-flex items-center gap-1.5 text-meta text-faint">
+                          <Sparkles size={13} aria-hidden="true" /> Pulsa o presiona Enter para revelar la respuesta
                         </span>
                       </div>
                     )}
                   </button>
 
                   {gradeFeedback ? (
-                    <div className="p-5 rounded-2xl bg-slate-900/70 border border-emerald-500/30 space-y-3 text-center" aria-live="polite">
-                      <p className="text-sm font-semibold text-white">Repaso registrado · {gradeFeedback.label}</p>
-                      <p className="text-xs text-slate-300">Próximo repaso: <strong className="text-emerald-300">{gradeFeedback.nextReview}</strong></p>
-                      <button
-                        onClick={advance}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition"
-                      >
-                        {itemIndex + 1 < items.length ? 'Siguiente ítem' : 'Ver resumen'} <ArrowRight size={14} />
-                      </button>
+                    <div className="space-y-3 rounded-xl border border-success/30 bg-success-soft p-5 text-center" aria-live="polite">
+                      <p className="text-body font-semibold text-ink">Repaso registrado · {gradeFeedback.label}</p>
+                      <p className="text-secondary text-muted">
+                        Próximo repaso: <strong className="text-success">{gradeFeedback.nextReview}</strong>
+                      </p>
+                      <Button variant="solid" onClick={advance}>
+                        {itemIndex + 1 < items.length ? 'Siguiente ítem' : 'Ver resumen'} <ArrowRight size={14} aria-hidden="true" />
+                      </Button>
                     </div>
                   ) : showAnswer && (
                     <div className="space-y-2">
-                      <p className="text-center text-xs text-slate-400 font-medium">¿Qué tan fácil recordaste este concepto?</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                      <p className="text-center text-meta font-medium text-muted">¿Qué tan fácil recordaste este concepto?</p>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
                         {GRADE_OPTIONS.map(opt => (
                           <button
                             key={opt.grade}
                             onClick={() => handleGrade(opt.grade)}
                             aria-label={`Calificar como ${opt.label}. ${opt.hint}`}
-                            className={`p-3 rounded-xl border text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${opt.tone}`}
+                            className={cn(
+                              'rounded-xl border p-3 text-meta font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
+                              opt.tone
+                            )}
                           >
                             {opt.label}
-                            <span className="block text-[10px] font-normal opacity-80 mt-0.5">{opt.hint}</span>
+                            <span className="mt-0.5 block text-micro font-normal opacity-80">{opt.hint}</span>
                           </button>
                         ))}
                       </div>
@@ -656,87 +661,87 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
               )}
             </>
           ) : (
-            <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-4">
-              <AlertCircle size={28} className="text-amber-300 mx-auto" />
-              <h2 className="text-base font-bold text-white">No hay ítems para esta sesión</h2>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
+            <div className="space-y-4 rounded-xl border border-line bg-surface p-8 text-center shadow-card">
+              <AlertCircle size={26} className="mx-auto text-warning" aria-hidden="true" />
+              <h2 className="type-section text-ink">No hay ítems para esta sesión</h2>
+              <p className="type-secondary mx-auto max-w-md">
                 {prepareError || 'No encontramos tarjetas pendientes ni pudimos generar preguntas para la selección actual.'}
               </p>
               <div className="flex flex-wrap justify-center gap-2">
-                <button onClick={() => prepareItems(state.mode, state.resourceId, selectedResource?.title)} className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white transition">
+                <Button variant="outline" onClick={() => prepareItems(state.mode, state.resourceId, selectedResource?.title)}>
                   Reintentar preparación
-                </button>
-                <button onClick={handleFinishPartial} className="px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition">
+                </Button>
+                <Button variant="solid" onClick={handleFinishPartial}>
                   Finalizar sesión
-                </button>
+                </Button>
               </div>
             </div>
           )}
 
           {actionError && (
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2" role="alert">
-              <AlertCircle size={15} className="shrink-0 mt-0.5" />
+            <InlineStatus tone="error">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span>{actionError}</span>
-            </div>
+            </InlineStatus>
           )}
           {prepareError && currentItem && (
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2" role="status">
-              <AlertCircle size={15} className="shrink-0 mt-0.5" />
+            <InlineStatus tone="warning">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span>{prepareError} Puedes continuar con las tarjetas de la sesión.</span>
-            </div>
+            </InlineStatus>
           )}
         </div>
       )}
 
       {/* Resumen de sesión */}
       {(state.phase === 'completed' || state.phase === 'cancelled') && (
-        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-4">
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto ${state.phase === 'completed' ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-800 text-slate-300'}`}>
-            {state.phase === 'completed' ? <CheckCircle2 size={32} /> : <X size={32} />}
+        <div className="space-y-4 rounded-xl border border-line bg-surface p-6 text-center shadow-card sm:p-8">
+          <div className={cn(
+            'mx-auto flex h-14 w-14 items-center justify-center rounded-xl border',
+            state.phase === 'completed' ? 'border-success/30 bg-success-soft text-success' : 'border-line bg-canvas text-muted'
+          )}>
+            {state.phase === 'completed' ? <CheckCircle2 size={28} aria-hidden="true" /> : <X size={28} aria-hidden="true" />}
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">
+            <h2 className="type-title text-ink">
               {state.phase === 'completed' ? 'Sesión completada' : 'Sesión cancelada'}
             </h2>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="type-secondary mt-1">
               {state.phase === 'completed'
                 ? 'Tus repasos SM-2 y tu historial local se guardaron correctamente.'
                 : 'Los repasos ya guardados se conservan; el ítem en curso no se registró.'}
             </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
-            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
-              <p className="text-[11px] text-slate-400">Ítems repasados</p>
-              <p className="text-lg font-bold text-white">{sessionSummary.itemsReviewed}</p>
+          <div className="grid grid-cols-2 gap-3 text-left sm:grid-cols-4">
+            <div className="rounded-xl border border-line bg-canvas p-3">
+              <p className="type-micro">Ítems repasados</p>
+              <p className="mt-1 text-lg font-semibold text-ink">{sessionSummary.itemsReviewed}</p>
             </div>
-            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
-              <p className="text-[11px] text-slate-400">Tarjetas</p>
-              <p className="text-lg font-bold text-white">{sessionSummary.flashcards}</p>
+            <div className="rounded-xl border border-line bg-canvas p-3">
+              <p className="type-micro">Tarjetas</p>
+              <p className="mt-1 text-lg font-semibold text-ink">{sessionSummary.flashcards}</p>
             </div>
-            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
-              <p className="text-[11px] text-slate-400">Preguntas</p>
-              <p className="text-lg font-bold text-white">{sessionSummary.questions}</p>
+            <div className="rounded-xl border border-line bg-canvas p-3">
+              <p className="type-micro">Preguntas</p>
+              <p className="mt-1 text-lg font-semibold text-ink">{sessionSummary.questions}</p>
             </div>
-            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
-              <p className="text-[11px] text-slate-400">Duración</p>
-              <p className="text-lg font-bold text-white">{sessionSummary.durationMinutes} min</p>
+            <div className="rounded-xl border border-line bg-canvas p-3">
+              <p className="type-micro">Duración</p>
+              <p className="mt-1 text-lg font-semibold text-ink">{sessionSummary.durationMinutes} min</p>
             </div>
           </div>
 
           {sessionSummary.questions > 0 && (
-            <p className="text-xs text-slate-300">
-              Práctica: <strong className="text-emerald-300">{sessionSummary.correct}</strong> correctas ·{' '}
-              <strong className="text-rose-300">{sessionSummary.incorrect}</strong> incorrectas
+            <p className="text-secondary text-muted">
+              Práctica: <strong className="text-success">{sessionSummary.correct}</strong> correctas ·{' '}
+              <strong className="text-error">{sessionSummary.incorrect}</strong> incorrectas
             </p>
           )}
 
-          <button
-            onClick={resetToIdle}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/30 transition"
-          >
-            <RotateCcw size={14} /> Nueva sesión
-          </button>
+          <Button variant="solid" onClick={resetToIdle}>
+            <RotateCcw size={14} aria-hidden="true" /> Nueva sesión
+          </Button>
         </div>
       )}
 

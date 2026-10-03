@@ -64,7 +64,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
       onClick={onCancel}
     >
       <div
@@ -73,31 +73,31 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         aria-labelledby={titleId}
         aria-describedby={descId}
         onClick={e => e.stopPropagation()}
-        className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-5 space-y-4"
+        className="w-full max-w-md space-y-4 rounded-xl border border-line bg-raised p-5 shadow-pop"
       >
         <div className="flex items-start gap-3">
-          <div className={`p-2 rounded-lg shrink-0 ${tone === 'danger' ? 'bg-rose-500/10 text-rose-300 border border-rose-500/30' : 'bg-purple-500/10 text-purple-300 border border-purple-500/30'}`}>
-            <AlertTriangle size={18} />
+          <div className={`shrink-0 rounded-lg border p-2 ${tone === 'danger' ? 'border-error/30 bg-error-soft text-error' : 'border-accent/30 bg-accent-soft text-accent'}`}>
+            <AlertTriangle size={18} aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <h2 id={titleId} className="text-sm font-bold text-white">{title}</h2>
-            <p id={descId} className="text-xs text-slate-300 mt-1.5 leading-relaxed">{consequence}</p>
+            <h2 id={titleId} className="type-section text-ink">{title}</h2>
+            <p id={descId} className="mt-1.5 text-body leading-relaxed text-muted">{consequence}</p>
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2 border-t border-line pt-3">
           <button
             ref={cancelRef}
             type="button"
             onClick={onCancel}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+            className="h-9 rounded-lg border border-line-strong bg-surface px-4 text-secondary font-medium text-ink transition-colors hover:bg-accent-soft/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
           >
             {cancelLabel}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${tone === 'danger' ? 'bg-rose-600 hover:bg-rose-500' : 'bg-purple-600 hover:bg-purple-500'}`}
+            className={`h-9 rounded-lg px-4 text-secondary font-medium text-on-accent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${tone === 'danger' ? 'bg-error hover:opacity-90' : 'bg-accent hover:opacity-90'}`}
           >
             {confirmLabel}
           </button>

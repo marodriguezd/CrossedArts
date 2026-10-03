@@ -38,16 +38,21 @@ CrossedArts/
 │   │   │   └── aiService.ts        # Motor de IA: Local on-device (WebLLM), Demo, Ollama o OpenAI
 │   │   ├── components/
 │   │   │   ├── common/
-│   │   │   │   └── ConfirmDialog.tsx  # Diálogo de confirmación accesible para acciones destructivas
+│   │   │   │   ├── ConfirmDialog.tsx  # Diálogo de confirmación accesible para acciones destructivas
+│   │   │   │   └── ThemeToggle.tsx    # Selector de tema claro (crema) / oscuro (carbón)
 │   │   │   ├── lesson/
 │   │   │   │   └── LessonWorkspace.tsx  # Espacio de trabajo de la lección (contenido, notas, recursos, conceptos, estudio)
 │   │   │   ├── ai/
 │   │   │   │   └── AIAssistantDrawer.tsx  # Cajón lateral del tutor pedagógico con citas RAG
+│   │   │   ├── ui/
+│   │   │   │   └── index.tsx           # Primitivas visuales compartidas (Button, Badge, Panel, SearchInput, etc.)
+│   │   ├── hooks/
+│   │   │   └── useTheme.ts             # Tema claro/oscuro persistente (localStorage + data-theme)
 │   │   │   ├── study/
 │   │   │   │   ├── FlashcardGenerationModal.tsx  # Generación y previsualización de flashcards
 │   │   │   │   └── PracticeQuestion.tsx  # Pregunta de práctica accesible (grupo de radios)
 │   │   │   └── layout/
-│   │   │       └── Navbar.tsx      # Barra de navegación principal y selector de pestañas
+│   │   │       └── Shell.tsx        # Shell de la aplicación: lateral fijo, barra superior, buscador global y cajón móvil
 │   │   ├── db/
 │   │   │   ├── dao.ts              # Data Access Object con consultas SQL y algoritmo SM-2
 │   │   │   ├── exportImport.ts     # Exportación/importación binaria .sqlite y backup JSON
@@ -198,7 +203,8 @@ Cualquier modificación o ampliación de código debe respetar estrictamente est
 
 ### Regla 5: Idioma y Experiencia de Usuario
 * Toda la interfaz de usuario, títulos, botones, cuadros de diálogo, mensajes de error y textos explicativos deben estar en **español**.
-* La estética visual se basa en el tema oscuro de Tailwind (`slate-950`, acentos morados/índigo `purple-500` / `indigo-500`) con soporte para modo claro.
+* La estética visual se define mediante variables CSS semánticas (`--c-canvas`, `--c-surface`, `--c-ink`, `--c-accent`, etc.) declaradas en `frontend/src/index.css` y expuestas a Tailwind en `frontend/tailwind.config.js`. El tema **por defecto es claro y cálido (crema)**, con un segundo tema **oscuro suave (carbón)** que el usuario elige de forma persistente (`hooks/useTheme.ts`, `localStorage: crossedarts-theme`). Está prohibido introducir colores literales de paleta (`slate-*`, `purple-*`, `indigo-*`) en el JSX: usa siempre las utilidades semánticas (`bg-surface`, `text-muted`, `text-accent`, `border-line`).
+* Los nuevos componentes compartidos deben construirse sobre las primitivas de `frontend/src/components/ui/index.tsx` y el shell de `frontend/src/components/layout/Shell.tsx`.
 
 ### Regla 6: Higiene de Git y Control de Versiones
 * No confirmes archivos de log de agentes, volcados de estado temporal ni artefactos innecesarios en la raíz (`.omg`, `.agents`, `.opencode`, `PLAN.md`, etc.).

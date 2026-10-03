@@ -150,7 +150,13 @@ Hybrid RAG (lexical + local embeddings)
 Local WebLLM grounded response
 ```
 
-### 9. Optional Python Backend Companion
+### 9. Editorial Interface & Persistent Dual Theme
+- Every surface is built from semantic CSS design tokens (`--c-canvas`, `--c-ink`, `--c-accent`, ...) declared in `frontend/src/index.css`; no hard-coded palettes in JSX.
+- Two hand-tuned themes: **light, warm and cream by default**, plus a **soft dark / charcoal** alternative. The choice persists in `localStorage` and is applied before first paint (no flash of the wrong theme).
+- Reading-first layout: lesson content is the primary object, metadata is quiet, and metrics are computed from real local activity only (no invented numbers).
+- Fully responsive down to small screens, with an accessible mobile drawer, visible focus rings, and `prefers-reduced-motion` support.
+
+### 10. Optional Python Backend Companion
 - Auxiliary REST API server in `backend/` built with **FastAPI**, **SQLAlchemy 2.0**, and **Alembic**.
 - Ideal for heavy batch ingestion (bulk PDF/EPUB extraction, video transcript processing) and semantic search with vector embeddings.
 
@@ -164,8 +170,9 @@ CrossedArts/
 │   ├── public/                   # WASM binary (sql-wasm.wasm) & favicon
 │   ├── src/
 │   │   ├── ai/                   # Hybrid AI tutor engine (aiService.ts)
-│   │   ├── components/           # UI components (Navbar, AIAssistantDrawer, etc.)
+│   │   ├── components/           # UI components (Shell, shared primitives, AIAssistantDrawer, etc.)
 │   │   ├── db/                   # SQLite WASM bridge, schema, DAO & backups
+│   │   ├── hooks/                # Persistent light/cream vs. dark/charcoal theme (useTheme.ts)
 │   │   ├── lib/                  # Local LLM, embeddings, hybrid RAG & ingestion
 │   │   ├── pages/                # Views: Dashboard, Library, ReviewCenter, Graph, etc.
 │   │   └── types/                # TypeScript domain models (models.ts)

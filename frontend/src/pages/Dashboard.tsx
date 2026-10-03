@@ -1,6 +1,19 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { KPIMetrics, Course, Book, LearningSession } from '../types/models.ts';
-import { BookOpen, GraduationCap, Clock, Flame, Brain, Play, CheckCircle2, ArrowRight, CalendarCheck, History } from 'lucide-react';
+import {
+  GraduationCap,
+  BookOpen,
+  Play,
+  ArrowRight,
+  Brain,
+  Network,
+  FileText,
+  Library,
+  Flame,
+  History,
+} from 'lucide-react';
+import { dao } from '../db/dao.ts';
+import { Button, ProgressBar, Panel, SectionHeading, EmptyState } from '../components/ui/index.tsx';
 
 interface DashboardProps {
   kpis: KPIMetrics | null;
@@ -11,245 +24,335 @@ interface DashboardProps {
   onNavigate: (tab: string) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ kpis, courses, books, recentSessions, onSelectCourse, onNavigate }) => {
+interface ContinueTarget {
+  course: Course;
+  lessonTitle: string;
+}
+
+/**
+ * Dashboard como centro de mando académico: continuación de estudio, actividad
+ * real de hoy, cursos en curso, actividad reciente y accesos directos.
+ * Todos los números provienen de datos reales de CrossedArts (no hay métricas
+ * inventadas ni gráficos sintéticos).
+ */
+export const Dashboard: React.FC<DashboardProps> = ({
+  kpis,
+  courses,
+  books,
+  recentSessions,
+  onSelectCourse,
+  onNavigate,
+}) => {
   const today = kpis?.today;
+  const [continueTarget, setContinueTarget] = useState<ContinueTarget | null>(null);
+
+  // Continuación determinista: primer curso incompleto + próxima lección real.
+  useEffect(() => {
+    let cancelled = false;
+    const target = courses.find((c) => (c.completed_lessons || 0) < (c.total_lessons || 0)) || courses[0];
+    if (!target) {
+      setContinueTarget(null);
+      return;
+    }
+    dao
+      .getNextLessonForCourse(target.id)
+      .then((next) => {
+        if (cancelled) return;
+        setContinueTarget({ course: target, lessonTitle: next?.lesson?.title || '' });
+      })
+      .catch(() => {
+        if (!cancelled) setContinueTarget({ course: target, lessonTitle: '' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courses]);
+
+  const coursePct = (c: Course) =>
+    c.total_lessons ? Math.round(((c.completed_lessons || 0) / c.total_lessons) * 100) : 0;
+
+  const shortcuts = [
+    { tab: 'library', label: 'Biblioteca', hint: 'Explorar recursos', icon: Library },
+    { tab: 'review', label: 'Repaso SM-2', hint: 'Revisar tarjetas', icon: Brain },
+    { tab: 'graph', label: 'Grafo', hint: 'Explorar conceptos', icon: Network },
+    { tab: 'notes', label: 'Notas', hint: 'Tus apuntes', icon: FileText },
+  ];
+
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Hero Welcome Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-900/40 via-slate-900/60 to-slate-950 p-6 md:p-8 border border-purple-500/20 shadow-xl">
-        <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-semibold mb-3">
-            ✨ GitHub Pages First • Local-First Learning
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">
-            Continúa construyendo tu maestría intelectual.
-          </h1>
-          <p className="text-sm text-slate-300 mb-6 leading-relaxed">
-            Tu base de datos SQLite relacional y tus notas se ejecutan 100% en tu navegador. Sin dependencias forzadas de servidor.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => onNavigate('library')}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/30 transition active:scale-95"
-            >
-              Explorar Recursos
-              <ArrowRight size={14} />
-            </button>
-            <button
-              onClick={() => onNavigate('review')}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-purple-300 border border-purple-800/40 transition"
-            >
-              <Brain size={14} />
-              Centro de Repaso (SM-2)
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* --- Cabecera de página --- */}
+      <header>
+        <h1 className="type-display text-ink">Dashboard</h1>
+        <p className="type-secondary mt-1">Tu actividad de estudio, tu continuación y accesos rápidos.</p>
+      </header>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            <GraduationCap size={22} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 font-medium">Recursos Totales</p>
-            <h3 className="text-xl font-bold text-white">{kpis?.total_resources ?? 0}</h3>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <CheckCircle2 size={22} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 font-medium">Completados</p>
-            <h3 className="text-xl font-bold text-white">{kpis?.completed_resources ?? 0}</h3>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            <Clock size={22} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 font-medium">Horas de Estudio</p>
-            <h3 className="text-xl font-bold text-white">{kpis?.total_study_hours ?? 0}h</h3>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
-            <Flame size={22} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 font-medium">Racha Activa</p>
-            <h3 className="text-xl font-bold text-white">{kpis?.active_streak_days ?? 0} días</h3>
-          </div>
-        </div>
-      </div>
-
-      {/* Progreso local de hoy y sesiones recientes */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <CalendarCheck className="text-emerald-400" size={18} /> Hoy
-          </h2>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
-              <p className="text-lg font-bold text-white">{today?.items_reviewed ?? 0}</p>
-              <p className="text-[10px] text-slate-400">Ítems repasados</p>
+      {/* --- Continuar aprendizaje (acción principal) + Estudio de hoy --- */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Panel className="lg:col-span-2 p-5 sm:p-6">
+          <p className="type-micro">Continúa aprendizaje</p>
+          {continueTarget ? (
+            <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="type-title text-ink truncate">{continueTarget.course.title}</h2>
+                <p className="type-secondary mt-1 truncate">
+                  {continueTarget.lessonTitle
+                    ? `Próxima: ${continueTarget.lessonTitle}`
+                    : 'Curso completo — vuelve a repasar cuando quieras.'}
+                </p>
+                <div className="mt-3 flex items-center gap-3">
+                  <ProgressBar
+                    value={coursePct(continueTarget.course)}
+                    label={`Progreso de ${continueTarget.course.title}`}
+                    className="max-w-56"
+                  />
+                  <span className="text-meta font-semibold text-muted">
+                    {coursePct(continueTarget.course)}%
+                  </span>
+                  <span className="text-meta">
+                    {continueTarget.course.completed_lessons || 0}/{continueTarget.course.total_lessons} lecciones
+                  </span>
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="solid" onClick={() => onSelectCourse(continueTarget.course.id)}>
+                  <Play size={14} aria-hidden="true" />
+                  Continuar
+                </Button>
+              </div>
             </div>
-            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
-              <p className="text-lg font-bold text-purple-300">{today?.flashcards_reviewed ?? 0}</p>
-              <p className="text-[10px] text-slate-400">Tarjetas</p>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
-              <p className="text-lg font-bold text-indigo-300">{today?.questions_answered ?? 0}</p>
-              <p className="text-[10px] text-slate-400">Preguntas</p>
-            </div>
-          </div>
-          <button
-            onClick={() => onNavigate('review')}
-            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition"
-          >
-            <Play size={13} /> Iniciar sesión de estudio
-          </button>
-        </div>
-
-        <div className="lg:col-span-2 p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <History className="text-purple-400" size={18} /> Sesiones recientes
-          </h2>
-          {recentSessions.length === 0 ? (
-            <p className="text-xs text-slate-500">Aún no has completado ninguna sesión de estudio.</p>
           ) : (
-            <ul className="space-y-2">
-              {recentSessions.map(session => (
-                <li key={session.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800 text-xs">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-200 truncate">
-                      {session.resource_title || 'Estudio general'}
-                    </p>
-                    {/* El ámbito de lección solo se muestra cuando existe realmente. */}
-                    {session.lesson_id && (
-                      <p className="text-[10px] text-purple-300/90 truncate">
-                        Lección: {session.lesson_title || session.lesson_id}
-                      </p>
+            <EmptyState
+              title="Aún no hay cursos"
+              hint="Importa documentos o crea tu primer curso desde la Biblioteca para empezar."
+              action={
+                <Button variant="outline" onClick={() => onNavigate('library')}>
+                  Explorar Biblioteca
+                  <ArrowRight size={14} aria-hidden="true" />
+                </Button>
+              }
+            />
+          )}
+        </Panel>
+
+        <Panel className="p-5">
+          <p className="type-micro">Estudio de hoy</p>
+          <div className="mt-3 space-y-2">
+            <div className="flex items-baseline justify-between">
+              <span className="text-2xl font-semibold text-ink">{today?.items_reviewed ?? 0}</span>
+              <span className="type-meta">ítems repasados</span>
+            </div>
+            <div className="border-t border-line pt-2 flex items-baseline justify-between">
+              <span className="text-item font-semibold text-ink">{today?.flashcards_reviewed ?? 0}</span>
+              <span className="type-meta">tarjetas</span>
+            </div>
+            <div className="border-t border-line pt-2 flex items-baseline justify-between">
+              <span className="text-item font-semibold text-ink">{today?.questions_answered ?? 0}</span>
+              <span className="type-meta">preguntas</span>
+            </div>
+            <div className="border-t border-line pt-2 flex items-baseline justify-between">
+              <span className="text-item font-semibold text-success">{today?.correct_answers ?? 0}</span>
+              <span className="type-meta">aciertos</span>
+            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-2 border-t border-line pt-3">
+            <Flame size={15} className="text-warning" aria-hidden="true" />
+            <span className="text-meta text-muted">
+              Racha activa: <strong className="text-ink">{kpis?.active_streak_days ?? 0} días</strong>
+            </span>
+          </div>
+        </Panel>
+      </div>
+
+      {/* --- Franja de métricas reales (una sola superficie, sin tarjetas) --- */}
+      <div className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
+        <div className="px-5 py-4">
+          <p className="type-micro">Recursos totales</p>
+          <p className="mt-1 text-xl font-semibold text-ink">{kpis?.total_resources ?? 0}</p>
+        </div>
+        <div className="border-line px-5 py-4 md:border-0">
+          <p className="type-micro">Completados</p>
+          <p className="mt-1 text-xl font-semibold text-ink">{kpis?.completed_resources ?? 0}</p>
+        </div>
+        <div className="border-t border-line px-5 py-4 md:border-0">
+          <p className="type-micro">Horas de estudio</p>
+          <p className="mt-1 text-xl font-semibold text-ink">{kpis?.total_study_hours ?? 0} h</p>
+        </div>
+        <div className="border-t border-line px-5 py-4 md:border-0">
+          <p className="type-micro">Racha activa</p>
+          <p className="mt-1 text-xl font-semibold text-ink">{kpis?.active_streak_days ?? 0} días</p>
+        </div>
+      </div>
+
+      {/* --- Cursos + actividad --- */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <SectionHeading
+            title="Cursos en progreso"
+            action={
+              <button
+                onClick={() => onNavigate('library')}
+                className="text-meta font-medium text-accent hover:underline"
+              >
+                Ver todos →
+              </button>
+            }
+          />
+          {courses.length === 0 ? (
+            <p className="type-secondary">Aún no tienes cursos. Encuéntralos en la Biblioteca.</p>
+          ) : (
+            <ul className="divide-y divide-line rounded-xl border border-line bg-surface shadow-card">
+              {courses.slice(0, 4).map((course) => (
+                <li key={course.id}>
+                  <button
+                    onClick={() => onSelectCourse(course.id)}
+                    className="group flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors duration-fast hover:bg-accent-soft/40"
+                  >
+                    {course.cover_path ? (
+                      <img
+                        src={course.cover_path}
+                        alt=""
+                        aria-hidden="true"
+                        className="h-12 w-12 shrink-0 rounded-lg border border-line object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-accent-soft text-accent">
+                        <GraduationCap size={20} aria-hidden="true" />
+                      </span>
                     )}
-                    <p className="text-[10px] text-slate-500">
-                      {session.cards_reviewed} tarjetas · {session.questions_answered} preguntas
-                    </p>
-                  </div>
-                  <span className="text-[11px] font-medium text-purple-300 shrink-0">{session.duration_minutes} min</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="type-item block truncate text-ink group-hover:text-accent">
+                        {course.title}
+                      </span>
+                      <span className="type-meta mt-0.5 block truncate">
+                        {course.instructor || course.category} · {course.completed_lessons || 0}/
+                        {course.total_lessons} lecciones
+                      </span>
+                    </span>
+                    <span className="hidden w-32 shrink-0 sm:block">
+                      <ProgressBar
+                        value={coursePct(course)}
+                        label={`Progreso de ${course.title}`}
+                      />
+                    </span>
+                    <span className="text-meta font-semibold text-muted w-10 text-right">
+                      {coursePct(course)}%
+                    </span>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line text-muted transition-colors group-hover:border-accent group-hover:bg-accent group-hover:text-on-accent">
+                      <Play size={13} aria-hidden="true" />
+                      <span className="sr-only">Continuar {course.title}</span>
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>
           )}
-        </div>
-      </div>
 
-      {/* Main Content Sections: Cursos en Progreso y Libros */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Cursos en Progreso */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <GraduationCap className="text-purple-400" size={20} />
-              Cursos en Progreso
-            </h2>
-            <button onClick={() => onNavigate('library')} className="text-xs text-purple-400 hover:text-purple-300">
-              Ver todos →
-            </button>
+          {/* Actividad reciente */}
+          <div className="mt-8">
+            <SectionHeading title="Actividad reciente" />
+            {recentSessions.length === 0 ? (
+              <p className="type-secondary">
+                Aún no has completado ninguna sesión de estudio.
+              </p>
+            ) : (
+              <ul className="divide-y divide-line rounded-xl border border-line bg-surface shadow-card">
+                {recentSessions.map((session) => (
+                  <li key={session.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="type-item truncate text-ink">
+                        {session.resource_title || 'Estudio general'}
+                      </p>
+                      {/* El ámbito de lección solo se muestra cuando existe realmente. */}
+                      {session.lesson_id && (
+                        <p className="type-meta truncate text-accent">
+                          Lección: {session.lesson_title || session.lesson_id}
+                        </p>
+                      )}
+                      <p className="type-meta mt-0.5">
+                        {session.cards_reviewed} tarjetas · {session.questions_answered} preguntas
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-meta font-semibold text-muted">
+                      {session.duration_minutes} min
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
+        </div>
 
-          <div className="space-y-3">
-            {courses.slice(0, 3).map(course => (
-              <div 
-                key={course.id}
-                onClick={() => onSelectCourse(course.id)}
-                className="group p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900 border border-slate-800/80 hover:border-purple-500/40 cursor-pointer transition-all duration-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-              >
-                <div className="flex items-center gap-3">
-                  {course.cover_path ? (
-                    <img 
-                      src={course.cover_path} 
-                      alt={course.title} 
-                      className="w-14 h-14 rounded-lg object-cover border border-slate-700" 
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-lg bg-purple-950/40 border border-purple-800/40 flex items-center justify-center text-purple-400">
-                      <GraduationCap size={22} />
-                    </div>
-                  )}
-                  <div>
-                    <h3 className="font-semibold text-sm text-slate-100 group-hover:text-purple-300 transition">
-                      {course.title}
-                    </h3>
-                    <p className="text-xs text-slate-400">{course.instructor || 'Instructor'}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800 text-purple-300">
-                        {course.category}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        {course.completed_lessons}/{course.total_lessons} lecciones
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                  <div className="w-24 bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-purple-500 h-full rounded-full transition-all"
-                      style={{ width: `${course.total_lessons ? ((course.completed_lessons || 0) / course.total_lessons) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <button className="p-2 rounded-lg bg-purple-600/20 text-purple-300 group-hover:bg-purple-600 group-hover:text-white transition">
-                    <Play size={14} />
+        {/* --- Columna lateral: accesos y lecturas --- */}
+        <div className="space-y-8">
+          <div>
+            <SectionHeading title="Accesos rápidos" />
+            <div className="grid grid-cols-2 gap-2">
+              {shortcuts.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <button
+                    key={s.tab}
+                    onClick={() => onNavigate(s.tab)}
+                    className="group rounded-xl border border-line bg-surface px-3 py-3 text-left shadow-card transition-colors duration-fast hover:border-accent/40 hover:bg-accent-soft/40"
+                  >
+                    <Icon size={16} className="text-accent" aria-hidden="true" />
+                    <span className="type-item mt-2 block text-ink">{s.label}</span>
+                    <span className="type-meta block">{s.hint}</span>
                   </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Lecturas Activas */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <BookOpen className="text-indigo-400" size={20} />
-              Lecturas Activas
-            </h2>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {books.slice(0, 3).map(book => (
-              <div key={book.id} className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800 flex items-center gap-3">
-                {book.cover_path ? (
-                  <img 
-                    src={book.cover_path} 
-                    alt={book.title} 
-                    className="w-12 h-16 rounded-md object-cover border border-slate-700 shadow-sm"
-                  />
-                ) : (
-                  <div className="w-12 h-16 rounded-md bg-indigo-950/40 border border-indigo-800/40 flex items-center justify-center text-indigo-400 shrink-0 shadow-sm">
-                    <BookOpen size={20} />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-xs text-slate-200 truncate">{book.title}</h4>
-                  <p className="text-[11px] text-slate-400 truncate">{book.author}</p>
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 mb-1">
-                    <span>Pág. {book.current_page}/{book.page_count}</span>
-                    <span className="font-bold text-indigo-400">{book.reading_percentage}%</span>
-                  </div>
-                  <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${book.reading_percentage}%` }} />
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div>
+            <SectionHeading title="Lecturas activas" />
+            {books.length === 0 ? (
+              <p className="type-secondary">No hay libros en curso.</p>
+            ) : (
+              <ul className="divide-y divide-line rounded-xl border border-line bg-surface shadow-card">
+                {books.slice(0, 3).map((book) => (
+                  <li key={book.id} className="flex items-center gap-3 px-4 py-3">
+                    {book.cover_path ? (
+                      <img
+                        src={book.cover_path}
+                        alt=""
+                        aria-hidden="true"
+                        className="h-14 w-10 shrink-0 rounded border border-line object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-14 w-10 shrink-0 items-center justify-center rounded border border-line bg-accent-soft text-accent">
+                        <BookOpen size={16} aria-hidden="true" />
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="type-item truncate text-ink">{book.title}</p>
+                      <p className="type-meta truncate">{book.author || 'Autor no indicado'}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <ProgressBar
+                          value={book.reading_percentage || 0}
+                          label={`Lectura de ${book.title}`}
+                          className="flex-1"
+                        />
+                        <span className="text-meta font-semibold text-muted">
+                          {book.reading_percentage || 0}%
+                        </span>
+                      </div>
+                      <p className="type-meta mt-1">
+                        Pág. {book.current_page}/{book.page_count}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="flex items-start gap-2 rounded-xl border border-line bg-surface px-4 py-3 shadow-card">
+            <History size={15} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
+            <p className="type-meta">
+              Todo se calcula localmente desde SQLite: sin métricas inventadas ni sin conexión
+              necesaria.
+            </p>
           </div>
         </div>
       </div>

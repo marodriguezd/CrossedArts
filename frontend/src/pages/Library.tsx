@@ -6,10 +6,13 @@ import type { MediaScanReport } from '../services/localMediaService.ts';
 import { dao } from '../db/dao.ts';
 import { localIngestionService } from '../lib/localIngestion/service.ts';
 import type { IngestionProgress, IngestionResult } from '../lib/localIngestion/types.ts';
+import { Button, Chip, SearchInput, Panel, SectionHeading, Badge, InlineStatus, ProgressBar, EmptyState, cn } from '../components/ui/index.tsx';
 
 interface LibraryProps {
   courses: Course[];
   books: Book[];
+  /** Consulta proveniente de la búsqueda global de la cabecera. */
+  initialQuery?: string;
   onSelectCourse: (id: string) => void;
   onMountLocalFolder: () => void;
   scanReport?: MediaScanReport | null;
@@ -26,6 +29,7 @@ interface LibraryProps {
 export const Library: React.FC<LibraryProps> = ({ 
   courses, 
   books, 
+  initialQuery,
   onSelectCourse, 
   onMountLocalFolder,
   scanReport,
@@ -40,6 +44,12 @@ export const Library: React.FC<LibraryProps> = ({
 }) => {
   const [filter, setFilter] = useState<'all' | 'courses' | 'books'>('all');
   const [query, setQuery] = useState('');
+
+  // La búsqueda global de la cabecera se convierte en el filtro de esta vista.
+  useEffect(() => {
+    if (initialQuery) setQuery(initialQuery);
+  }, [initialQuery]);
+
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
   const [inputPage, setInputPage] = useState<string>('');
   const [bookFeedback, setBookFeedback] = useState<{ id: string; msg: string; isError?: boolean } | null>(null);
@@ -385,16 +395,21 @@ export const Library: React.FC<LibraryProps> = ({
     (b.title.toLowerCase().includes(query.toLowerCase()) || b.author?.toLowerCase().includes(query.toLowerCase()))
   );
 
+  const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
+  const LABEL_CLS = 'mb-1 block text-meta font-medium text-muted';
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header and Action controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* Cabecera de página y acciones */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-white">Biblioteca Educativa</h1>
-          <p className="text-xs text-slate-400">Catálogo modular de cursos estructurados y libros de estudio</p>
+          <h1 className="type-display text-ink">Biblioteca</h1>
+          <p className="type-secondary mt-1">
+            Explora y organiza todos tus recursos de aprendizaje.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Input oculto para selección de archivos */}
           <input
             type="file"
@@ -405,167 +420,148 @@ export const Library: React.FC<LibraryProps> = ({
             className="hidden"
           />
 
-          <button
+          <Button
+            variant="outline"
             onClick={() => { setCourseError(null); setIsCreateCourseOpen(true); }}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition"
             title="Crear un curso estructurado"
           >
-            <Plus size={15} />
-            <span>Crear Curso</span>
-          </button>
+            <Plus size={15} aria-hidden="true" />
+            Crear curso
+          </Button>
 
-          <button
+          <Button
+            variant="outline"
             onClick={handleTriggerFilePicker}
             disabled={isImporting}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white shadow-md shadow-indigo-600/25 transition"
             title="Importar documentos locales (.txt, .md, .pdf, .epub)"
           >
-            {isImporting ? <Loader2 size={15} className="animate-spin" /> : <FileUp size={15} />}
-            <span>{isImporting ? 'Importando...' : 'Importar Documentos'}</span>
-          </button>
+            {isImporting ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <FileUp size={15} aria-hidden="true" />}
+            {isImporting ? 'Importando…' : 'Importar documentos'}
+          </Button>
 
-          <button
+          <Button
+            variant="outline"
             onClick={onMountLocalFolder}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/25 transition"
             title="Escanear carpeta local con File System Access API"
           >
-            <FolderOpen size={15} />
-            <span>Vincular Carpeta Local</span>
-          </button>
+            <FolderOpen size={15} aria-hidden="true" />
+            Vincular carpeta local
+          </Button>
         </div>
       </div>
 
-      {/* Banner de progreso de importación de documentos */}
+      {/* Progreso de importación de documentos */}
       {isImporting && ingestionProgress && (
-        <div className="p-4 rounded-xl bg-indigo-950/40 border border-indigo-500/40 text-slate-200 flex items-center justify-between gap-3 animate-fade-in">
-          <div className="flex items-center gap-3">
-            <Loader2 size={20} className="text-indigo-400 animate-spin shrink-0" />
-            <div className="space-y-0.5 text-xs">
-              <p className="font-semibold text-indigo-200">
-                Procesando archivo ({ingestionProgress.currentFileIndex}/{ingestionProgress.totalFiles}): <span className="font-mono text-white">{ingestionProgress.fileName}</span>
-              </p>
-              <p className="text-slate-300">{ingestionProgress.message}</p>
-            </div>
-          </div>
+        <InlineStatus tone="info" className="justify-between">
+          <span className="flex items-center gap-3">
+            <Loader2 size={16} className="animate-spin shrink-0" aria-hidden="true" />
+            <span>
+              Procesando archivo ({ingestionProgress.currentFileIndex}/{ingestionProgress.totalFiles}):{' '}
+              <strong className="font-mono">{ingestionProgress.fileName}</strong>
+              <span className="mt-0.5 block">{ingestionProgress.message}</span>
+            </span>
+          </span>
           <button
             onClick={handleCancelIngestion}
-            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-rose-300 transition"
+            className="shrink-0 rounded-md border border-error/40 px-2 py-1 text-meta font-medium text-error hover:bg-error-soft"
           >
             Cancelar
           </button>
-        </div>
+        </InlineStatus>
       )}
 
-      {/* Banner de reporte de importación de documentos */}
+      {/* Reporte de importación */}
       {ingestionReport && (
-        <div className="p-4 rounded-xl bg-slate-900 border border-indigo-500/30 text-slate-200 flex items-start justify-between gap-3 animate-fade-in">
-          <div className="space-y-1 text-xs">
-            <p className="font-semibold text-indigo-300">
-              Resultado de importación ({ingestionReport.total} archivo{ingestionReport.total !== 1 ? 's' : ''})
-            </p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-300">
-              <span className="text-emerald-400">✓ Importados: <strong>{ingestionReport.success}</strong></span>
-              {ingestionReport.duplicates > 0 && (
-                <span className="text-slate-400">↷ Duplicados omitidos: {ingestionReport.duplicates}</span>
-              )}
-              {ingestionReport.errors > 0 && (
-                <span className="text-rose-400">✕ Errores: {ingestionReport.errors}</span>
-              )}
-            </div>
-            <ul className="mt-2 space-y-0.5 text-[11px] text-slate-400 max-h-24 overflow-y-auto">
+        <InlineStatus tone={ingestionReport.errors > 0 ? 'warning' : 'success'} className="justify-between">
+          <span className="min-w-0">
+            <strong>Resultado de importación ({ingestionReport.total} archivo{ingestionReport.total !== 1 ? 's' : ''})</strong>
+            <span className="mt-1 flex flex-wrap gap-x-4">
+              <span>✓ Importados: <strong>{ingestionReport.success}</strong></span>
+              {ingestionReport.duplicates > 0 && <span>↷ Duplicados omitidos: {ingestionReport.duplicates}</span>}
+              {ingestionReport.errors > 0 && <span>✕ Errores: {ingestionReport.errors}</span>}
+            </span>
+            <span className="mt-1 block max-h-24 overflow-y-auto">
               {ingestionReport.details.slice(0, 5).map((d, i) => (
-                <li key={i}>{d}</li>
+                <span key={i} className="block">{d}</span>
               ))}
-            </ul>
-          </div>
+            </span>
+          </span>
           <button
             onClick={() => setIngestionReport(null)}
-            className="text-slate-400 hover:text-white p-1"
-            title="Cerrar reporte"
+            aria-label="Cerrar reporte"
+            className="shrink-0 opacity-70 hover:opacity-100"
           >
-            <X size={16} />
+            <X size={16} aria-hidden="true" />
           </button>
-        </div>
+        </InlineStatus>
       )}
 
-      {/* Banner de reporte de escaneo factual */}
+      {/* Reporte de escaneo de carpeta local */}
       {scanReport && (
-        <div className="p-4 rounded-xl bg-purple-950/40 border border-purple-500/40 text-slate-200 flex items-start justify-between gap-3 animate-fade-in">
-          <div className="flex items-start gap-3">
-            <FolderCheck size={20} className="text-purple-400 shrink-0 mt-0.5" />
-            <div className="space-y-1 text-xs">
-              <p className="font-semibold text-purple-200">
-                Carpeta vinculada: <span className="font-mono text-white">"{scanReport.directoryName}"</span>
-              </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-300">
-                <span>📁 Archivos multimedia encontrados: <strong>{scanReport.totalDiscovered}</strong></span>
-                <span className="text-emerald-400">✓ Lecciones emparejadas: <strong>{scanReport.matchedCount}</strong></span>
-                {scanReport.unmatchedCount > 0 && (
-                  <span className="text-slate-400">○ Archivos sin emparejar: {scanReport.unmatchedCount}</span>
-                )}
+        <InlineStatus tone="info" className="justify-between">
+          <span className="flex min-w-0 items-start gap-3">
+            <FolderCheck size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>
+              <strong>Carpeta vinculada:</strong>{' '}
+              <span className="font-mono">"{scanReport.directoryName}"</span>
+              <span className="mt-1 flex flex-wrap gap-x-4">
+                <span>Archivos multimedia encontrados: <strong>{scanReport.totalDiscovered}</strong></span>
+                <span>✓ Lecciones emparejadas: <strong>{scanReport.matchedCount}</strong></span>
+                {scanReport.unmatchedCount > 0 && <span>○ Archivos sin emparejar: {scanReport.unmatchedCount}</span>}
                 {scanReport.ambiguousMatches.length > 0 && (
-                  <span className="text-amber-400 flex items-center gap-1">
-                    <AlertTriangle size={12} /> Ambigüedades detectadas: {scanReport.ambiguousMatches.length}
+                  <span className="flex items-center gap-1">
+                    <AlertTriangle size={12} aria-hidden="true" /> Ambigüedades detectadas: {scanReport.ambiguousMatches.length}
                   </span>
                 )}
-              </div>
-            </div>
-          </div>
+              </span>
+            </span>
+          </span>
           {onDismissReport && (
-            <button 
-              onClick={onDismissReport} 
-              className="text-slate-400 hover:text-white p-1"
-              title="Cerrar aviso"
+            <button
+              onClick={onDismissReport}
+              aria-label="Cerrar aviso"
+              className="shrink-0 opacity-70 hover:opacity-100"
             >
-              <X size={16} />
+              <X size={16} aria-hidden="true" />
             </button>
           )}
-        </div>
+        </InlineStatus>
       )}
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-        <div className="relative w-full sm:w-72">
-          <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Buscar por título, autor o tema..."
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+      {/* Búsqueda y filtros */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SearchInput
+          label="Buscar por título, autor o tema"
+          placeholder="Buscar por título, autor o tema…"
+          value={query}
+          onChange={setQuery}
+          className="sm:w-80"
+        />
+        <div className="flex items-center gap-1.5" role="group" aria-label="Filtrar por tipo">
           {(['all', 'courses', 'books'] as const).map(mode => (
-            <button
-              key={mode}
-              onClick={() => setFilter(mode)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition ${
-                filter === mode
-                  ? 'bg-purple-600/20 text-purple-300 border border-purple-500/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
+            <Chip key={mode} active={filter === mode} onClick={() => setFilter(mode)}>
               {mode === 'all' ? 'Todo' : mode === 'courses' ? 'Cursos' : 'Libros'}
-            </button>
+            </Chip>
           ))}
         </div>
       </div>
 
       {/* Búsqueda local unificada (sin embeddings, funciona offline) */}
       {query.trim().length >= 2 && (
-        <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <Search size={14} className="text-purple-400" /> Resultados locales ({searchResults.length})
+        <Panel className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="type-micro flex items-center gap-2">
+              <Search size={13} className="text-accent" aria-hidden="true" />
+              Resultados locales ({searchResults.length})
             </h2>
-            {isSearching && <Loader2 size={13} className="animate-spin text-purple-400" />}
+            {isSearching && <Loader2 size={13} className="animate-spin text-accent" aria-hidden="true" />}
           </div>
           {searchResults.length === 0 && !isSearching ? (
-            <p className="text-[11px] text-slate-500">Sin coincidencias en cursos, libros, lecciones, notas, conceptos o recursos importados.</p>
+            <p className="type-meta">
+              Sin coincidencias en cursos, libros, lecciones, notas, conceptos o recursos importados.
+            </p>
           ) : (
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
               {searchResults.slice(0, 20).map(result => {
                 const Icon = RESULT_ICONS[result.type] || FileText;
                 return (
@@ -573,340 +569,352 @@ export const Library: React.FC<LibraryProps> = ({
                     <button
                       onClick={() => handleSearchResultNavigate(result)}
                       aria-label={`Abrir ${result.type}: ${result.title}`}
-                      className="w-full text-left p-2 rounded-lg border border-slate-800 bg-slate-950/50 flex items-start gap-2 transition hover:border-purple-500/40 cursor-pointer"
+                      className="flex w-full items-start gap-2 rounded-lg border border-line bg-canvas p-2 text-left transition-colors duration-fast hover:border-accent/40 hover:bg-accent-soft/40"
                     >
-                      <Icon size={14} className="text-purple-400 shrink-0 mt-0.5" />
+                      <Icon size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-[11px] font-semibold text-slate-200 truncate">{result.title}</span>
-                        {result.subtitle && <span className="block text-[10px] text-slate-500 truncate">{result.subtitle}</span>}
-                        <span className="block text-[9px] uppercase tracking-wider text-slate-600">{result.type}</span>
+                        <span className="block truncate text-meta font-semibold text-ink">{result.title}</span>
+                        {result.subtitle && <span className="block truncate text-micro">{result.subtitle}</span>}
+                        <span className="type-micro block">{result.type}</span>
                       </span>
-                      <ArrowUpRight size={13} className="text-slate-500 shrink-0 mt-0.5" aria-hidden="true" />
+                      <ArrowUpRight size={13} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
                     </button>
                   </li>
                 );
               })}
             </ul>
           )}
-        </div>
+        </Panel>
       )}
 
       {/* Recursos sin organizar */}
       {unorganized.length > 0 && (
-        <div className="p-4 rounded-2xl bg-slate-900/60 border border-amber-500/30 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <Link2 size={14} className="text-amber-400" /> Recursos sin organizar ({unorganized.length})
+        <Panel className="border-warning/40 p-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="type-micro flex items-center gap-2 text-warning">
+              <Link2 size={13} aria-hidden="true" />
+              Recursos sin organizar ({unorganized.length})
             </h2>
-            {organizeFeedback && <span className="text-[10px] text-slate-400">{organizeFeedback}</span>}
+            {organizeFeedback && <span className="type-meta">{organizeFeedback}</span>}
           </div>
-          <p className="text-[11px] text-slate-500">Documentos importados que aún no están asociados a ningún curso, libro o concepto.</p>
-          <ul className="space-y-2">
+          <p className="type-meta">
+            Documentos importados que aún no están asociados a ningún curso, libro o concepto.
+          </p>
+          <ul className="mt-3 space-y-2">
             {unorganized.map(item => (
-              <li key={item.resource.id} className="flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+              <li key={item.resource.id} className="flex flex-col gap-2 rounded-lg border border-line bg-canvas p-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-semibold text-slate-200 truncate">{item.resource.title}</p>
-                  <p className="text-[10px] text-slate-500">{item.noteCount} fragmentos de estudio · sin conexiones</p>
+                  <p className="truncate text-meta font-semibold text-ink">{item.resource.title}</p>
+                  <p className="type-meta">{item.noteCount} fragmentos de estudio · sin conexiones</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <button
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() => onOpenResource?.(item.resource.id)}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1 transition"
                     aria-label={`Abrir recurso ${item.resource.title}`}
                   >
-                    <ArrowUpRight size={12} /> Abrir
-                  </button>
-                  <button
+                    <ArrowUpRight size={12} aria-hidden="true" /> Abrir
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() => onStudyResource?.(item.resource.id, 'mixed')}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 flex items-center gap-1 transition"
                     aria-label={`Estudiar recurso ${item.resource.title}`}
                   >
-                    <Brain size={12} /> Estudiar
-                  </button>
+                    <Brain size={12} aria-hidden="true" /> Estudiar
+                  </Button>
                   <select
                     value={organizeTarget[item.resource.id] || ''}
                     onChange={e => setOrganizeTarget(prev => ({ ...prev, [item.resource.id]: e.target.value }))}
-                    className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-200 focus:outline-none focus:border-amber-500"
+                    className="rounded-lg border border-line bg-canvas px-2 py-1.5 text-meta text-ink focus:border-accent/50 focus:outline-none"
                     aria-label={`Asociar ${item.resource.title} a un curso`}
                   >
                     <option value="">Elegir curso…</option>
                     {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                   </select>
-                  <button
+                  <Button
+                    size="sm"
+                    variant="solid"
                     onClick={() => handleOrganizeResource(item.resource.id)}
                     disabled={!organizeTarget[item.resource.id]}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white transition"
                   >
                     Asociar
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}
           </ul>
-        </div>
+        </Panel>
       )}
 
-      {/* Cursos Grid */}
+      {/* Cursos */}
       {(filter === 'all' || filter === 'courses') && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Layers size={16} className="text-purple-400" /> Cursos Estructurados ({filteredCourses.length})
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredCourses.map(course => (
-              <div
-                key={course.id}
-                onClick={() => onSelectCourse(course.id)}
-                className="group rounded-xl bg-slate-900/50 hover:bg-slate-900 border border-slate-800/80 hover:border-purple-500/40 p-4 cursor-pointer transition flex flex-col justify-between"
-              >
-                <div>
-                  <div className="relative h-36 rounded-lg overflow-hidden mb-3 border border-slate-800 bg-slate-950 flex items-center justify-center">
+        <section>
+          <SectionHeading
+            title={`Cursos (${filteredCourses.length})`}
+            description="Cursos estructurados con módulos y lecciones."
+          />
+          {filteredCourses.length === 0 ? (
+            <EmptyState title="Sin cursos" hint="Crea un curso o ajusta la búsqueda." />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredCourses.map(course => (
+                <button
+                  key={course.id}
+                  onClick={() => onSelectCourse(course.id)}
+                  className="group flex flex-col overflow-hidden rounded-xl border border-line bg-surface text-left shadow-card transition-colors duration-fast hover:border-accent/40"
+                >
+                  <span className="relative block h-36 border-b border-line bg-canvas">
                     {course.cover_path ? (
-                      <img src={course.cover_path} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      <img src={course.cover_path} alt="" aria-hidden="true" className="h-full w-full object-cover" />
                     ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-purple-950/60 to-slate-950 flex items-center justify-center text-purple-400">
-                        <Layers size={36} className="opacity-70 group-hover:scale-110 transition duration-300" />
+                      <span className="flex h-full w-full items-center justify-center bg-accent-soft text-accent">
+                        <Layers size={32} aria-hidden="true" />
+                      </span>
+                    )}
+                    <span className="absolute right-2 top-2">
+                      <Badge tone="neutral">{course.difficulty}</Badge>
+                    </span>
+                  </span>
+                  <span className="flex flex-1 flex-col p-4">
+                    <span className="type-item line-clamp-1 text-ink group-hover:text-accent">{course.title}</span>
+                    <span className="type-meta mt-1 line-clamp-2 flex-1">{course.description}</span>
+                    <span className="mt-3 flex items-center justify-between border-t border-line pt-3">
+                      <span className="text-meta text-muted">
+                        {course.completed_lessons || 0}/{course.total_lessons || 0} lecciones
+                      </span>
+                      <span className="flex items-center gap-1 text-meta font-semibold text-accent">
+                        Ver curso <Play size={12} aria-hidden="true" />
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Libros */}
+      {(filter === 'all' || filter === 'books') && (
+        <section className="pt-2">
+          <SectionHeading
+            title={`Libros y manuales (${filteredBooks.length})`}
+            description="Lecturas con progreso de páginas y acciones de estudio."
+          />
+          {filteredBooks.length === 0 ? (
+            <EmptyState title="Sin libros" hint="Importa un PDF o EPUB para añadirlo a la biblioteca." />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredBooks.map(book => (
+                <div key={book.id} className="flex gap-3 rounded-xl border border-line bg-surface p-4 shadow-card">
+                  {book.cover_path ? (
+                    <img src={book.cover_path} alt="" aria-hidden="true" className="h-24 w-16 shrink-0 rounded border border-line object-cover" />
+                  ) : (
+                    <span className="flex h-24 w-16 shrink-0 items-center justify-center rounded border border-line bg-accent-soft text-accent">
+                      <BookOpen size={22} aria-hidden="true" />
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="type-micro">{book.category}</span>
+                      <button
+                        onClick={() => handleStartEdit(book)}
+                        className="text-meta text-muted underline underline-offset-2 hover:text-ink"
+                        title="Actualizar página actual"
+                      >
+                        {editingBookId === book.id ? 'Cancelar' : 'Editar'}
+                      </button>
+                    </div>
+                    <h4 className="type-item truncate text-ink">{book.title}</h4>
+                    <p className="type-meta truncate">{book.author}</p>
+
+                    {/* Acciones del recurso: fuentes, estudio, explicación y metadatos */}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <button
+                        onClick={() => handleOpenSourceViewer(book.id)}
+                        className="text-meta text-accent underline underline-offset-2 hover:opacity-80"
+                      >
+                        Origen del recurso
+                      </button>
+                      <button
+                        onClick={() => onStudyResource?.(book.id, 'flashcards')}
+                        className="flex items-center gap-0.5 text-meta text-muted hover:text-ink"
+                      >
+                        <Brain size={11} aria-hidden="true" /> Repasar
+                      </button>
+                      <button
+                        onClick={() => onStudyResource?.(book.id, 'practice')}
+                        className="flex items-center gap-0.5 text-meta text-muted hover:text-ink"
+                      >
+                        <ListChecks size={11} aria-hidden="true" /> Practicar
+                      </button>
+                      <button
+                        onClick={() => onExplainResource?.(book.id, book.title)}
+                        className="flex items-center gap-0.5 text-meta text-accent hover:opacity-80"
+                      >
+                        <Sparkles size={11} aria-hidden="true" /> Explicar
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingBookMeta(editingBookMeta === book.id ? null : book.id);
+                          setBookMetaForm({ author: book.author || '', pageCount: String(book.page_count || '') });
+                        }}
+                        className="flex items-center gap-0.5 text-meta text-muted hover:text-ink"
+                      >
+                        <Edit3 size={11} aria-hidden="true" /> Metadatos
+                      </button>
+                    </div>
+
+                    {editingBookMeta === book.id && (
+                      <div className="mt-2 space-y-1.5 rounded-lg border border-line bg-canvas p-2">
+                        <label className="sr-only" htmlFor={`meta-author-${book.id}`}>Autor del libro</label>
+                        <input
+                          id={`meta-author-${book.id}`}
+                          type="text"
+                          value={bookMetaForm.author}
+                          onChange={e => setBookMetaForm(f => ({ ...f, author: e.target.value }))}
+                          placeholder="Autor"
+                          className="w-full rounded-md border border-line bg-surface px-2 py-1 text-meta text-ink focus:border-accent/50 focus:outline-none"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <label className="sr-only" htmlFor={`meta-pages-${book.id}`}>Páginas totales</label>
+                          <input
+                            id={`meta-pages-${book.id}`}
+                            type="number"
+                            min="1"
+                            value={bookMetaForm.pageCount}
+                            onChange={e => setBookMetaForm(f => ({ ...f, pageCount: e.target.value }))}
+                            placeholder="Páginas"
+                            className="w-20 rounded-md border border-line bg-surface px-2 py-1 text-right text-meta text-ink focus:border-accent/50 focus:outline-none"
+                          />
+                          <span className="text-meta">páginas totales</span>
+                          <Button size="sm" variant="solid" className="ml-auto" onClick={() => handleSaveBookMeta(book)}>
+                            <Check size={11} aria-hidden="true" /> Guardar
+                          </Button>
+                        </div>
                       </div>
                     )}
-                    <span className="absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-950/80 text-purple-300 backdrop-blur-md">
-                      {course.difficulty}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold text-sm text-slate-100 group-hover:text-purple-300 transition line-clamp-1">
-                    {course.title}
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">{course.description}</p>
-                </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
-                  <span>{course.completed_lessons || 0}/{course.total_lessons || 0} lecciones</span>
-                  <span className="text-purple-400 font-semibold flex items-center gap-1 group-hover:translate-x-0.5 transition">
-                    Ver curso <Play size={12} />
-                  </span>
+                    {editingBookId === book.id ? (
+                      <div className="mt-2 rounded-lg border border-line bg-canvas p-2">
+                        <div className="flex items-center gap-1.5">
+                          <label className="sr-only" htmlFor={`page-input-${book.id}`}>Página actual</label>
+                          <input
+                            id={`page-input-${book.id}`}
+                            type="number"
+                            min="0"
+                            max={book.page_count}
+                            value={inputPage}
+                            onChange={(e) => setInputPage(e.target.value)}
+                            className="w-16 rounded-md border border-line bg-surface px-2 py-1 text-right text-meta text-ink focus:border-accent/50 focus:outline-none"
+                          />
+                          <span className="text-meta">/ {book.page_count} pág</span>
+                          <Button size="sm" variant="solid" className="ml-auto" onClick={() => handleSaveProgress(book)}>
+                            <Check size={11} aria-hidden="true" /> Guardar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-meta">{book.current_page || 0}/{book.page_count} pág</span>
+                          <span className="text-meta font-semibold text-muted">{book.reading_percentage}%</span>
+                        </div>
+                        <ProgressBar value={book.reading_percentage || 0} label={`Lectura de ${book.title}`} />
+                      </div>
+                    )}
+
+                    {bookFeedback && bookFeedback.id === book.id && (
+                      <div className={cn('mt-1.5 flex items-center gap-1 text-meta', bookFeedback.isError ? 'text-error' : 'text-success')}>
+                        {bookFeedback.isError ? <AlertTriangle size={11} aria-hidden="true" /> : <CheckCircle size={11} aria-hidden="true" />}
+                        <span>{bookFeedback.msg}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
-      {/* Libros Grid */}
-      {(filter === 'all' || filter === 'books') && (
-        <div className="space-y-3 pt-4">
-          <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <BookOpen size={16} className="text-indigo-400" /> Libros & Manuales ({filteredBooks.length})
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredBooks.map(book => (
-              <div
-                key={book.id}
-                className="rounded-xl bg-slate-900/50 border border-slate-800/80 p-4 flex gap-3 items-center"
-              >
-                {book.cover_path ? (
-                  <img src={book.cover_path} alt={book.title} className="w-16 h-22 rounded-md object-cover border border-slate-700 shadow-md" />
-                ) : (
-                  <div className="w-16 h-22 rounded-md bg-gradient-to-br from-indigo-950/70 to-slate-900 border border-indigo-800/40 shadow-md flex items-center justify-center text-indigo-400 shrink-0">
-                    <BookOpen size={24} className="opacity-80" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-medium text-indigo-400 uppercase tracking-wider">{book.category}</span>
-                    <button
-                      onClick={() => handleStartEdit(book)}
-                      className="text-[10px] text-slate-400 hover:text-indigo-300 flex items-center gap-1 transition"
-                      title="Actualizar página actual"
-                    >
-                      <Edit3 size={11} /> {editingBookId === book.id ? 'Cancel' : 'Editar'}
-                    </button>
-                  </div>
-                  <h4 className="font-semibold text-xs text-slate-100 truncate">{book.title}</h4>
-                  <p className="text-[11px] text-slate-400 truncate">{book.author}</p>
-                  
-                  {/* Acciones del recurso: fuentes, estudio, explicación y metadatos */}
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <button
-                      onClick={() => handleOpenSourceViewer(book.id)}
-                      className="text-[10px] text-purple-400 hover:text-purple-300 underline underline-offset-2 flex items-center gap-0.5"
-                    >
-                      Origen del recurso
-                    </button>
-                    <button
-                      onClick={() => onStudyResource?.(book.id, 'flashcards')}
-                      className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-0.5"
-                    >
-                      <Brain size={10} /> Repasar
-                    </button>
-                    <button
-                      onClick={() => onStudyResource?.(book.id, 'practice')}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-0.5"
-                    >
-                      <ListChecks size={10} /> Practicar
-                    </button>
-                    <button
-                      onClick={() => onExplainResource?.(book.id, book.title)}
-                      className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-0.5"
-                    >
-                      <Sparkles size={10} /> Explicar
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingBookMeta(editingBookMeta === book.id ? null : book.id);
-                        setBookMetaForm({ author: book.author || '', pageCount: String(book.page_count || '') });
-                      }}
-                      className="text-[10px] text-slate-400 hover:text-white flex items-center gap-0.5"
-                    >
-                      <Edit3 size={10} /> Metadatos
-                    </button>
-                  </div>
-
-                  {editingBookMeta === book.id && (
-                    <div className="mt-2 p-2 rounded-lg bg-slate-950/80 border border-indigo-500/30 space-y-1.5">
-                      <input
-                        type="text"
-                        value={bookMetaForm.author}
-                        onChange={e => setBookMetaForm(f => ({ ...f, author: e.target.value }))}
-                        placeholder="Autor"
-                        className="w-full px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-[11px] text-white focus:outline-none focus:border-indigo-400"
-                      />
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          min="1"
-                          value={bookMetaForm.pageCount}
-                          onChange={e => setBookMetaForm(f => ({ ...f, pageCount: e.target.value }))}
-                          placeholder="Páginas"
-                          className="w-20 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-[11px] text-white text-right focus:outline-none focus:border-indigo-400"
-                        />
-                        <span className="text-[10px] text-slate-400">páginas totales</span>
-                        <button
-                          onClick={() => handleSaveBookMeta(book)}
-                          className="ml-auto px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-[10px] font-semibold text-white flex items-center gap-1 transition"
-                        >
-                          <Check size={11} /> Guardar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {editingBookId === book.id ? (
-                    <div className="mt-2 p-2 rounded-lg bg-slate-950/80 border border-indigo-500/30 space-y-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          min="0"
-                          max={book.page_count}
-                          value={inputPage}
-                          onChange={(e) => setInputPage(e.target.value)}
-                          className="w-16 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-xs text-white text-right focus:outline-none focus:border-indigo-400"
-                        />
-                        <span className="text-[10px] text-slate-400">/ {book.page_count} pág</span>
-                        <button
-                          onClick={() => handleSaveProgress(book)}
-                          className="ml-auto px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-[10px] font-semibold text-white flex items-center gap-1 transition"
-                        >
-                          <Check size={11} /> Guardar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-2">
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
-                        <span>{book.current_page || 0}/{book.page_count} pág</span>
-                        <span className="font-bold text-indigo-400">{book.reading_percentage}%</span>
-                      </div>
-                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${book.reading_percentage}%` }} />
-                      </div>
-                    </div>
-                  )}
-
-                  {bookFeedback && bookFeedback.id === book.id && (
-                    <div className={`mt-1.5 text-[10px] flex items-center gap-1 ${bookFeedback.isError ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      {bookFeedback.isError ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
-                      <span>{bookFeedback.msg}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Previsualización de Documento antes de Persistir */}
+      {/* Modal de previsualización de documento antes de persistir */}
       {previewDoc && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <FileUp size={18} className="text-indigo-400" /> Previsualización de Importación
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
+          <div role="dialog" aria-modal="true" aria-labelledby="preview-title" className="w-full max-w-lg animate-fade-in space-y-4 rounded-xl border border-line bg-raised p-6 shadow-pop">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <h3 id="preview-title" className="type-section flex items-center gap-2 text-ink">
+                <FileUp size={17} className="text-accent" aria-hidden="true" /> Previsualización de importación
               </h3>
-              <button onClick={() => setPreviewDoc(null)} className="text-slate-400 hover:text-white p-1">
-                <X size={18} />
+              <button onClick={() => setPreviewDoc(null)} aria-label="Cerrar previsualización" className="text-faint hover:text-ink">
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
-            <div className="space-y-2.5 text-xs text-slate-300">
-              <div className="grid grid-cols-2 gap-2 p-3 bg-slate-950 rounded-xl border border-slate-800">
+            <div className="space-y-2.5 text-body">
+              <dl className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-canvas p-3 text-meta">
                 <div>
-                  <span className="text-slate-500 block">Archivo:</span>
-                  <span className="font-semibold text-white break-all">{previewDoc.parsed.fileName}</span>
+                  <dt className="text-faint">Archivo:</dt>
+                  <dd className="break-all font-semibold text-ink">{previewDoc.parsed.fileName}</dd>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Formato:</span>
-                  <span className="font-semibold text-indigo-300 uppercase">{previewDoc.parsed.fileType}</span>
+                  <dt className="text-faint">Formato:</dt>
+                  <dd className="font-semibold uppercase text-accent">{previewDoc.parsed.fileType}</dd>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Título detectado:</span>
-                  <span className="font-semibold text-white">{previewDoc.parsed.title}</span>
+                  <dt className="text-faint">Título detectado:</dt>
+                  <dd className="font-semibold text-ink">{previewDoc.parsed.title}</dd>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Autor:</span>
-                  <span className="text-slate-300">{previewDoc.parsed.author || 'No especificado'}</span>
+                  <dt className="text-faint">Autor:</dt>
+                  <dd className="text-muted">{previewDoc.parsed.author || 'No especificado'}</dd>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Páginas/Secciones:</span>
-                  <span className="font-semibold text-white">{previewDoc.parsed.pageCount || previewDoc.parsed.sections.length}</span>
+                  <dt className="text-faint">Páginas/Secciones:</dt>
+                  <dd className="font-semibold text-ink">{previewDoc.parsed.pageCount || previewDoc.parsed.sections.length}</dd>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Palabras aproximadas:</span>
-                  <span className="font-semibold text-white">{previewDoc.parsed.estimatedWords || '~'}</span>
+                  <dt className="text-faint">Palabras aproximadas:</dt>
+                  <dd className="font-semibold text-ink">{previewDoc.parsed.estimatedWords || '~'}</dd>
                 </div>
-              </div>
+              </dl>
 
               {previewDoc.isDuplicate && (
-                <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 flex items-start gap-2">
-                  <AlertTriangle size={16} className="shrink-0 mt-0.5 text-amber-400" />
-                  <div>
-                    <p className="font-semibold">Documento ya existente</p>
-                    <p className="text-[11px] text-amber-300/90">Este archivo tiene la misma huella SHA-256 que un recurso ya registrado en CrossedArts.</p>
-                  </div>
-                </div>
+                <InlineStatus tone="warning">
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    <strong>Documento ya existente.</strong>{' '}
+                    Este archivo tiene la misma huella SHA-256 que un recurso ya registrado en CrossedArts.
+                  </span>
+                </InlineStatus>
               )}
 
               {/* Selector de destino */}
               <div className="space-y-1.5 pt-1">
-                <label className="text-slate-400 font-medium block">Destino del recurso:</label>
+                <label className={LABEL_CLS} htmlFor="preview-destination">Destino del recurso:</label>
                 <select
+                  id="preview-destination"
                   value={previewDestinationType}
                   onChange={(e) => setPreviewDestinationType(e.target.value as any)}
-                  className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  className={INPUT_CLS}
                 >
                   <option value="standalone">Recurso independiente (Standalone)</option>
-                  <option value="book">Nuevo Libro / Manual en Biblioteca</option>
-                  <option value="course">Asociar a Curso existente</option>
-                  <option value="lesson">Asociar a Lección existente</option>
+                  <option value="book">Nuevo libro / manual en Biblioteca</option>
+                  <option value="course">Asociar a curso existente</option>
+                  <option value="lesson">Asociar a lección existente</option>
                 </select>
               </div>
 
               {previewDestinationType === 'course' && (
                 <div className="space-y-1">
-                  <label className="text-slate-400 block">Selecciona el curso:</label>
+                  <label className={LABEL_CLS} htmlFor="preview-target">Selecciona el curso:</label>
                   <select
+                    id="preview-target"
                     value={previewTargetId}
                     onChange={(e) => setPreviewTargetId(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    className={INPUT_CLS}
                   >
                     <option value="">-- Elige un curso --</option>
                     {courses.map(c => (
@@ -916,90 +924,78 @@ export const Library: React.FC<LibraryProps> = ({
                 </div>
               )}
 
-              {/* Opción de Indexación Semántica */}
-              <div className="pt-2 flex items-center justify-between p-2.5 bg-slate-950 rounded-xl border border-slate-800">
-                <span className="text-slate-300 font-medium">Indexación semántica en segundo plano</span>
+              {/* Opción de indexación semántica */}
+              <div className="flex items-center justify-between rounded-lg border border-line bg-canvas p-2.5">
+                <label htmlFor="preview-semantic" className="text-meta font-medium text-ink">
+                  Indexación semántica en segundo plano
+                </label>
                 <input
+                  id="preview-semantic"
                   type="checkbox"
                   checked={previewEnableSemantic}
                   onChange={(e) => setPreviewEnableSemantic(e.target.checked)}
-                  className="rounded border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                  className="h-4 w-4 cursor-pointer accent-accent"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setPreviewDoc(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-              >
+            <div className="flex items-center justify-end gap-2 border-t border-line pt-3">
+              <Button variant="quiet" onClick={() => setPreviewDoc(null)}>
                 Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmPreviewImport}
-                disabled={isImporting || previewDoc.isDuplicate}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white transition flex items-center gap-1.5"
-              >
-                {isImporting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                <span>Importar a CrossedArts</span>
-              </button>
+              </Button>
+              <Button variant="solid" onClick={handleConfirmPreviewImport} disabled={isImporting || previewDoc.isDuplicate}>
+                {isImporting ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
+                Importar a CrossedArts
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal de Origen de Recursos (Resource Sources View) */}
+      {/* Modal de origen de recursos */}
       {sourceViewerMeta.isOpen && sourceViewerMeta.data && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Bookmark size={18} className="text-purple-400" /> Origen del Recurso
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
+          <div role="dialog" aria-modal="true" aria-labelledby="source-title" className="w-full max-w-md animate-fade-in space-y-4 rounded-xl border border-line bg-raised p-6 shadow-pop">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <h3 id="source-title" className="type-section flex items-center gap-2 text-ink">
+                <Bookmark size={17} className="text-accent" aria-hidden="true" /> Origen del recurso
               </h3>
-              <button onClick={() => setSourceViewerMeta({ isOpen: false })} className="text-slate-400 hover:text-white p-1">
-                <X size={18} />
+              <button onClick={() => setSourceViewerMeta({ isOpen: false })} aria-label="Cerrar visor de origen" className="text-faint hover:text-ink">
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-300">
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
-                <div>
-                  <span className="text-slate-500 block">Título:</span>
-                  <span className="font-semibold text-white">{sourceViewerMeta.data.resource?.title}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Tipo de Fuente:</span>
-                  <span className="font-semibold text-indigo-300">{sourceViewerMeta.data.sourceType}</span>
-                </div>
-                {sourceViewerMeta.data.fileName && (
-                  <div>
-                    <span className="text-slate-500 block">Archivo original:</span>
-                    <span className="font-mono text-white text-[11px]">{sourceViewerMeta.data.fileName}</span>
-                  </div>
-                )}
-                {sourceViewerMeta.data.fingerprint && (
-                  <div>
-                    <span className="text-slate-500 block">Huella digital (SHA-256):</span>
-                    <span className="font-mono text-slate-400 text-[10px] break-all">{sourceViewerMeta.data.fingerprint}</span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-slate-500 block">Fragmentos de estudio creados:</span>
-                  <span className="font-semibold text-emerald-400">{sourceViewerMeta.data.sectionCount} fragmentos</span>
-                </div>
+            <dl className="space-y-2 rounded-lg border border-line bg-canvas p-3 text-meta">
+              <div>
+                <dt className="text-faint">Título:</dt>
+                <dd className="font-semibold text-ink">{sourceViewerMeta.data.resource?.title}</dd>
               </div>
-            </div>
+              <div>
+                <dt className="text-faint">Tipo de fuente:</dt>
+                <dd className="font-semibold text-accent">{sourceViewerMeta.data.sourceType}</dd>
+              </div>
+              {sourceViewerMeta.data.fileName && (
+                <div>
+                  <dt className="text-faint">Archivo original:</dt>
+                  <dd className="break-all font-mono text-ink">{sourceViewerMeta.data.fileName}</dd>
+                </div>
+              )}
+              {sourceViewerMeta.data.fingerprint && (
+                <div>
+                  <dt className="text-faint">Huella digital (SHA-256):</dt>
+                  <dd className="break-all font-mono text-muted">{sourceViewerMeta.data.fingerprint}</dd>
+                </div>
+              )}
+              <div>
+                <dt className="text-faint">Fragmentos de estudio creados:</dt>
+                <dd className="font-semibold text-success">{sourceViewerMeta.data.sectionCount} fragmentos</dd>
+              </div>
+            </dl>
 
             <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setSourceViewerMeta({ isOpen: false })}
-                className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
-              >
+              <Button variant="outline" onClick={() => setSourceViewerMeta({ isOpen: false })}>
                 Cerrar
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1007,77 +1003,77 @@ export const Library: React.FC<LibraryProps> = ({
 
       {/* Modal de creación de curso */}
       {isCreateCourseOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <form onSubmit={handleCreateCourse} className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <GraduationCap size={18} className="text-emerald-400" /> Crear Curso
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
+          <form onSubmit={handleCreateCourse} role="dialog" aria-modal="true" aria-labelledby="create-course-title" className="w-full max-w-md animate-fade-in space-y-4 rounded-xl border border-line bg-raised p-6 shadow-pop">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <h3 id="create-course-title" className="type-section flex items-center gap-2 text-ink">
+                <GraduationCap size={17} className="text-accent" aria-hidden="true" /> Crear curso
               </h3>
-              <button type="button" onClick={() => setIsCreateCourseOpen(false)} className="text-slate-400 hover:text-white p-1">
-                <X size={18} />
+              <button type="button" onClick={() => setIsCreateCourseOpen(false)} aria-label="Cerrar diálogo" className="text-faint hover:text-ink">
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3">
               <div>
-                <label className="block text-slate-400 mb-1" htmlFor="course-title">Título</label>
+                <label className={LABEL_CLS} htmlFor="course-title">Título</label>
                 <input
                   id="course-title"
                   type="text"
                   value={courseForm.title}
                   onChange={e => setCourseForm(f => ({ ...f, title: e.target.value }))}
                   placeholder="Ej. Arquitectura de Sistemas"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-emerald-500"
+                  className={INPUT_CLS}
                   required
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-1" htmlFor="course-desc">Descripción</label>
+                <label className={LABEL_CLS} htmlFor="course-desc">Descripción</label>
                 <textarea
                   id="course-desc"
                   rows={3}
                   value={courseForm.description}
                   onChange={e => setCourseForm(f => ({ ...f, description: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500 resize-none"
+                  className={cn(INPUT_CLS, 'resize-none')}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 mb-1" htmlFor="course-category">Categoría</label>
+                  <label className={LABEL_CLS} htmlFor="course-category">Categoría</label>
                   <input
                     id="course-category"
                     type="text"
                     value={courseForm.category}
                     onChange={e => setCourseForm(f => ({ ...f, category: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-emerald-500"
+                    className={INPUT_CLS}
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1" htmlFor="course-instructor">Instructor</label>
+                  <label className={LABEL_CLS} htmlFor="course-instructor">Instructor</label>
                   <input
                     id="course-instructor"
                     type="text"
                     value={courseForm.instructor}
                     onChange={e => setCourseForm(f => ({ ...f, instructor: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-emerald-500"
+                    className={INPUT_CLS}
                   />
                 </div>
               </div>
             </div>
 
             {courseError && (
-              <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs" role="alert">
+              <div className="rounded-lg border border-error/30 bg-error-soft px-3 py-2 text-meta text-error" role="alert">
                 {courseError}
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => setIsCreateCourseOpen(false)} className="px-3 py-1.5 rounded-lg text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition">
+            <div className="flex justify-end gap-2">
+              <Button variant="quiet" onClick={() => setIsCreateCourseOpen(false)}>
                 Cancelar
-              </button>
-              <button type="submit" className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition">
-                Crear Curso
-              </button>
+              </Button>
+              <Button variant="solid" type="submit">
+                Crear curso
+              </Button>
             </div>
           </form>
         </div>

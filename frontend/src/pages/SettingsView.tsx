@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Upload, RotateCcw, Bot, ShieldCheck, Database, HardDrive, Check, Cpu, AlertTriangle, RefreshCw, Trash2, Info } from 'lucide-react';
+import { Download, Upload, RotateCcw, Bot, ShieldCheck, Database, HardDrive, Check, Cpu, AlertTriangle, RefreshCw, Trash2, Info, Palette } from 'lucide-react';
 import { exportSqliteFile, importSqliteFile, exportJsonBackup } from '../db/exportImport.ts';
 import { dbBridge } from '../db/sqliteBridge.ts';
 import { aiService, AISettings } from '../ai/aiService.ts';
@@ -12,6 +12,8 @@ import { createSemanticChunksFromResourcesAsync } from '../lib/localEmbeddings/c
 import { EMBEDDING_MODELS_REGISTRY } from '../lib/localEmbeddings/registry.ts';
 import { dao } from '../db/dao.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
+import { ThemeToggle } from '../components/common/ThemeToggle.tsx';
+import { Button, Badge, InlineStatus, ProgressBar, SectionHeading, cn } from '../components/ui/index.tsx';
 
 interface SettingsViewProps {
   onDataReset: () => void;
@@ -185,117 +187,119 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   const selectedModelDef = getLocalModelById(aiConfig.localModelId);
 
+  const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none disabled:opacity-50';
+  const LABEL_CLS = 'mb-1 block text-meta font-medium text-muted';
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-extrabold text-white">Ajustes & Almacenamiento Local</h1>
-        <p className="text-xs text-slate-400">Control de datos del usuario, respaldos portables y estado de persistencia</p>
-      </div>
-
-      {/* Panel de Almacenamiento Local y Resiliencia */}
-      <div className="p-6 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-bold text-white">
-            <Database size={18} className="text-purple-400" />
-            <span>Almacenamiento Local (SQLite WASM & IndexedDB)</span>
-          </div>
-          <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
-            storageReport.state === 'ready' || storageReport.state === 'persisted'
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-              : storageReport.state === 'persisting'
-              ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-          }`}>
-            Estado: {storageReport.state.toUpperCase()}
-          </span>
-        </div>
-
-        <p className="text-xs text-slate-300 leading-relaxed">
-          Tus datos de aprendizaje (cursos, progreso, libros, notas, flashcards y grafo) residen localmente en el motor SQLite de tu navegador. No se transmiten a ningún servidor externo.
+    <div className="mx-auto max-w-4xl animate-fade-in space-y-10">
+      {/* Cabecera */}
+      <header className="border-b border-line pb-5">
+        <h1 className="type-display text-ink">Ajustes</h1>
+        <p className="type-secondary mt-1">
+          Espacio de configuración local: almacenamiento, respaldos, apariencia, IA e índice semántico.
         </p>
+      </header>
 
-        {/* Métricas reales de almacenamiento */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs">
-          <div>
-            <span className="text-slate-400 block text-[11px]">Tamaño BD SQLite:</span>
-            <span className="font-mono text-slate-200">
-              {storageReport.databaseSizeBytes ? `${(storageReport.databaseSizeBytes / 1024).toFixed(1)} KB` : 'Desconocido'}
+      {/* ---------------------------------------------------------------
+          Almacenamiento local y respaldos
+      --------------------------------------------------------------- */}
+      <section aria-labelledby="settings-storage" className="space-y-4">
+        <SectionHeading
+          title="Almacenamiento y respaldos"
+          description="SQLite WASM & IndexedDB — tus datos nunca salen de este navegador."
+        />
+
+        <div className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-item text-ink">
+              <Database size={17} className="text-accent" aria-hidden="true" />
+              Base de datos local
+            </span>
+            <Badge
+              tone={
+                storageReport.state === 'ready' || storageReport.state === 'persisted'
+                  ? 'success'
+                  : storageReport.state === 'persisting'
+                    ? 'info'
+                    : 'error'
+              }
+            >
+              Estado: {storageReport.state.toUpperCase()}
+            </Badge>
+          </div>
+
+          {/* Métricas reales de almacenamiento */}
+          <dl className="grid grid-cols-1 gap-3 rounded-lg border border-line bg-canvas p-3 text-meta sm:grid-cols-3">
+            <div>
+              <dt className="text-faint">Tamaño BD SQLite</dt>
+              <dd className="font-mono text-ink">
+                {storageReport.databaseSizeBytes ? `${(storageReport.databaseSizeBytes / 1024).toFixed(1)} KB` : 'Desconocido'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-faint">IndexedDB</dt>
+              <dd className="font-mono text-ink">
+                {storageReport.hasIndexedDB ? 'Disponible (navegador)' : 'No soportado (memoria)'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-faint">Última persistencia</dt>
+              <dd className="font-mono text-ink">
+                {storageReport.lastPersistedTimestamp ? new Date(storageReport.lastPersistedTimestamp).toLocaleTimeString() : 'Al inicio'}
+              </dd>
+            </div>
+          </dl>
+
+          {/* Acciones de respaldo y restauración */}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <Button variant="outline" onClick={handleExport}>
+              <Download size={15} aria-hidden="true" /> Exportar (.sqlite)
+            </Button>
+            <Button variant="outline" onClick={() => exportJsonBackup()}>
+              <Download size={15} aria-hidden="true" /> Exportar JSON
+            </Button>
+            <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-secondary font-medium text-ink transition-colors hover:bg-accent-soft/60">
+              <Upload size={15} aria-hidden="true" /> Importar respaldo
+              <input type="file" accept=".sqlite,.db" onChange={handleFileUpload} className="hidden" />
+            </label>
+          </div>
+
+          {lastExported && (
+            <p className="flex items-center gap-1 text-meta text-success">
+              <Check size={13} aria-hidden="true" /> Último respaldo descargado:{' '}
+              <span className="font-mono text-muted">{lastExported}</span>
+            </p>
+          )}
+
+          {dbFeedback && (
+            <InlineStatus tone={dbFeedback.type === 'success' ? 'success' : 'error'}>
+              {dbFeedback.type === 'success' ? <Check size={14} className="shrink-0" aria-hidden="true" /> : <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />}
+              <span>{dbFeedback.text}</span>
+            </InlineStatus>
+          )}
+
+          {/* Nota informativa de dominios de almacenamiento */}
+          <div className="flex items-start gap-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
+            <Info size={15} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+            <span>
+              <strong className="text-ink">Límites del respaldo:</strong> El archivo{' '}
+              <code className="font-mono text-accent">.sqlite</code> contiene íntegramente tus notas,
+              estado de lectura y tarjetas. Los vídeos/audios locales permanecen en tu disco duro y no
+              se duplican en la base de datos; tras restaurar en otro dispositivo, simplemente vuelve a
+              seleccionar tu carpeta de medios.
             </span>
           </div>
-          <div>
-            <span className="text-slate-400 block text-[11px]">IndexedDB:</span>
-            <span className="font-mono text-slate-200">
-              {storageReport.hasIndexedDB ? 'Disponible (Navegador)' : 'No soportado (Memoria)'}
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-400 block text-[11px]">Última Persistencia:</span>
-            <span className="font-mono text-slate-200">
-              {storageReport.lastPersistedTimestamp ? new Date(storageReport.lastPersistedTimestamp).toLocaleTimeString() : 'Al inicio'}
-            </span>
+
+          <div className="border-t border-line pt-3">
+            <button
+              onClick={() => setIsResetConfirmOpen(true)}
+              className="flex items-center gap-2 text-meta font-medium text-error hover:opacity-80"
+            >
+              <RotateCcw size={13} aria-hidden="true" /> Reiniciar datos al dataset de demostración
+            </button>
           </div>
         </div>
-
-        {/* Acciones de Respaldo y Restauración */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-          <button
-            onClick={handleExport}
-            className="flex items-center justify-center gap-2 p-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 border border-purple-500/30 text-xs font-semibold transition"
-          >
-            <Download size={15} /> Exportar (.sqlite)
-          </button>
-
-          <button
-            onClick={() => exportJsonBackup()}
-            className="flex items-center justify-center gap-2 p-3 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 border border-indigo-500/30 text-xs font-semibold transition"
-          >
-            <Download size={15} /> Exportar JSON
-          </button>
-
-          <label className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-semibold cursor-pointer transition">
-            <Upload size={15} /> Importar Respaldo
-            <input type="file" accept=".sqlite,.db" onChange={handleFileUpload} className="hidden" />
-          </label>
-        </div>
-
-        {lastExported && (
-          <p className="text-[11px] text-emerald-400 flex items-center gap-1">
-            <Check size={13} /> Último respaldo descargado: <span className="font-mono text-slate-300">{lastExported}</span>
-          </p>
-        )}
-
-        {dbFeedback && (
-          <div
-            role="status"
-            aria-live="polite"
-            className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
-              dbFeedback.type === 'success'
-                ? 'bg-emerald-950/60 border border-emerald-800/60 text-emerald-300'
-                : 'bg-rose-950/60 border border-rose-800/60 text-rose-300'
-            }`}
-          >
-            {dbFeedback.type === 'success' ? <Check size={14} /> : <AlertTriangle size={14} />}
-            <span>{dbFeedback.text}</span>
-          </div>
-        )}
-
-        {/* Nota informativa de dominios de almacenamiento */}
-        <div className="flex items-start gap-2 p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 text-[11px] text-slate-400">
-          <Info size={16} className="text-purple-400 shrink-0 mt-0.5" />
-          <span>
-            <strong>Límites del respaldo:</strong> El archivo <code className="text-purple-300">.sqlite</code> contiene íntegramente tus notas, estado de lectura y tarjetas. Los vídeos/audios locales permanecen en tu disco duro y no se duplican en la base de datos; tras restaurar en otro dispositivo, simplemente vuelve a seleccionar tu carpeta de medios.
-          </span>
-        </div>
-
-        <div className="pt-2">
-          <button
-            onClick={() => setIsResetConfirmOpen(true)}
-            className="flex items-center gap-2 text-xs text-rose-400 hover:text-rose-300 font-medium"
-          >
-            <RotateCcw size={13} /> Reiniciar datos al dataset de demostración
-          </button>
-        </div>
-      </div>
+      </section>
 
       {/* Confirmación accesible de acciones destructivas de datos (reemplaza confirm() nativo) */}
       <ConfirmDialog
@@ -316,68 +320,99 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         onConfirm={executeResetDemo}
       />
 
-      {/* IA & LLM Provider Configuration */}
-      <form onSubmit={handleSaveAi} className="p-6 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-4">
-        <div className="flex items-center gap-2 text-sm font-bold text-white">
-          <Bot size={18} className="text-purple-400" />
-          <span>Configuración del Tutor IA & Proveedores</span>
+      {/* ---------------------------------------------------------------
+          Apariencia
+      --------------------------------------------------------------- */}
+      <section aria-labelledby="settings-theme" className="space-y-4">
+        <SectionHeading
+          title="Apariencia"
+          description="El tema se guarda localmente y se aplica antes de la primera carga."
+        />
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-surface p-5 shadow-card">
+          <div className="flex items-start gap-3">
+            <Palette size={17} className="mt-0.5 text-accent" aria-hidden="true" />
+            <div>
+              <p className="text-item text-ink">Tema de la aplicación</p>
+              <p className="type-meta mt-0.5 max-w-md">
+                <strong className="text-muted">Claro (crema)</strong> es el tema por defecto:{' '}
+                superficies cálidas, tinta carbón y acento ciruela contenido.{' '}
+                <strong className="text-muted">Oscuro (carbón)</strong> es bajo en saturación y brillo,
+                sin negros puros ni morados neón.
+              </p>
+            </div>
+          </div>
+          <ThemeToggle />
         </div>
-        <p className="text-xs text-slate-300">
-          Elige entre el asistente de demostración offline, inferencia local directa en tu navegador con WebLLM / WebGPU, tu servidor local de Ollama, o API Keys comerciales.
-        </p>
+      </section>
 
-        <div className="space-y-4 pt-2">
+      {/* ---------------------------------------------------------------
+          IA local y proveedores
+      --------------------------------------------------------------- */}
+      <form onSubmit={handleSaveAi} className="space-y-4" aria-labelledby="settings-ai">
+        <SectionHeading
+          title="Tutor IA y proveedores"
+          description="Elige el motor de inferencia. La privacidad depende del proveedor seleccionado."
+        />
+
+        <div className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Proveedor de Inferencia Activo:</label>
+            <label className={LABEL_CLS} htmlFor="ai-provider">Proveedor de inferencia activo</label>
             <select
+              id="ai-provider"
               value={aiConfig.provider}
               onChange={e => setAiConfig({ ...aiConfig, provider: e.target.value as any })}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500"
+              className={INPUT_CLS}
             >
-              <option value="demo">Modo Demostración / Heurístico (Sin conexión)</option>
-              <option value="local">IA Local en Navegador (WebLLM / WebGPU 100% On-Device)</option>
-              <option value="ollama">Ollama Local (http://localhost:11434)</option>
+              <option value="demo">Modo demostración / heurístico (sin conexión)</option>
+              <option value="local">IA local en navegador (WebLLM / WebGPU, 100% en el dispositivo)</option>
+              <option value="ollama">Ollama local (http://localhost:11434)</option>
               <option value="openai">OpenAI API (GPT-4o / GPT-4o-mini)</option>
             </select>
+            {/* Límite honesto de privacidad por proveedor */}
+            <p className="type-meta mt-1.5">
+              {aiConfig.provider === 'demo' && '✓ Sin conexión: respuestas heurísticas generadas localmente.'}
+              {aiConfig.provider === 'local' && '✓ 100% en tu dispositivo. La primera descarga del modelo sí requiere red.'}
+              {aiConfig.provider === 'ollama' && '● Servidor local en tu máquina; requiere iniciar Ollama con OLLAMA_ORIGINS="*".'}
+              {aiConfig.provider === 'openai' && '⚠️ Proveedor REMOTO: tu consulta viaja a los servidores de OpenAI.'}
+            </p>
           </div>
 
           {/* Sección específica de IA Local WebLLM */}
           {aiConfig.provider === 'local' && (
-            <div className="p-4 rounded-xl bg-slate-950/70 border border-purple-500/30 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                  <Cpu size={14} /> Estado de Hardware & WebGPU:
+            <div className="space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-meta font-semibold text-ink">
+                  <Cpu size={14} aria-hidden="true" /> Estado de hardware y WebGPU:
                 </span>
                 {gpuReport.state === 'supported' ? (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
-                    Soportado ({gpuReport.adapterInfo || 'WebGPU Activo'})
-                  </span>
+                  <Badge tone="success">Soportado ({gpuReport.adapterInfo || 'WebGPU activo'})</Badge>
                 ) : gpuReport.state === 'checking' ? (
-                  <span className="px-2 py-0.5 rounded text-[10px] text-slate-400">Comprobando soporte...</span>
+                  <Badge tone="neutral">Comprobando soporte…</Badge>
                 ) : (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-950/80 text-rose-400 border border-rose-500/30 flex items-center gap-1">
-                    <AlertTriangle size={10} /> WebGPU no disponible
-                  </span>
+                  <Badge tone="error"><AlertTriangle size={10} aria-hidden="true" /> WebGPU no disponible</Badge>
                 )}
               </div>
 
               {gpuReport.state === 'unsupported' && (
-                <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/20 text-xs text-rose-300 flex items-start gap-2">
-                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold">Inferencia local deshabilitada en este dispositivo.</p>
-                    <p className="text-[11px] text-rose-400 mt-0.5">{gpuReport.reason || 'Usa Chrome, Edge o navegadores compatibles con WebGPU activado.'}</p>
-                  </div>
-                </div>
+                <InlineStatus tone="error">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    <strong>Inferencia local deshabilitada en este dispositivo.</strong>
+                    <span className="mt-0.5 block">
+                      {gpuReport.reason || 'Usa Chrome, Edge o navegadores compatibles con WebGPU activado.'}
+                    </span>
+                  </span>
+                </InlineStatus>
               )}
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Modelo Local Seleccionado:</label>
+                <label className={LABEL_CLS} htmlFor="local-model">Modelo local seleccionado</label>
                 <select
+                  id="local-model"
                   value={aiConfig.localModelId}
                   onChange={e => setAiConfig({ ...aiConfig, localModelId: e.target.value })}
                   disabled={gpuReport.state !== 'supported'}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500 disabled:opacity-50"
+                  className={INPUT_CLS}
                 >
                   {LOCAL_MODELS_REGISTRY.map(m => (
                     <option key={m.id} value={m.id}>
@@ -386,99 +421,96 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                   ))}
                 </select>
                 {selectedModelDef && (
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {selectedModelDef.description}
-                  </p>
+                  <p className="type-meta mt-1">{selectedModelDef.description}</p>
                 )}
               </div>
 
               {/* Aviso honesto de descarga */}
-              <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
-                <Info size={14} className="shrink-0 text-purple-400 mt-0.5" />
-                <div>
-                  <span className="font-semibold text-slate-300">Descarga y persistencia en caché:</span> La primera carga de un modelo local requiere conexión a internet para descargar sus pesos ({selectedModelDef?.downloadSizeApprox || '~1 GB'}). Una vez descargado, queda almacenado en la caché de IndexedDB de tu navegador y funcionará 100% offline.
-                </div>
+              <div className="flex items-start gap-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
+                <Info size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+                <span>
+                  <strong className="text-ink">Descarga y persistencia en caché:</strong> La primera
+                  carga de un modelo local requiere conexión a internet para descargar sus pesos (
+                  {selectedModelDef?.downloadSizeApprox || '~1 GB'}). Una vez descargado, queda en la
+                  caché de IndexedDB y funcionará 100% offline.
+                </span>
               </div>
 
-              {/* Controles de Carga / Descarga de modelo */}
-              <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t border-slate-800/80">
-                <div className="text-xs">
-                  <span className="text-slate-400">Estado del motor: </span>
-                  <span className={`font-semibold ${
-                    engineStatus === 'ready' ? 'text-emerald-400' :
-                    engineStatus === 'loading' || engineStatus === 'generating' ? 'text-purple-400' :
-                    engineStatus === 'error' ? 'text-rose-400' : 'text-slate-400'
-                  }`}>
+              {/* Controles de carga / descarga de modelo */}
+              <div className="flex flex-col gap-3 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-meta">
+                  <span className="text-faint">Estado del motor: </span>
+                  <span className={cn('font-semibold',
+                    engineStatus === 'ready' ? 'text-success' :
+                    engineStatus === 'loading' || engineStatus === 'generating' ? 'text-accent' :
+                    engineStatus === 'error' ? 'text-error' : 'text-muted'
+                  )}>
                     {engineStatus === 'ready' ? 'Listo para inferencia' :
                      engineStatus === 'loading' ? `Cargando (${engineProgress.progress}%)` :
-                     engineStatus === 'generating' ? 'Generando respuesta...' :
+                     engineStatus === 'generating' ? 'Generando respuesta…' :
                      engineStatus === 'error' ? 'Error al inicializar' : 'Descargado / Inactivo'}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   {engineStatus === 'ready' && (
-                    <button
-                      type="button"
-                      onClick={handleUnloadLocalModel}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition"
-                    >
-                      <Trash2 size={13} /> Liberar VRAM
-                    </button>
+                    <Button size="sm" variant="outline" onClick={handleUnloadLocalModel}>
+                      <Trash2 size={13} aria-hidden="true" /> Liberar VRAM
+                    </Button>
                   )}
 
                   {engineStatus !== 'ready' && (
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
+                      variant="solid"
                       disabled={gpuReport.state !== 'supported' || engineStatus === 'loading'}
                       onClick={handleLoadLocalModel}
-                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-xs font-semibold text-white flex items-center gap-1.5 transition shadow-sm"
                     >
-                      {engineStatus === 'loading' ? <RefreshCw size={13} className="animate-spin" /> : <Cpu size={13} />}
-                      {engineStatus === 'loading' ? 'Cargando Modelo...' : 'Cargar en WebGPU'}
-                    </button>
+                      {engineStatus === 'loading' ? <RefreshCw size={13} className="animate-spin" aria-hidden="true" /> : <Cpu size={13} aria-hidden="true" />}
+                      {engineStatus === 'loading' ? 'Cargando modelo…' : 'Cargar en WebGPU'}
+                    </Button>
                   )}
                 </div>
               </div>
 
               {engineStatus === 'loading' && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center justify-between text-[10px] text-slate-400">
-                    <span className="truncate max-w-[280px]">{engineProgress.text || 'Descargando y compilando shaders...'}</span>
-                    <span className="font-bold text-purple-400">{engineProgress.progress}%</span>
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-micro">
+                    <span className="max-w-[280px] truncate">{engineProgress.text || 'Descargando y compilando shaders…'}</span>
+                    <span className="font-bold text-accent">{engineProgress.progress}%</span>
                   </div>
-                  <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-800">
-                    <div className="bg-purple-500 h-full rounded-full transition-all duration-300" style={{ width: `${engineProgress.progress}%` }} />
-                  </div>
+                  <ProgressBar value={engineProgress.progress} label="Progreso de carga del modelo" />
                 </div>
               )}
 
               {loadingError && (
-                <p className="text-[11px] text-rose-400 pt-1">{loadingError}</p>
+                <p className="text-meta text-error">{loadingError}</p>
               )}
             </div>
           )}
 
           {aiConfig.provider === 'ollama' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">URL de Ollama:</label>
+                <label className={LABEL_CLS} htmlFor="ollama-url">URL de Ollama</label>
                 <input
+                  id="ollama-url"
                   type="text"
                   value={aiConfig.ollamaUrl}
                   onChange={e => setAiConfig({ ...aiConfig, ollamaUrl: e.target.value })}
                   placeholder="http://localhost:11434"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500"
+                  className={INPUT_CLS}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Modelo de Ollama:</label>
+                <label className={LABEL_CLS} htmlFor="ollama-model">Modelo de Ollama</label>
                 <input
+                  id="ollama-model"
                   type="text"
                   value={aiConfig.ollamaModel}
                   onChange={e => setAiConfig({ ...aiConfig, ollamaModel: e.target.value })}
                   placeholder="llama3:8b"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500"
+                  className={INPUT_CLS}
                 />
               </div>
             </div>
@@ -486,105 +518,96 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
           {aiConfig.provider === 'openai' && (
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">OpenAI API Key:</label>
+              <label className={LABEL_CLS} htmlFor="openai-key">OpenAI API Key</label>
               <input
+                id="openai-key"
                 type="password"
                 value={aiConfig.apiKey}
                 onChange={e => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
                 placeholder="sk-..."
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500"
+                className={INPUT_CLS}
               />
             </div>
           )}
 
-          {/* Sección de Índice Semántico Local (Embeddings on-device) */}
-          <div className="pt-4 mt-2 border-t border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
+          {/* Sección de Índice Semántico Local (embeddings on-device) */}
+          <div className="space-y-3 border-t border-line pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h4 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                  <Database size={14} className="text-purple-400" />
-                  Índice Semántico Local (Embeddings en Navegador)
+                <h4 className="flex items-center gap-1.5 text-item text-ink">
+                  <Database size={14} className="text-accent" aria-hidden="true" />
+                  Índice semántico local (embeddings en navegador)
                 </h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Genera vectores matemáticos con Transformers.js (<span className="text-purple-300 font-mono">Xenova/multilingual-e5-small</span>) para búsqueda conceptual precisa sin servidores externos.
+                <p className="type-meta mt-0.5 max-w-xl">
+                  Genera vectores matemáticos con Transformers.js (
+                  <span className="font-mono text-accent">Xenova/multilingual-e5-small</span>) para
+                  búsqueda conceptual precisa sin servidores externos.
                 </p>
               </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${
-                embCount > 0 ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60' : 'bg-slate-800 text-slate-400'
-              }`}>
-                {embCount} fragmentos en caché
-              </span>
+              <Badge tone={embCount > 0 ? 'success' : 'neutral'}>
+                <span className="font-mono">{embCount}</span> fragmentos en caché
+              </Badge>
             </div>
 
-            <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 space-y-2">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="space-y-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <span className="text-slate-300 font-semibold">Aislamiento de Vectores:</span> Los embeddings se persisten en una base de datos IndexedDB dedicada (<span className="font-mono text-purple-300">CrossedArts_Embeddings</span>). Tu SQLite canónico permanece 100% ligero y libre de matrices binarias.
+                  <strong className="text-ink">Aislamiento de vectores:</strong> Los embeddings se
+                  persisten en una base de datos IndexedDB dedicada (
+                  <span className="font-mono text-accent">CrossedArts_Embeddings</span>). Tu SQLite
+                  canónico permanece ligero y libre de matrices binarias.
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex shrink-0 items-center gap-2">
                   {embCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleClearSemanticCache}
-                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 flex items-center gap-1 transition"
-                    >
-                      <Trash2 size={12} /> Vaciar Caché
-                    </button>
+                    <Button size="sm" variant="quiet" onClick={handleClearSemanticCache}>
+                      <Trash2 size={12} aria-hidden="true" /> Vaciar caché
+                    </Button>
                   )}
                   {embStatus === 'embedding' ? (
-                    <button
-                      type="button"
-                      onClick={handleCancelIndexing}
-                      className="px-3 py-1 rounded bg-rose-600/80 hover:bg-rose-500 text-[11px] font-semibold text-white flex items-center gap-1.5 transition shadow-sm"
-                    >
-                      <RotateCcw size={12} /> Cancelar
-                    </button>
+                    <Button size="sm" variant="danger" onClick={handleCancelIndexing}>
+                      <RotateCcw size={12} aria-hidden="true" /> Cancelar
+                    </Button>
                   ) : (
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
+                      variant="solid"
                       disabled={embStatus === 'loading'}
                       onClick={handleBuildSemanticIndex}
-                      className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-[11px] font-semibold text-white flex items-center gap-1.5 transition shadow-sm"
                     >
                       {embStatus === 'loading' ? (
-                        <RefreshCw size={12} className="animate-spin" />
+                        <RefreshCw size={12} className="animate-spin" aria-hidden="true" />
                       ) : (
-                        <Database size={12} />
+                        <Database size={12} aria-hidden="true" />
                       )}
-                      {embStatus === 'loading' ? 'Cargando Modelo...' : 'Indexar Contenido Local'}
-                    </button>
+                      {embStatus === 'loading' ? 'Cargando modelo…' : 'Indexar contenido local'}
+                    </Button>
                   )}
                 </div>
               </div>
 
               {indexingText && (
-                <div className="text-[11px] text-purple-300 flex items-center gap-1.5 pt-1">
-                  <RefreshCw size={12} className="animate-spin text-purple-400" />
+                <div className="flex items-center gap-1.5 pt-1 text-accent">
+                  <RefreshCw size={12} className="animate-spin" aria-hidden="true" />
                   <span>{indexingText}</span>
                 </div>
               )}
 
               {embError && (
-                <div className="text-[11px] text-rose-400 pt-1">
-                  ⚠️ {embError}
-                </div>
+                <div className="pt-1 text-error">⚠️ {embError}</div>
               )}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex items-center justify-end gap-3">
           {savedSuccess && (
-            <span className="text-xs text-emerald-400 flex items-center gap-1">
-              <Check size={14} /> Preferencias guardadas correctamente
+            <span className="flex items-center gap-1 text-meta text-success" role="status" aria-live="polite">
+              <Check size={14} aria-hidden="true" /> Preferencias guardadas correctamente
             </span>
           )}
-          <button
-            type="submit"
-            className="ml-auto px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/25"
-          >
-            Guardar Configuración
-          </button>
+          <Button variant="solid" type="submit">
+            Guardar configuración
+          </Button>
         </div>
       </form>
     </div>

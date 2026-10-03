@@ -3,6 +3,7 @@ import { X, Sparkles, Plus, Trash2, Check, AlertCircle, BookOpen, Layers } from 
 import type { GeneratedFlashcard, StudyDifficulty } from '../../lib/studyGeneration/types.ts';
 import { aiService } from '../../ai/aiService.ts';
 import { dao } from '../../db/dao.ts';
+import { Button, InlineStatus, cn } from '../ui/index.tsx';
 
 interface FlashcardGenerationModalProps {
   isOpen: boolean;
@@ -113,58 +114,68 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
     }
   };
 
+  const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/50">
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gen-cards-title"
+        className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-line bg-raised shadow-pop"
+      >
+        {/* Cabecera */}
+        <div className="flex items-center justify-between border-b border-line bg-surface p-4">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400">
-              <Sparkles size={20} />
+            <div className="rounded-lg border border-accent/25 bg-accent-soft p-2 text-accent">
+              <Sparkles size={20} aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Generar Flashcards Fundamentadas</h2>
-              <p className="text-xs text-slate-400">Creación pedagógica local basada en tus fuentes y notas</p>
+              <h2 id="gen-cards-title" className="type-section text-ink">Generar flashcards fundamentadas</h2>
+              <p className="type-meta">Creación pedagógica local basada en tus fuentes y notas</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+            aria-label="Cerrar diálogo"
+            className="rounded-lg p-1.5 text-faint transition hover:bg-canvas hover:text-ink"
           >
-            <X size={18} />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-5 flex-1">
-          {/* Form Options */}
-          <div className="space-y-4 bg-slate-950/40 p-4 rounded-xl border border-slate-800/80">
+        {/* Cuerpo */}
+        <div className="flex-1 space-y-5 overflow-y-auto p-5">
+          {/* Opciones del formulario */}
+          <div className="space-y-4 rounded-xl border border-line bg-canvas p-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Tema o Consulta Guía</label>
+              <label className="mb-1 block text-meta font-semibold text-muted" htmlFor="gen-topic">Tema o consulta guía</label>
               <input
+                id="gen-topic"
                 ref={topicInputRef}
                 type="text"
                 value={topic}
                 onChange={e => setTopic(e.target.value)}
-                placeholder="Ej. Hooks en React, Algoritmo SM-2, Estado..."
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                placeholder="Ej. Hooks en React, Algoritmo SM-2, Estado…"
+                className={INPUT_CLS}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="mb-1 block text-meta font-semibold text-muted" htmlFor="gen-count">
                   Cantidad ({count} tarjetas)
                 </label>
                 <input
+                  id="gen-count"
                   type="range"
                   min="3"
                   max="8"
                   value={count}
                   onChange={e => setCount(parseInt(e.target.value, 10))}
-                  className="w-full accent-purple-500 cursor-pointer"
+                  className="w-full cursor-pointer accent-accent"
                 />
-                <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                <div className="mt-0.5 flex justify-between text-micro">
                   <span>3</span>
                   <span>5</span>
                   <span>8</span>
@@ -172,16 +183,22 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Dificultad</label>
-                <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                <span className="mb-1 block text-meta font-semibold text-muted" id="gen-difficulty-label">Dificultad</span>
+                <div
+                  className="grid grid-cols-3 gap-1 rounded-xl border border-line bg-surface p-1"
+                  role="group"
+                  aria-labelledby="gen-difficulty-label"
+                >
                   {(['easy', 'medium', 'hard'] as StudyDifficulty[]).map(d => (
                     <button
                       key={d}
                       type="button"
                       onClick={() => setDifficulty(d)}
-                      className={`py-1 rounded-lg text-[11px] font-medium capitalize transition ${
-                        difficulty === d ? 'bg-purple-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
-                      }`}
+                      aria-pressed={difficulty === d}
+                      className={cn(
+                        'rounded-lg py-1.5 text-meta capitalize transition-colors',
+                        difficulty === d ? 'bg-ink font-semibold text-canvas' : 'text-muted hover:text-ink'
+                      )}
                     >
                       {d === 'easy' ? 'Fácil' : d === 'medium' ? 'Media' : 'Difícil'}
                     </button>
@@ -191,85 +208,86 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </div>
 
             <div className="pt-2">
-              <button
-                onClick={handleGenerate}
-                disabled={isGenerating}
-                className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white shadow-lg shadow-purple-600/20 transition"
-              >
-                <Sparkles size={14} className={isGenerating ? 'animate-spin' : ''} />
-                {isGenerating ? 'Recuperando contexto y generando...' : 'Generar Tarjetas'}
-              </button>
+              <Button variant="solid" className="w-full" onClick={handleGenerate} disabled={isGenerating}>
+                <Sparkles size={14} className={isGenerating ? 'animate-spin' : ''} aria-hidden="true" />
+                {isGenerating ? 'Recuperando contexto y generando…' : 'Generar tarjetas'}
+              </Button>
             </div>
           </div>
 
-          {/* Feedback / Error */}
+          {/* Feedback / error */}
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
-              <AlertCircle size={16} className="shrink-0 mt-0.5" />
-              <div>
-                <span className="font-semibold">Aviso pedagógico:</span> {errorMsg}
-              </div>
-            </div>
+            <InlineStatus tone="warning">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span>
+                <strong>Aviso pedagógico:</strong> {errorMsg}
+              </span>
+            </InlineStatus>
           )}
 
-          {/* Success Message */}
+          {/* Mensaje de éxito */}
           {saveSuccessCount !== null && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-              <Check size={16} />
-              <span>¡Se han guardado con éxito <strong>{saveSuccessCount}</strong> flashcards en tu mazo SM-2!</span>
-            </div>
+            <InlineStatus tone="success">
+              <Check size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span>
+                ¡Se han guardado con éxito <strong>{saveSuccessCount}</strong> flashcards en tu mazo SM-2!
+              </span>
+            </InlineStatus>
           )}
 
-          {/* Sources Badge */}
+          {/* Fuentes */}
           {sources.length > 0 && (
             <div className="space-y-1">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Fuentes de Aprendizaje Respaldadas:</span>
+              <span className="type-micro">Fuentes de aprendizaje respaldadas:</span>
               <div className="flex flex-wrap gap-1.5">
                 {sources.map((s, idx) => (
-                  <span key={idx} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-md bg-slate-800 text-purple-300 border border-slate-700">
-                    <BookOpen size={11} /> {s}
+                  <span key={idx} className="inline-flex items-center gap-1 rounded-full border border-line bg-canvas px-2.5 py-0.5 text-meta text-muted">
+                    <BookOpen size={11} aria-hidden="true" /> {s}
                   </span>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Cards Preview List */}
+          {/* Lista de previsualización */}
           {previewCards.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-300">
+                <span className="text-item font-semibold text-ink">
                   Previsualización ({previewCards.length} tarjetas generadas)
                 </span>
-                <span className="text-[10px] text-slate-400">Edita cualquier campo antes de guardar</span>
+                <span className="text-micro">Edita cualquier campo antes de guardar</span>
               </div>
 
               <div className="space-y-3">
                 {previewCards.map((c, i) => (
-                  <div key={c.id || i} className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2 relative group">
+                  <div key={c.id || i} className="relative space-y-2 rounded-xl border border-line bg-canvas p-3.5">
                     <button
                       onClick={() => handleDeleteCard(i)}
-                      className="absolute top-2.5 right-2.5 p-1 text-slate-500 hover:text-red-400 rounded transition"
+                      className="absolute right-2.5 top-2.5 rounded p-1 text-faint transition hover:text-error"
                       title="Descartar esta tarjeta"
+                      aria-label={`Descartar tarjeta ${i + 1}`}
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={13} aria-hidden="true" />
                     </button>
                     <div>
-                      <label className="text-[10px] font-bold text-purple-400 uppercase">Anverso (Pregunta)</label>
+                      <label className="text-micro text-accent" htmlFor={`card-front-${i}`}>Anverso (Pregunta)</label>
                       <input
+                        id={`card-front-${i}`}
                         type="text"
                         value={c.front}
                         onChange={e => handleCardChange(i, 'front', e.target.value)}
-                        className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-white focus:outline-none focus:border-purple-500"
+                        className="mt-0.5 w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-body text-ink focus:border-accent/50 focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Reverso (Respuesta)</label>
+                      <label className="text-micro" htmlFor={`card-back-${i}`}>Reverso (Respuesta)</label>
                       <textarea
+                        id={`card-back-${i}`}
                         rows={2}
                         value={c.back}
                         onChange={e => handleCardChange(i, 'back', e.target.value)}
-                        className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:border-purple-500 resize-none"
+                        className="mt-0.5 w-full resize-none rounded-lg border border-line bg-surface px-2.5 py-1.5 text-body text-ink focus:border-accent/50 focus:outline-none"
                       />
                     </div>
                   </div>
@@ -279,27 +297,20 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
           )}
         </div>
 
-        {/* Footer */}
+        {/* Pie */}
         {previewCards.length > 0 && (
-          <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
-            <span className="text-xs text-slate-400">
+          <div className="flex items-center justify-between border-t border-line bg-surface p-4">
+            <span className="text-meta text-muted">
               Se programarán con SM-2 (intervalo inicial: 1 día)
             </span>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPreviewCards([])}
-                className="px-3 py-1.5 text-xs text-slate-400 hover:text-white transition"
-              >
+              <Button size="sm" variant="quiet" onClick={() => setPreviewCards([])}>
                 Descartar todas
-              </button>
-              <button
-                onClick={handleSaveToDeck}
-                disabled={isSaving}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition disabled:opacity-50"
-              >
-                <Check size={14} />
-                {isSaving ? 'Guardando...' : `Guardar ${previewCards.length} tarjetas en SQLite`}
-              </button>
+              </Button>
+              <Button size="sm" variant="solid" onClick={handleSaveToDeck} disabled={isSaving}>
+                <Check size={14} aria-hidden="true" />
+                {isSaving ? 'Guardando…' : `Guardar ${previewCards.length} tarjetas en SQLite`}
+              </Button>
             </div>
           </div>
         )}

@@ -156,7 +156,13 @@ RAG híbrido (léxico + embeddings locales)
 Respuesta fundamentada con WebLLM local
 ```
 
-### 8. Backend Complementario (Opcional)
+### 8. Interfaz Editorial y Tema Dual Persistente
+- Todas las superficies se construyen a partir de tokens CSS semánticos (`--c-canvas`, `--c-ink`, `--c-accent`, ...) declarados en `frontend/src/index.css`, sin paletas literales en el JSX.
+- Dos temas cuidados a mano: **claro, cálido y crema por defecto**, más una alternativa **oscura y suave (carbón)**. La elección persiste en `localStorage` y se aplica antes del primer pintado, sin destellos del tema incorrecto.
+- Diseño con prioridad a la lectura: el contenido de la lección es el objeto principal, los metadatos remain discretos y las métricas se calculan solo a partir de actividad local real (ningún dato inventado).
+- Totalmente adaptable a pantallas pequeñas, con cajón móvil accesible, anillos de foco visibles y soporte de `prefers-reduced-motion`.
+
+### 9. Backend Complementario (Opcional)
 - Servidor REST en `backend/` construido con **FastAPI**, **SQLAlchemy 2.0** y **Alembic**.
 - Diseñado para análisis avanzado, ingesta masiva por lotes (extracción de PDF, EPUB, metadatos y transcripciones de vídeo) y búsqueda semántica vectorial.
 
@@ -170,8 +176,9 @@ CrossedArts/
 │   ├── public/                   # Binarios WASM (sql-wasm.wasm) y favicon
 │   ├── src/
 │   │   ├── ai/                   # Servicio de tutor IA híbrido (aiService.ts)
-│   │   ├── components/           # Componentes de UI (Navbar, Asistente IA, etc.)
+│   │   ├── components/           # Componentes de UI (Shell, primitivas compartidas, Asistente IA, etc.)
 │   │   ├── db/                   # Puente SQLite WASM, esquemas DDL, DAO y backups
+│   │   ├── hooks/                # Tema persistente claro/crema y oscuro/carbón (useTheme.ts)
 │   │   ├── lib/                  # Motores de IA local, embeddings, RAG híbrido e ingestión
 │   │   ├── pages/                # Vistas: Dashboard, Biblioteca, Repaso, Grafo, etc.
 │   │   └── types/                # Modelos de datos TypeScript (models.ts)

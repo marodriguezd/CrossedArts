@@ -34,6 +34,7 @@ import { dao } from '../../db/dao.ts';
 import { localMediaService } from '../../services/localMediaService.ts';
 import { GRAPH_NODE_LABELS, GRAPH_RELATION_LABELS } from '../../services/domainLogic.ts';
 import { FlashcardGenerationModal } from '../study/FlashcardGenerationModal.tsx';
+import { Button, Badge, ProgressBar, EmptyState, InlineStatus, cn } from '../ui/index.tsx';
 
 interface LessonWorkspaceProps {
   courseId: string;
@@ -211,143 +212,134 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
-        <Loader2 size={24} className="animate-spin text-purple-500" />
-        <p className="text-xs">Cargando espacio de trabajo de la lección...</p>
+      <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted">
+        <Loader2 size={24} className="animate-spin text-accent" />
+        <p className="text-meta">Cargando espacio de trabajo de la lección…</p>
       </div>
     );
   }
 
   if (!workspace) {
     return (
-      <div className="p-6 rounded-2xl bg-slate-900/60 border border-rose-500/30 text-rose-300 text-sm flex items-center gap-2">
-        <AlertCircle size={18} /> La lección ya no existe en la base local.
-      </div>
+      <InlineStatus tone="error" className="text-body">
+        <AlertCircle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+        La lección ya no existe en la base local.
+      </InlineStatus>
     );
   }
 
   const { notes, resources, concepts, relatedBooks, flashcardCount, progress } = workspace;
   const progressTone =
     progress === 'COMPLETED'
-      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+      ? 'success'
       : progress === 'IN_PROGRESS'
-        ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-        : 'bg-slate-800 text-slate-300 border-slate-700';
+        ? 'warning'
+        : 'neutral';
+
+  const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
 
   return (
-    <div className="space-y-4">
-      {/* Encabezado de la lección */}
-      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+    <div className="space-y-5">
+      {/* Cabecera de la lección */}
+      <div className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">{moduleTitle}</p>
-            <h2 className="text-base font-bold text-white break-words">{lesson.title}</h2>
-            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px]">
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${progressTone}`}>
-                {progress === 'COMPLETED' ? <CheckCircle size={11} /> : <Circle size={11} />} {PROGRESS_LABELS[progress]}
+            <p className="type-micro">{moduleTitle}</p>
+            <h2 className="type-title mt-0.5 break-words text-ink">{lesson.title}</h2>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Badge tone={progressTone as any}>
+                {progress === 'COMPLETED' ? <CheckCircle size={11} aria-hidden="true" /> : <Circle size={11} aria-hidden="true" />}
+                {PROGRESS_LABELS[progress]}
+              </Badge>
+              <span className="flex items-center gap-1 text-meta text-muted">
+                <Clock size={12} aria-hidden="true" /> {lesson.duration_minutes} min
               </span>
-              <span className="flex items-center gap-1 text-slate-400"><Clock size={11} /> {lesson.duration_minutes} min</span>
-              <span className="flex items-center gap-1 text-slate-400"><FileText size={11} /> {lesson.lesson_type}</span>
+              <span className="flex items-center gap-1 text-meta text-muted">
+                <FileText size={12} aria-hidden="true" /> {lesson.lesson_type}
+              </span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            <Button
+              size="sm"
+              variant="quiet"
               onClick={() => onMoveLesson(lesson.id, 'up')}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
               aria-label={`Mover la lección ${lesson.title} hacia arriba`}
             >
-              <ArrowUp size={12} /> Subir
-            </button>
-            <button
+              <ArrowUp size={13} aria-hidden="true" /> Subir
+            </Button>
+            <Button
+              size="sm"
+              variant="quiet"
               onClick={() => onMoveLesson(lesson.id, 'down')}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
               aria-label={`Mover la lección ${lesson.title} hacia abajo`}
             >
-              <ArrowDown size={12} /> Bajar
-            </button>
-            <button
+              <ArrowDown size={13} aria-hidden="true" /> Bajar
+            </Button>
+            <Button
+              size="sm"
+              variant={lesson.is_completed ? 'outline' : 'solid'}
               onClick={handleToggleComplete}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition ${
-                lesson.is_completed
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  : 'bg-purple-600 hover:bg-purple-500 text-white'
-              }`}
               aria-label={lesson.is_completed ? 'Reabrir lección' : 'Marcar lección como completada'}
+              className={lesson.is_completed ? 'border-success/40 text-success' : ''}
             >
-              {lesson.is_completed ? <><Check size={13} /> Completada</> : <><CheckCircle size={13} /> Marcar completada</>}
-            </button>
+              {lesson.is_completed ? <><Check size={13} aria-hidden="true" /> Completada</> : <><CheckCircle size={13} aria-hidden="true" /> Marcar completada</>}
+            </Button>
           </div>
         </div>
 
         {/* Acciones de estudio unificadas */}
-        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800/60">
-          <button
-            onClick={() => onStudyLesson(lesson.id, 'mixed')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-purple-600 hover:bg-purple-500 text-white transition"
-          >
-            <Play size={13} /> Estudiar esta lección
-          </button>
-          <button
-            onClick={() => onStudyLesson(lesson.id, 'flashcards')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 transition"
-          >
-            <Brain size={13} /> Repasar flashcards
-          </button>
-          <button
-            onClick={() => onStudyLesson(lesson.id, 'practice')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 transition"
-          >
-            <ListChecks size={13} /> Preguntas de práctica
-          </button>
-          <button
-            onClick={() => onExplainResource(courseId, lesson.title, lesson.id)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-purple-300 border border-purple-800/40 transition"
-          >
-            <Sparkles size={13} /> Explicar esta lección
-          </button>
-          <button
-            onClick={() => setIsGenOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 transition"
-          >
-            <Sparkles size={13} /> Generar flashcards
-          </button>
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          <Button size="sm" variant="solid" onClick={() => onStudyLesson(lesson.id, 'mixed')}>
+            <Play size={13} aria-hidden="true" /> Estudiar esta lección
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onStudyLesson(lesson.id, 'flashcards')}>
+            <Brain size={13} aria-hidden="true" /> Repasar flashcards
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onStudyLesson(lesson.id, 'practice')}>
+            <ListChecks size={13} aria-hidden="true" /> Preguntas de práctica
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onExplainResource(courseId, lesson.title, lesson.id)}>
+            <Sparkles size={13} aria-hidden="true" /> Explicar esta lección
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setIsGenOpen(true)}>
+            <Sparkles size={13} aria-hidden="true" /> Generar flashcards
+          </Button>
         </div>
 
         {feedback && (
-          <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
-            feedback.type === 'success'
-              ? 'bg-emerald-950/60 border border-emerald-800/60 text-emerald-300'
-              : 'bg-rose-950/60 border border-rose-800/60 text-rose-300'
-          }`} role="status">
-            {feedback.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-            <span>{feedback.text}</span>
+          <div className="mt-3">
+            <InlineStatus tone={feedback.type === 'success' ? 'success' : 'error'}>
+              {feedback.type === 'success' ? <CheckCircle size={14} className="shrink-0" aria-hidden="true" /> : <AlertCircle size={14} className="shrink-0" aria-hidden="true" />}
+              <span>{feedback.text}</span>
+            </InlineStatus>
           </div>
         )}
       </div>
 
       {/* Reproductor de medios locales */}
-      <div className="rounded-2xl overflow-hidden border border-slate-800 bg-black">
+      <div className={cn('overflow-hidden rounded-xl border border-line', playbackUrl ? 'bg-black' : 'bg-surface')}>
         {playbackUrl ? (
-          <video key={lesson.id} src={playbackUrl} controls className="w-full max-h-[420px] object-contain bg-black" />
+          <video key={lesson.id} src={playbackUrl} controls className="max-h-[420px] w-full bg-black object-contain" />
         ) : (
-          <div className="aspect-video flex flex-col items-center justify-center text-center p-6 text-slate-500">
-            <Video size={40} className="mb-2 opacity-50" />
-            <p className="text-xs">No hay archivo multimedia local disponible para esta lección.</p>
-            <p className="text-[11px] text-slate-600 mt-1">
-              Usa "Vincular Carpeta Local" en la Biblioteca o asocia un archivo individual.
+          <div className="flex flex-col items-center justify-center p-8 text-center">
+            <Video size={34} className="mb-2 text-faint" aria-hidden="true" />
+            <p className="text-secondary text-muted">No hay archivo multimedia local disponible para esta lección.</p>
+            <p className="type-meta mt-1">
+              Usa «Vincular carpeta local» en la Biblioteca o asocia un archivo individual.
             </p>
             {!mediaLoading && lesson.media_url && (
-              <p className="text-[10px] text-purple-400/80 mt-2 font-mono">Archivo esperado: {lesson.media_url}</p>
+              <p className="mt-2 break-all font-mono text-micro text-accent">Archivo esperado: {lesson.media_url}</p>
             )}
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-slate-900/60 border-t border-slate-800">
-          <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
-            <Video size={12} className="text-purple-400" />
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface px-3 py-2">
+          <span className="flex items-center gap-1.5 text-meta text-muted">
+            <Video size={13} className="text-accent" aria-hidden="true" />
             {isLocalMedia ? 'Medio local efímero (no persistido)' : playbackUrl ? 'Medio remoto' : 'Sin medio'}
           </span>
-          <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer transition">
-            <Video size={13} className="text-purple-400" />
+          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-meta font-medium text-muted transition-colors hover:bg-accent-soft/60 hover:text-ink">
+            <Video size={13} aria-hidden="true" />
             <span>Asociar archivo local</span>
             <input
               type="file"
@@ -364,240 +356,251 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Contenido de la lección (texto/Markdown como datos) */}
-      <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <FileText size={14} className="text-purple-400" /> Contenido
-          </h3>
+      {/* Contenido de la lección: el objeto visual principal (texto/Markdown como datos) */}
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card sm:p-7" aria-label="Contenido de la lección">
+        <div className="mb-4 flex items-center justify-between gap-3 border-b border-line pb-3">
+          <h3 className="type-section text-ink">Contenido</h3>
           {!isEditing && (
-            <button
+            <Button
+              size="sm"
+              variant="quiet"
               onClick={() => setIsEditing(true)}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
               aria-label={`Editar contenido de la lección ${lesson.title}`}
             >
-              <Edit3 size={12} /> Editar
-            </button>
+              <Edit3 size={13} aria-hidden="true" /> Editar
+            </Button>
           )}
         </div>
 
         {isEditing ? (
-          <div className="space-y-2">
-            <input
-              type="text"
-              value={editForm.title}
-              onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
-              aria-label="Título de la lección"
-              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500"
-            />
+          <div className="space-y-3">
+            <div>
+              <label className="sr-only" htmlFor="lesson-title-input">Título de la lección</label>
+              <input
+                id="lesson-title-input"
+                type="text"
+                value={editForm.title}
+                onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                aria-label="Título de la lección"
+                className={INPUT_CLS}
+              />
+            </div>
             <div className="flex items-center gap-2">
-              <label className="text-[11px] text-slate-400" htmlFor="lesson-duration">Duración (min)</label>
+              <label className="text-meta text-muted" htmlFor="lesson-duration">Duración (min)</label>
               <input
                 id="lesson-duration"
                 type="number"
                 min="0"
                 value={editForm.durationMinutes}
                 onChange={e => setEditForm(f => ({ ...f, durationMinutes: parseInt(e.target.value, 10) || 0 }))}
-                className="w-20 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white text-right focus:outline-none focus:border-purple-500"
+                className="w-20 rounded-lg border border-line bg-canvas px-2 py-1.5 text-right text-body text-ink focus:border-accent/50 focus:outline-none"
               />
             </div>
-            <textarea
-              value={editForm.content}
-              onChange={e => setEditForm(f => ({ ...f, content: e.target.value }))}
-              rows={8}
-              aria-label="Contenido de la lección (texto o Markdown)"
-              placeholder="Escribe el contenido de la lección (texto o Markdown)..."
-              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-500 resize-y"
-            />
+            <div>
+              <label className="sr-only" htmlFor="lesson-content-input">Contenido de la lección (texto o Markdown)</label>
+              <textarea
+                id="lesson-content-input"
+                value={editForm.content}
+                onChange={e => setEditForm(f => ({ ...f, content: e.target.value }))}
+                rows={12}
+                aria-label="Contenido de la lección (texto o Markdown)"
+                placeholder="Escribe el contenido de la lección (texto o Markdown)…"
+                className={cn(INPUT_CLS, 'min-h-56 resize-y font-mono text-secondary')}
+              />
+            </div>
             <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setIsEditing(false)}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition"
-              >
-                <X size={12} /> Cancelar
-              </button>
-              <button
-                onClick={handleSaveLesson}
-                disabled={isSaving}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-semibold bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white transition"
-              >
-                <Save size={12} /> {isSaving ? 'Guardando...' : 'Guardar'}
-              </button>
+              <Button size="sm" variant="quiet" onClick={() => setIsEditing(false)}>
+                <X size={13} aria-hidden="true" /> Cancelar
+              </Button>
+              <Button size="sm" variant="solid" onClick={handleSaveLesson} disabled={isSaving}>
+                <Save size={13} aria-hidden="true" /> {isSaving ? 'Guardando…' : 'Guardar'}
+              </Button>
             </div>
           </div>
         ) : lesson.content && lesson.content.trim() ? (
-          <pre className="text-xs text-slate-200 whitespace-pre-wrap break-words leading-relaxed font-sans">{lesson.content}</pre>
+          /* Tipografía de lectura: medida cómoda, ritmo vertical y sin ruido. */
+          <article className="max-w-[68ch] whitespace-pre-wrap break-words text-body text-ink" style={{ lineHeight: 1.75 }}>
+            {lesson.content}
+          </article>
         ) : (
-          <p className="text-[11px] text-slate-500">Esta lección aún no tiene contenido. Usa "Editar" para añadirlo.</p>
+          <EmptyState
+            title="Esta lección aún no tiene contenido."
+            hint="Usa «Editar» para añadir texto o Markdown. El contenido se guarda como datos en SQLite."
+          />
         )}
-      </div>
+      </section>
 
-      {/* Notas de la lección */}
-      <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <FileText size={14} className="text-purple-400" /> Notas ({notes.length})
-          </h3>
-          <button
-            onClick={() => setIsCreatingNote(v => !v)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
-          >
-            <Plus size={12} /> Crear nota
-          </button>
-        </div>
-
-        {isCreatingNote && (
-          <form onSubmit={handleCreateNote} className="space-y-2 p-2.5 rounded-lg bg-slate-950/70 border border-purple-500/30">
-            <input
-              type="text"
-              value={noteForm.title}
-              onChange={e => setNoteForm(f => ({ ...f, title: e.target.value }))}
-              placeholder="Título de la nota"
-              required
-              aria-label="Título de la nueva nota"
-              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-purple-500"
-            />
-            <textarea
-              value={noteForm.content}
-              onChange={e => setNoteForm(f => ({ ...f, content: e.target.value }))}
-              rows={3}
-              placeholder="Contenido..."
-              aria-label="Contenido de la nueva nota"
-              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-purple-500 resize-y"
-            />
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setIsCreatingNote(false)} className="px-3 py-1 rounded-lg text-[11px] text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition">
-                Cancelar
-              </button>
-              <button type="submit" className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-semibold bg-purple-600 hover:bg-purple-500 text-white transition">
-                <Save size={12} /> Guardar nota
-              </button>
-            </div>
-          </form>
-        )}
-
-        {notes.length === 0 ? (
-          <p className="text-[11px] text-slate-500">Aún no hay notas asociadas a esta lección.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {notes.map(note => (
-              <li key={note.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800">
-                <span className="min-w-0">
-                  <span className="block text-[11px] font-semibold text-slate-200 truncate">{note.title}</span>
-                  <span className="block text-[10px] text-slate-500 truncate">{note.content.slice(0, 90)}</span>
-                </span>
-                <button
-                  onClick={() => onOpenNote(note.id)}
-                  className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-indigo-300 transition"
-                  aria-label={`Abrir nota ${note.title}`}
-                >
-                  Abrir <ArrowRight size={11} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* Recursos relacionados */}
-      <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 space-y-2">
-        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-          <Link2 size={14} className="text-purple-400" /> Recursos relacionados ({resources.length})
-        </h3>
-        {resources.length === 0 ? (
-          <p className="text-[11px] text-slate-500">Sin recursos asociados. Puedes añadirlos desde el Grafo de Conocimiento.</p>
-        ) : (
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            {resources.map(item => {
-              const Icon = RELATED_ICONS[item.type] || FileText;
-              const relationLabel = (GRAPH_RELATION_LABELS as Record<string, string>)[item.relation] || item.relation;
-              return (
-                <li key={`${item.id}-${item.relation}`} className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1">
-                  <button
-                    onClick={() => onOpenResource(item.id)}
-                    className="w-full text-left flex items-start gap-2"
-                    aria-label={`Abrir ${GRAPH_NODE_LABELS[item.type]}: ${item.title}`}
-                  >
-                    <Icon size={14} className="text-purple-400 shrink-0 mt-0.5" />
-                    <span className="min-w-0">
-                      <span className="block text-[11px] font-semibold text-slate-200 truncate">{item.title}</span>
-                      <span className="block text-[10px] text-slate-500">{GRAPH_NODE_LABELS[item.type]} · {relationLabel}</span>
-                    </span>
-                  </button>
-                  {item.type !== 'module' && item.type !== 'lesson' && (
-                    <div className="flex flex-wrap items-center gap-2 pl-6">
-                      <button
-                        onClick={() => onStudyResource(item.id, 'mixed')}
-                        className="text-[10px] text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-0.5"
-                      >
-                        <Brain size={10} /> Estudiar
-                      </button>
-                      <button
-                        onClick={() => onExplainResource(item.id, item.title)}
-                        className="text-[10px] text-purple-400 hover:text-purple-300 inline-flex items-center gap-0.5"
-                      >
-                        <Sparkles size={10} /> Explicar
-                      </button>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      {/* Conceptos */}
-      {concepts.length > 0 && (
-        <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 space-y-2">
-          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Lightbulb size={14} className="text-purple-400" /> Conceptos ({concepts.length})
-          </h3>
-          <div className="flex flex-wrap gap-1.5">
-            {concepts.map(c => (
-              <button
-                key={c.id}
-                onClick={() => onOpenConcept(c.id)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-950/60 border border-slate-800 hover:border-purple-500/40 text-[11px] text-slate-200 transition"
-                aria-label={`Abrir concepto ${c.title}`}
-              >
-                <Lightbulb size={11} className="text-purple-400" /> {c.title}
-              </button>
-            ))}
+      {/* Zona secundaria: notas, recursos, conceptos y contexto */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {/* Notas de la lección */}
+        <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Notas de la lección">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="type-section text-ink">Notas ({notes.length})</h3>
+            <Button size="sm" variant="quiet" onClick={() => setIsCreatingNote(v => !v)}>
+              <Plus size={13} aria-hidden="true" /> Crear nota
+            </Button>
           </div>
-        </div>
-      )}
 
-      {/* Panel de aprendizaje relacionado (solo relaciones canónicas) */}
-      {(relatedBooks.length > 0 || notes.length > 0 || resources.length > 0 || concepts.length > 0) && (
-        <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 space-y-1.5">
-          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Aprendizaje relacionado</h3>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-            <dt className="text-slate-500">Notas</dt><dd className="text-slate-300">{notes.length}</dd>
-            <dt className="text-slate-500">Recursos</dt><dd className="text-slate-300">{resources.length}</dd>
-            <dt className="text-slate-500">Conceptos</dt><dd className="text-slate-300">{concepts.length}</dd>
-            <dt className="text-slate-500">Libros</dt><dd className="text-slate-300">{relatedBooks.length}</dd>
-            <dt className="text-slate-500">Tarjetas SM-2 del curso</dt><dd className="text-slate-300">{flashcardCount}</dd>
-          </dl>
-          <p className="text-[10px] text-slate-600">Relaciones canónicas locales (explícitas + estructurales). Sin descubrimiento automático.</p>
+          {isCreatingNote && (
+            <form onSubmit={handleCreateNote} className="mb-3 space-y-2 rounded-lg border border-accent/30 bg-accent-soft/50 p-3">
+              <div>
+                <label className="sr-only" htmlFor="new-note-title">Título de la nueva nota</label>
+                <input
+                  id="new-note-title"
+                  type="text"
+                  value={noteForm.title}
+                  onChange={e => setNoteForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Título de la nota"
+                  required
+                  aria-label="Título de la nueva nota"
+                  className={INPUT_CLS}
+                />
+              </div>
+              <div>
+                <label className="sr-only" htmlFor="new-note-content">Contenido de la nueva nota</label>
+                <textarea
+                  id="new-note-content"
+                  value={noteForm.content}
+                  onChange={e => setNoteForm(f => ({ ...f, content: e.target.value }))}
+                  rows={3}
+                  placeholder="Contenido…"
+                  aria-label="Contenido de la nueva nota"
+                  className={cn(INPUT_CLS, 'resize-y')}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="quiet" onClick={() => setIsCreatingNote(false)}>
+                  Cancelar
+                </Button>
+                <Button size="sm" variant="solid" type="submit">
+                  <Save size={13} aria-hidden="true" /> Guardar nota
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {notes.length === 0 ? (
+            <p className="type-meta">Aún no hay notas asociadas a esta lección.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {notes.map(note => (
+                <li key={note.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-canvas p-2.5">
+                  <span className="min-w-0">
+                    <span className="block truncate text-meta font-semibold text-ink">{note.title}</span>
+                    <span className="block truncate text-micro">{note.content.slice(0, 90)}</span>
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    className="shrink-0"
+                    onClick={() => onOpenNote(note.id)}
+                    aria-label={`Abrir nota ${note.title}`}
+                  >
+                    Abrir <ArrowRight size={12} aria-hidden="true" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Recursos relacionados */}
+        <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Recursos relacionados">
+          <h3 className="type-section mb-3 text-ink">Recursos relacionados ({resources.length})</h3>
+          {resources.length === 0 ? (
+            <p className="type-meta">Sin recursos asociados. Puedes añadirlos desde el Grafo de Conocimiento.</p>
+          ) : (
+            <ul className="grid grid-cols-1 gap-1.5">
+              {resources.map(item => {
+                const Icon = RELATED_ICONS[item.type] || FileText;
+                const relationLabel = (GRAPH_RELATION_LABELS as Record<string, string>)[item.relation] || item.relation;
+                return (
+                  <li key={`${item.id}-${item.relation}`} className="rounded-lg border border-line bg-canvas p-2.5">
+                    <button
+                      onClick={() => onOpenResource(item.id)}
+                      className="flex w-full items-start gap-2 text-left"
+                      aria-label={`Abrir ${GRAPH_NODE_LABELS[item.type]}: ${item.title}`}
+                    >
+                      <Icon size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-meta font-semibold text-ink">{item.title}</span>
+                        <span className="block text-micro">{GRAPH_NODE_LABELS[item.type]} · {relationLabel}</span>
+                      </span>
+                    </button>
+                    {item.type !== 'module' && item.type !== 'lesson' && (
+                      <div className="mt-1 flex flex-wrap items-center gap-2 pl-6">
+                        <button
+                          onClick={() => onStudyResource(item.id, 'mixed')}
+                          className="inline-flex items-center gap-0.5 text-micro text-muted hover:text-ink"
+                        >
+                          <Brain size={11} aria-hidden="true" /> Estudiar
+                        </button>
+                        <button
+                          onClick={() => onExplainResource(item.id, item.title)}
+                          className="inline-flex items-center gap-0.5 text-micro text-accent hover:opacity-80"
+                        >
+                          <Sparkles size={11} aria-hidden="true" /> Explicar
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* Conceptos + contexto */}
+        <div className="space-y-5">
+          {concepts.length > 0 && (
+            <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Conceptos">
+              <h3 className="type-section mb-3 text-ink">Conceptos ({concepts.length})</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {concepts.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => onOpenConcept(c.id)}
+                    className="inline-flex items-center gap-1 rounded-full border border-line bg-canvas px-2.5 py-1 text-meta text-ink transition-colors hover:border-accent/40 hover:bg-accent-soft/50"
+                    aria-label={`Abrir concepto ${c.title}`}
+                  >
+                    <Lightbulb size={11} className="text-accent" aria-hidden="true" /> {c.title}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Panel de aprendizaje relacionado (solo relaciones canónicas) */}
+          {(relatedBooks.length > 0 || notes.length > 0 || resources.length > 0 || concepts.length > 0) && (
+            <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Aprendizaje relacionado">
+              <h3 className="type-section mb-2 text-ink">Aprendizaje relacionado</h3>
+              <dl className="divide-y divide-line text-meta">
+                <div className="flex justify-between py-1.5"><dt className="text-faint">Notas</dt><dd className="font-semibold text-ink">{notes.length}</dd></div>
+                <div className="flex justify-between py-1.5"><dt className="text-faint">Recursos</dt><dd className="font-semibold text-ink">{resources.length}</dd></div>
+                <div className="flex justify-between py-1.5"><dt className="text-faint">Conceptos</dt><dd className="font-semibold text-ink">{concepts.length}</dd></div>
+                <div className="flex justify-between py-1.5"><dt className="text-faint">Libros</dt><dd className="font-semibold text-ink">{relatedBooks.length}</dd></div>
+                <div className="flex justify-between py-1.5"><dt className="text-faint">Tarjetas SM-2 del curso</dt><dd className="font-semibold text-ink">{flashcardCount}</dd></div>
+              </dl>
+              <p className="mt-2 text-micro">
+                Relaciones canónicas locales (explícitas + estructurales). Sin descubrimiento automático.
+              </p>
+            </section>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Continuar aprendiendo */}
       {nextLesson && (
-        <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold text-purple-200">
+        <div className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent-soft/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="type-item text-ink">
               {nextLesson.allCompleted ? 'Curso completado. Repasa la última lección:' : 'Continuar aprendiendo'}
             </p>
-            <p className="text-[11px] text-slate-400">{nextLesson.moduleTitle} › {nextLesson.title}</p>
+            <p className="type-meta mt-0.5 truncate">{nextLesson.moduleTitle} › {nextLesson.title}</p>
           </div>
-          <button
-            onClick={() => onSelectLesson(nextLesson.id)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-purple-600 hover:bg-purple-500 text-white transition self-start"
-          >
-            <ArrowRight size={13} /> Continuar
-          </button>
+          <Button variant="solid" size="sm" className="self-start" onClick={() => onSelectLesson(nextLesson.id)}>
+            <ArrowRight size={13} aria-hidden="true" /> Continuar
+          </Button>
         </div>
       )}
 
