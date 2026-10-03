@@ -577,3 +577,30 @@ test('9.7 Privacy & Zero-Network Guarantee During Retrieval and Local Evaluation
 
 
 
+
+test('9.7 Configured OpenAI without credentials never falls through to Demo', async () => {
+  const previous = aiService.getSettings();
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+  globalThis.fetch = (async () => { fetchCalled = true; throw new Error('fetch should not be called'); }) as any;
+  try {
+    aiService.saveSettings({
+      provider: 'openai',
+      ollamaUrl: previous.ollamaUrl,
+      ollamaModel: previous.ollamaModel,
+      apiKey: '',
+      apiModel: previous.apiModel,
+      localModelId: previous.localModelId,
+      localAiEnabled: previous.localAiEnabled,
+      persistApiKey: false
+    });
+    const result = await aiService.askTutor([{ role: 'user', content: '¿Qué es React?' }]);
+    assert.strictEqual(result.providerUsed, 'openai');
+    assert.strictEqual(result.isLocalOnDevice, false);
+    assert.strictEqual(fetchCalled, false);
+    assert.match(result.answer, /no hay una clave/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    aiService.saveSettings(previous);
+  }
+});
