@@ -73,7 +73,15 @@ let inMemorySettings: AISettings | null = null;
 
 const STORAGE_KEY = 'crossedarts_ai_settings';
 
+const settingsListeners = new Set<(settings: AISettings) => void>();
+
 export const aiService = {
+  subscribeSettings(listener: (settings: AISettings) => void): () => void {
+    settingsListeners.add(listener);
+    listener(this.getSettings());
+    return () => void settingsListeners.delete(listener);
+  },
+
   getSettings(): AISettings {
     try {
       if (typeof localStorage === 'undefined') {
@@ -108,6 +116,9 @@ export const aiService = {
 
     if (typeof localStorage === 'undefined') {
       inMemorySettings = { ...settings, apiKey: inMemoryApiKey };
+      for (const listener of settingsListeners) {
+        try { listener(inMemorySettings); } catch {}
+      }
       return;
     }
 
@@ -118,6 +129,10 @@ export const aiService = {
       persistApiKey: persist
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    const current = this.getSettings();
+    for (const listener of settingsListeners) {
+      try { listener(current); } catch {}
+    }
   },
 
   /** Descarta la clave de OpenAI de la memoria y del almacenamiento. */

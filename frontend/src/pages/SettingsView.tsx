@@ -5,7 +5,7 @@ import { dbBridge } from '../db/sqliteBridge.ts';
 import { aiService, AISettings } from '../ai/aiService.ts';
 import { detectWebGPUCapability, WebGPUCapabilityReport } from '../lib/localLlm/capabilities.ts';
 import { localLlmEngine, EngineStatus, ModelLoadingProgress } from '../lib/localLlm/engine.ts';
-import { LOCAL_MODELS_REGISTRY, getLocalModelById } from '../lib/localLlm/registry.ts';
+import { LOCAL_MODELS_REGISTRY, getLocalModelById, DEFAULT_WASM_MODEL_ID } from '../lib/localLlm/registry.ts';
 import { localEmbeddingEngine, EmbeddingEngineStatus } from '../lib/localEmbeddings/engine.ts';
 import { embeddingCache } from '../lib/localEmbeddings/cache.ts';
 import { createSemanticChunksFromResourcesAsync } from '../lib/localEmbeddings/chunking.ts';
@@ -51,7 +51,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   };
 
   useEffect(() => {
-    detectWebGPUCapability().then(setGpuReport);
+    detectWebGPUCapability().then((rep) => {
+      setGpuReport(rep);
+      if (rep.state !== 'supported' && rep.hasWasmFallback) {
+        setAiConfig((prev) => {
+          const currentModel = getLocalModelById(prev.localModelId);
+          if (currentModel && currentModel.runtimeBackend === 'webgpu') {
+            const updated = { ...prev, localModelId: DEFAULT_WASM_MODEL_ID };
+            aiService.saveSettings(updated);
+            return updated;
+          }
+          return prev;
+        });
+      }
+    });
     refreshEmbeddingCount();
 
     const unsubscribeLlm = localLlmEngine.subscribe((status, progress) => {
@@ -401,11 +414,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             <select
               id="ai-provider"
               value={aiConfig.provider}
-              onChange={e => setAiConfig({ ...aiConfig, provider: e.target.value as any })}
+              onChange={e => {
+                const nextProvider = e.target.value as any;
+                const updated = { ...aiConfig, provider: nextProvider };
+                setAiConfig(updated);
+                aiService.saveSettings(updated);
+                if (nextProvider === 'local' && localAiRuntime.hasConsent()) {
+                  void localAiRuntime.prepareForTutor('local');
+                }
+              }}
               className={INPUT_CLS}
             >
               <option value="demo">Modo demostración / heurístico (sin conexión)</option>
-              <option value="local">IA local en navegador (WebLLM / WebGPU, 100% en el dispositivo)</option>
+              <option value="local">IA local en navegador (WebGPU / CPU WASM, 100% en el dispositivo)</option>
               <option value="ollama">Ollama local (http://localhost:11434)</option>
               <option value="openai">OpenAI API (GPT-4o / GPT-4o-mini)</option>
             </select>

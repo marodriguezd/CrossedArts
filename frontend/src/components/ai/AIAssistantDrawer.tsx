@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle } from 'lucide-react';
-import { aiService, AIChatMessage, AssistantResponse } from '../../ai/aiService.ts';
+import { aiService, AIChatMessage, AssistantResponse, type AISettings } from '../../ai/aiService.ts';
+import { localLlmEngine } from '../../lib/localLlm/engine.ts';
 import { cn, Button, ProgressBar } from '../ui/index.tsx';
 import { MessageBody, SourceTitle } from './MarkdownMessage.ts';
 import { localAiRuntime, type LocalAiStatus } from '../../services/localAiRuntime.ts';
@@ -40,8 +41,11 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   const [loading, setLoading] = useState(false);
   const [runtimeStatus, setRuntimeStatus] = useState<LocalAiStatus>(localAiRuntime.getStatus());
   const [consentDismissed, setConsentDismissed] = useState(false);
-  const currentSettings = aiService.getSettings();
+  const [currentSettings, setCurrentSettings] = useState<AISettings>(aiService.getSettings());
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sincronizar ajustes en tiempo real cuando el usuario cambie de proveedor
+  useEffect(() => aiService.subscribeSettings(setCurrentSettings), []);
 
   // Accesibilidad del cajón: Escape cierra el cajón, pero primero permite
   // descartar el consentimiento cuando el modal de activación está abierto.
@@ -150,7 +154,14 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
               <h3 className="type-section text-ink">Tutor pedagógico</h3>
               {currentSettings.provider === 'local' ? (
                 <span className="flex items-center gap-1 rounded-full border border-success/30 bg-success-soft px-1.5 py-0.5 text-micro font-semibold text-success">
-                  <Cpu size={10} aria-hidden="true" /> On-Device WebLLM
+                  <Cpu size={10} aria-hidden="true" /> {
+                    localLlmEngine.getLoadedModelId()?.includes('onnx') ||
+                    localLlmEngine.getLoadedModelId()?.includes('SmolLM2-360M') ||
+                    currentSettings.localModelId?.includes('onnx') ||
+                    currentSettings.localModelId?.includes('SmolLM2-360M')
+                      ? 'On-Device CPU (WASM)'
+                      : 'On-Device WebLLM'
+                  }
                 </span>
               ) : currentSettings.provider === 'demo' ? (
                 <span className="rounded-full border border-line bg-canvas px-1.5 py-0.5 text-micro font-semibold text-muted">
