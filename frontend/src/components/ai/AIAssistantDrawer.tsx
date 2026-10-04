@@ -42,7 +42,6 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   const [consentDismissed, setConsentDismissed] = useState(false);
   const currentSettings = aiService.getSettings();
   const inputRef = useRef<HTMLInputElement>(null);
-  const consentPrimaryRef = useRef<HTMLButtonElement>(null);
 
   // Accesibilidad del cajón: Escape cierra el cajón, pero primero permite
   // descartar el consentimiento cuando el modal de activación está abierto.
@@ -92,11 +91,6 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   // Solo la decisión de primera descarga bloquea el envío.
   const sendBlocked = needsConsent;
 
-  useEffect(() => {
-    if (needsConsent && !consentDismissed) {
-      consentPrimaryRef.current?.focus();
-    }
-  }, [needsConsent, consentDismissed]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,7 +322,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
               <Button
                 size="sm"
                 variant="solid"
-                ref={consentPrimaryRef}
+                autoFocus
                 onClick={() => {
                   localAiRuntime.grantConsent();
                   void localAiRuntime.prepareForTutor('local');
