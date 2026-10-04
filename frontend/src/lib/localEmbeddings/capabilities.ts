@@ -11,12 +11,15 @@ export interface EmbeddingCapabilitiesReport {
  * En navegadores modernos sin WebGPU, ofrece WASM/CPU limpiamente.
  */
 export async function detectEmbeddingCapabilities(): Promise<EmbeddingCapabilitiesReport> {
-  // 1. Comprobar WebGPU si está disponible
+  // 1. Comprobar WebGPU si está disponible en hardware real
   if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
     try {
       const gpu = (navigator as any).gpu;
       if (gpu && typeof gpu.requestAdapter === 'function') {
-        const adapter = await gpu.requestAdapter();
+        const adapter = await Promise.race([
+          gpu.requestAdapter(),
+          new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 1500))
+        ]);
         if (adapter) {
           return {
             state: 'supported',
@@ -26,7 +29,7 @@ export async function detectEmbeddingCapabilities(): Promise<EmbeddingCapabiliti
         }
       }
     } catch {
-      // Ignorar fallo y comprobar fallback WASM
+      // Si timeout o fallo de WebGPU, usar fallback CPU/WASM
     }
   }
 

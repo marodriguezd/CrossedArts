@@ -304,10 +304,14 @@ export async function retrieveLocalContext(
   let modeUsed: 'lexical' | 'hybrid' = 'lexical';
 
   // Preparación automática de embeddings cuando la recuperación semántica es
-  // útil. Si falla, se degrada con honestidad a recuperación léxica.
+  // útil. Si tarda o falla, se degrada inmediatamente a recuperación léxica en SQLite.
   if (!isSemanticReady && options?.semantic) {
     try {
-      const semantic = await localAiRuntime.ensureSemanticIndexReady();
+      const semanticPromise = localAiRuntime.ensureSemanticIndexReady();
+      const timeoutPromise = new Promise<{ stage: string }>((r) =>
+        setTimeout(() => r({ stage: 'timeout' }), 4000)
+      );
+      const semantic = await Promise.race([semanticPromise, timeoutPromise]);
       isSemanticReady = semantic.stage === 'ready' && localEmbeddingEngine.getStatus() === 'ready';
     } catch {
       isSemanticReady = false;
