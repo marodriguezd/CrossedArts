@@ -339,7 +339,9 @@ class SQLiteBridge {
         try {
           this.db = new SQL.Database(savedBytes);
           this.db.run('PRAGMA foreign_keys = ON;');
-          this.validateDatabaseSchema(this.db, false);
+          // Crear cualquier tabla nueva que no existiera en una base legacy;
+          // las migraciones siguientes se ocupan de columnas/cambios de tablas existentes.
+          this.db.run(SCHEMA_SQL);
           // Migraciones idempotentes para bases de datos existentes
           const migratedSession = this.migrateLearningSession(this.db);
           const migratedLesson = this.migrateLessonContent(this.db);
@@ -526,7 +528,7 @@ class SQLiteBridge {
       try {
         this.broadcastChannel.postMessage({
           type: 'DATABASE_MUTATED_ANOTHER_TAB',
-          revision: nextRevision,
+          revision: this.persistedRevision,
           origin: TAB_ID,
           timestamp: Date.now()
         });
@@ -574,7 +576,7 @@ class SQLiteBridge {
     try {
       tempDb = new SQL.Database(bytes);
       tempDb.run('PRAGMA foreign_keys = ON;');
-      this.validateDatabaseSchema(tempDb, false);
+      tempDb.run(SCHEMA_SQL);
       this.migrateLearningSession(tempDb);
       this.migrateLessonContent(tempDb);
       this.migrateKnowledgeConnectionIndex(tempDb);
