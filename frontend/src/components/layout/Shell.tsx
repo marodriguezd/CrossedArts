@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { exportSqliteFile } from '../../db/exportImport.ts';
 import { ThemeToggle } from '../common/ThemeToggle.tsx';
+import { PomodoroTimer } from '../common/PomodoroTimer.tsx';
 import { SearchInput } from '../ui/index.tsx';
 import { cn } from '../ui/index.tsx';
 
@@ -237,6 +238,7 @@ export const Shell: React.FC<ShellProps> = ({
             </form>
 
             <div className="flex shrink-0 items-center gap-2">
+              <PomodoroTimer />
               <span className="hidden sm:block">{backupButton}</span>
               {aiButton}
               <ThemeToggle compact />
