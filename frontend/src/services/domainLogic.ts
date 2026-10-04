@@ -871,3 +871,38 @@ export function getStoredPlaybackSeconds(lessonId: string): number | null {
   }
 }
 
+export const SUPPORTED_PLAYBACK_SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+
+/**
+ * Calcula el nuevo segundo de reproducción tras un salto temporal (positivo o negativo),
+ * garantizando que permanezca estrictamente acotado en el intervalo [0, duration].
+ */
+export function calculatePlaybackJump(currentTime: number, deltaSeconds: number, duration: number = Infinity): number {
+  const safeCurrent = isNaN(currentTime) || currentTime < 0 ? 0 : currentTime;
+  const safeDuration = isNaN(duration) || duration <= 0 ? Infinity : duration;
+  const target = safeCurrent + deltaSeconds;
+  return Math.max(0, Math.min(safeDuration, target));
+}
+
+/**
+ * Resuelve la siguiente velocidad de reproducción al incrementar o decrementar
+ * usando los tramos estándar de la aplicación.
+ */
+export function resolveNextPlaybackSpeed(currentSpeed: number, direction: 'increase' | 'decrease'): number {
+  const speeds = SUPPORTED_PLAYBACK_SPEEDS;
+  const idx = speeds.indexOf(currentSpeed as any);
+  if (direction === 'increase') {
+    if (idx === -1) {
+      const next = speeds.find(s => s > currentSpeed);
+      return next ?? speeds[speeds.length - 1];
+    }
+    return idx < speeds.length - 1 ? speeds[idx + 1] : speeds[idx];
+  } else {
+    if (idx === -1) {
+      const prev = [...speeds].reverse().find(s => s < currentSpeed);
+      return prev ?? speeds[0];
+    }
+    return idx > 0 ? speeds[idx - 1] : speeds[0];
+  }
+}
+

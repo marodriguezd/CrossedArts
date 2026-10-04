@@ -28,11 +28,23 @@ import {
   ArrowDown,
   ArrowRight,
   AlertCircle,
-  Loader2
+  Loader2,
+  RotateCcw,
+  RotateCw,
+  Gauge,
+  PictureInPicture
 } from 'lucide-react';
 import { dao } from '../../db/dao.ts';
 import { localMediaService } from '../../services/localMediaService.ts';
-import { GRAPH_NODE_LABELS, GRAPH_RELATION_LABELS, formatPlaybackTime, extractTimestampParts } from '../../services/domainLogic.ts';
+import {
+  GRAPH_NODE_LABELS,
+  GRAPH_RELATION_LABELS,
+  formatPlaybackTime,
+  extractTimestampParts,
+  calculatePlaybackJump,
+  resolveNextPlaybackSpeed,
+  SUPPORTED_PLAYBACK_SPEEDS
+} from '../../services/domainLogic.ts';
 import { FlashcardGenerationModal } from '../study/FlashcardGenerationModal.tsx';
 import { MarkdownViewer } from '../common/MarkdownViewer.tsx';
 import { Button, Badge, ProgressBar, EmptyState, InlineStatus, cn } from '../ui/index.tsx';
@@ -110,6 +122,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return;
     try {
+      videoRef.current.playbackRate = playbackSpeed;
       const saved = localStorage.getItem(`crossedarts-playback:${lesson.id}`);
       if (saved) {
         const pos = parseFloat(saved);
@@ -162,6 +175,122 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
       }
     };
   }, [lesson.id]);
+
+  // Velocidad de reproducción (persiste preferencia del usuario)
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('crossedarts-playback-speed');
+      return saved ? parseFloat(saved) || 1 : 1;
+    } catch {
+      return 1;
+    }
+  });
+
+  // Notificación breve sobre el vídeo al cambiar controles
+  const [playerOverlayToast, setPlayerOverlayToast] = useState<string | null>(null);
+  const overlayToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToastFeedback = useCallback((text: string) => {
+    if (overlayToastTimeoutRef.current) clearTimeout(overlayToastTimeoutRef.current);
+    setPlayerOverlayToast(text);
+    overlayToastTimeoutRef.current = setTimeout(() => setPlayerOverlayToast(null), 1100);
+  }, []);
+
+  const handleSpeedChange = useCallback((newSpeed: number) => {
+    setPlaybackSpeed(newSpeed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = newSpeed;
+    }
+    try {
+      localStorage.setItem('crossedarts-playback-speed', String(newSpeed));
+    } catch {
+      // Ignorar restricciones
+    }
+    showToastFeedback(`${newSpeed}x`);
+  }, [showToastFeedback]);
+
+  const handleJump = useCallback((deltaSeconds: number) => {
+    if (!videoRef.current) return;
+    const maxDur = videoRef.current.duration || Infinity;
+    const nextTime = calculatePlaybackJump(videoRef.current.currentTime, deltaSeconds, maxDur);
+    videoRef.current.currentTime = nextTime;
+    setCurrentPlaybackSeconds(nextTime);
+    showToastFeedback(deltaSeconds > 0 ? `+${deltaSeconds}s` : `${deltaSeconds}s`);
+  }, [showToastFeedback]);
+
+  const handleTogglePlayPause = useCallback(() => {
+    if (!videoRef.current) return;
+    if (videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+      showToastFeedback('▶ Reproducir');
+    } else {
+      videoRef.current.pause();
+      showToastFeedback('⏸ Pausa');
+    }
+  }, [showToastFeedback]);
+
+  const handleToggleMute = useCallback(() => {
+    if (!videoRef.current) return;
+    videoRef.current.muted = !videoRef.current.muted;
+    showToastFeedback(videoRef.current.muted ? '🔇 Silenciado' : '🔊 Sonido');
+  }, [showToastFeedback]);
+
+  const handleTogglePip = useCallback(async () => {
+    if (!videoRef.current) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        showToastFeedback('PiP cerrado');
+      } else if (document.pictureInPictureEnabled) {
+        await videoRef.current.requestPictureInPicture();
+        showToastFeedback('Ventana flotante (PiP)');
+      }
+    } catch {
+      // Ignorar rechazo o falta de soporte
+    }
+  }, [showToastFeedback]);
+
+  // Atajos globales de reproducción multimedia (Space, J/L, flechas, M, [ ])
+  useEffect(() => {
+    if (!playbackUrl) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Evitar captura si el usuario está escribiendo en notas, inputs o selects
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl as HTMLElement).isContentEditable);
+      if (isInput) return;
+
+      if (e.key === ' ' || e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        handleTogglePlayPause();
+      } else if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleJump(-10);
+      } else if (e.key === 'l' || e.key === 'L' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleJump(10);
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        handleToggleMute();
+      } else if (e.key === '[') {
+        e.preventDefault();
+        const nextSpeed = resolveNextPlaybackSpeed(playbackSpeed, 'decrease');
+        if (nextSpeed !== playbackSpeed) handleSpeedChange(nextSpeed);
+      } else if (e.key === ']') {
+        e.preventDefault();
+        const nextSpeed = resolveNextPlaybackSpeed(playbackSpeed, 'increase');
+        if (nextSpeed !== playbackSpeed) handleSpeedChange(nextSpeed);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [playbackUrl, playbackSpeed, handleTogglePlayPause, handleJump, handleToggleMute, handleSpeedChange]);
 
   const loadWorkspace = useCallback(async () => {
     setIsLoading(true);
@@ -382,26 +511,36 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
       </div>
 
       {/* Reproductor de medios locales */}
-      <div className={cn('overflow-hidden rounded-xl border border-line', playbackUrl ? 'bg-black' : 'bg-surface')}>
+      <div className={cn('relative overflow-hidden rounded-xl border border-line', playbackUrl ? 'bg-black' : 'bg-surface')}>
         {playbackUrl ? (
-          <video
-            ref={videoRef}
-            key={lesson.id}
-            src={playbackUrl}
-            controls
-            onLoadedMetadata={handleLoadedMetadata}
-            onTimeUpdate={handleTimeUpdate}
-            onPause={() => {
-              if (videoRef.current) {
-                try {
-                  localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
-                } catch {
-                  // Ignorar
+          <div className="relative group">
+            <video
+              ref={videoRef}
+              key={lesson.id}
+              src={playbackUrl}
+              controls
+              onLoadedMetadata={handleLoadedMetadata}
+              onTimeUpdate={handleTimeUpdate}
+              onPause={() => {
+                if (videoRef.current) {
+                  try {
+                    localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
+                  } catch {
+                    // Ignorar
+                  }
                 }
-              }
-            }}
-            className="max-h-[420px] w-full bg-black object-contain"
-          />
+              }}
+              className="max-h-[420px] w-full bg-black object-contain"
+            />
+            {/* Overlay Toast de feedback breve al usar atajos o cambiar controles */}
+            {playerOverlayToast && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <span className="animate-fade-in rounded-lg bg-black/85 px-4 py-2 font-mono text-title font-bold text-white shadow-lg backdrop-blur-sm">
+                  {playerOverlayToast}
+                </span>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <Video size={34} className="mb-2 text-faint" aria-hidden="true" />
@@ -415,16 +554,75 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2 text-meta text-muted">
+          <div className="flex flex-wrap items-center gap-2.5 text-meta text-muted">
             <span className="flex items-center gap-1.5">
               <Video size={13} className="text-accent" aria-hidden="true" />
               {isLocalMedia ? 'Medio local efímero' : playbackUrl ? 'Medio remoto' : 'Sin medio'}
             </span>
             {playbackUrl && (
-              <span className="inline-flex items-center gap-1 font-mono text-micro text-ink">
-                <Clock size={11} className="text-accent" aria-hidden="true" />
-                {formatPlaybackTime(currentPlaybackSeconds)}
-              </span>
+              <>
+                <span className="inline-flex items-center gap-1 font-mono text-micro text-ink">
+                  <Clock size={11} className="text-accent" aria-hidden="true" />
+                  {formatPlaybackTime(currentPlaybackSeconds)}
+                </span>
+
+                <span className="text-line-strong" aria-hidden="true">|</span>
+
+                {/* Saltos temporales */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleJump(-10)}
+                    title="Retroceder 10s (Atajo: J o Flecha Izquierda)"
+                    className="inline-flex items-center gap-0.5 rounded px-1.5 py-1 text-meta text-muted transition hover:bg-accent-soft/60 hover:text-ink"
+                  >
+                    <RotateCcw size={12} aria-hidden="true" />
+                    <span>-10s</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleJump(10)}
+                    title="Avanzar 10s (Atajo: L o Flecha Derecha)"
+                    className="inline-flex items-center gap-0.5 rounded px-1.5 py-1 text-meta text-muted transition hover:bg-accent-soft/60 hover:text-ink"
+                  >
+                    <RotateCw size={12} aria-hidden="true" />
+                    <span>+10s</span>
+                  </button>
+                </div>
+
+                {/* Selector de velocidad */}
+                <div className="flex items-center gap-0.5 rounded-lg border border-line bg-canvas px-1 py-0.5" title="Velocidad de reproducción ([ y ] para ajustar)">
+                  <Gauge size={12} className="mx-1 text-muted" aria-hidden="true" />
+                  {SUPPORTED_PLAYBACK_SPEEDS.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleSpeedChange(s)}
+                      className={cn(
+                        'rounded px-1.5 py-0.5 text-micro font-medium transition',
+                        playbackSpeed === s
+                          ? 'bg-accent text-white shadow-xs'
+                          : 'text-muted hover:text-ink'
+                      )}
+                    >
+                      {s}x
+                    </button>
+                  ))}
+                </div>
+
+                {/* Botón Picture-in-Picture */}
+                {typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && (
+                  <button
+                    type="button"
+                    onClick={() => void handleTogglePip()}
+                    title="Ventana flotante Picture-in-Picture"
+                    className="rounded p-1.5 text-muted transition hover:bg-accent-soft/60 hover:text-ink"
+                    aria-label="Ventana flotante Picture-in-Picture"
+                  >
+                    <PictureInPicture size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </>
             )}
             {resumedTime !== null && resumedTime > 0 && (
               <Badge tone="info" className="font-mono text-micro">

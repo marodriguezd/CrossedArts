@@ -11,7 +11,10 @@ import {
   parseTimestampToSeconds,
   extractTimestampParts,
   parseInlineMarkdownTokens,
-  filterCourseLessons
+  filterCourseLessons,
+  calculatePlaybackJump,
+  resolveNextPlaybackSpeed,
+  SUPPORTED_PLAYBACK_SPEEDS
 } from '../src/services/domainLogic.ts';
 
 async function cleanupCourse(courseId: string): Promise<void> {
@@ -539,6 +542,55 @@ test('15.11 filterCourseLessons: Filters modules and lessons by title or content
   const none = filterCourseLessons(sampleModules, 'inexistente 999');
   assert.equal(none.filteredModules.length, 0);
   assert.equal(none.totalMatchingLessons, 0);
+});
+
+test('15.12 calculatePlaybackJump: Clamps jumps within valid bounds [0, duration]', () => {
+  const duration = 120; // 2 minutos
+
+  // 1. Salto hacia adelante estándar (+10s)
+  assert.equal(calculatePlaybackJump(45, 10, duration), 55);
+
+  // 2. Salto hacia atrás estándar (-10s)
+  assert.equal(calculatePlaybackJump(45, -10, duration), 35);
+
+  // 3. Salto hacia atrás cerca del inicio -> clamped a 0
+  assert.equal(calculatePlaybackJump(5, -10, duration), 0);
+  assert.equal(calculatePlaybackJump(0, -10, duration), 0);
+
+  // 4. Salto hacia adelante cerca del final -> clamped a duration
+  assert.equal(calculatePlaybackJump(115, 10, duration), 120);
+  assert.equal(calculatePlaybackJump(120, 10, duration), 120);
+
+  // 5. Entradas inválidas o infinitas
+  assert.equal(calculatePlaybackJump(NaN, 10, duration), 10);
+  assert.equal(calculatePlaybackJump(-20, 10, duration), 10);
+  assert.equal(calculatePlaybackJump(50, 10, Infinity), 60);
+});
+
+test('15.13 resolveNextPlaybackSpeed: Steps through supported speeds without overflowing bounds', () => {
+  assert.deepEqual(SUPPORTED_PLAYBACK_SPEEDS, [0.75, 1, 1.25, 1.5, 1.75, 2]);
+
+  // 1. Incrementar velocidades
+  assert.equal(resolveNextPlaybackSpeed(0.75, 'increase'), 1);
+  assert.equal(resolveNextPlaybackSpeed(1, 'increase'), 1.25);
+  assert.equal(resolveNextPlaybackSpeed(1.25, 'increase'), 1.5);
+  assert.equal(resolveNextPlaybackSpeed(1.5, 'increase'), 1.75);
+  assert.equal(resolveNextPlaybackSpeed(1.75, 'increase'), 2);
+  // Al límite máximo no sube más
+  assert.equal(resolveNextPlaybackSpeed(2, 'increase'), 2);
+
+  // 2. Decrementar velocidades
+  assert.equal(resolveNextPlaybackSpeed(2, 'decrease'), 1.75);
+  assert.equal(resolveNextPlaybackSpeed(1.75, 'decrease'), 1.5);
+  assert.equal(resolveNextPlaybackSpeed(1.5, 'decrease'), 1.25);
+  assert.equal(resolveNextPlaybackSpeed(1.25, 'decrease'), 1);
+  assert.equal(resolveNextPlaybackSpeed(1, 'decrease'), 0.75);
+  // Al límite mínimo no baja más
+  assert.equal(resolveNextPlaybackSpeed(0.75, 'decrease'), 0.75);
+
+  // 3. Valores atípicos / intermedios
+  assert.equal(resolveNextPlaybackSpeed(1.1, 'increase'), 1.25);
+  assert.equal(resolveNextPlaybackSpeed(1.1, 'decrease'), 1);
 });
 
 
