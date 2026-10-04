@@ -42,18 +42,28 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   const [consentDismissed, setConsentDismissed] = useState(false);
   const currentSettings = aiService.getSettings();
   const inputRef = useRef<HTMLInputElement>(null);
+  const consentPrimaryRef = useRef<HTMLButtonElement>(null);
 
-  // Accesibilidad del cajón: es un diálogo modal, así que Escape lo cierra y el
-  // foco entra en el campo de escritura al abrirse.
+  // Accesibilidad del cajón: Escape cierra el cajón, pero primero permite
+  // descartar el consentimiento cuando el modal de activación está abierto.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        const consentIsOpen =
+          localAiRuntime.getStatus().stage === 'consent-required' && !consentDismissed;
+        if (consentIsOpen) {
+          e.preventDefault();
+          setConsentDismissed(true);
+          return;
+        }
+        onClose();
+      }
     };
     window.addEventListener('keydown', onKey);
     inputRef.current?.focus();
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, consentDismissed]);
 
   // La preparación de IA local es automática: se refleja en la UI sin que el
   // usuario gestione modelos, WebGPU ni índices.
@@ -79,8 +89,14 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   const needsConsent = isLocalProvider && runtimeStatus.stage === 'consent-required';
   const localUnavailable = isLocalProvider && runtimeStatus.stage === 'unsupported';
   // La acción del usuario comparte la preparación en vuelo y continúa al terminar.
-  // Solo una decisión de primera descarga puede bloquear el envío.
-  const sendBlocked = needsConsent && !consentDismissed;
+  // Solo la decisión de primera descarga bloquea el envío.
+  const sendBlocked = needsConsent;
+
+  useEffect(() => {
+    if (needsConsent && !consentDismissed) {
+      consentPrimaryRef.current?.focus();
+    }
+  }, [needsConsent, consentDismissed]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -268,11 +284,70 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
         </div>
       )}
 
-      {/* Consentimiento único de primera descarga (solo si es imprescindible) */}
+      {/* Consentimiento único de primera descarga: diálogo directo y accionable. */}
       {needsConsent && !consentDismissed && (
-        <div className="border-t border-line bg-accent-soft/40 px-4 py-3" role="status" aria-live="polite">
-          <p className="text-secondary text-ink">{runtimeStatus.message}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/20 px-4 backdrop-blur-[2px]"
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="local-ai-consent-title"
+            aria-describedby="local-ai-consent-description"
+            className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-pop"
+          >
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 rounded-xl border border-accent/25 bg-accent-soft p-2.5 text-accent">
+                <Cpu size={19} aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h4 id="local-ai-consent-title" className="type-section text-ink">
+                  Activar IA local
+                </h4>
+                <p id="local-ai-consent-description" className="mt-1.5 text-secondary leading-relaxed text-muted">
+                  {runtimeStatus.downloadSize
+                    ? 'La primera vez necesitamos descargar aproximadamente ' + runtimeStatus.downloadSize + '.'
+                    : 'La primera vez necesitamos descargar los recursos de la IA.'}
+                  {' '}Después podrás usarla sin conexión.
+                </p>
+                <p className="mt-2 text-micro leading-relaxed text-muted">
+                  Las respuestas se generan en tu dispositivo. No se envían tus preguntas a servidores externos mediante este modo.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="quiet"
+                onClick={() => setConsentDismissed(true)}
+              >
+                Ahora no
+              </Button>
+              <Button
+                size="sm"
+                variant="solid"
+                ref={consentPrimaryRef}
+                onClick={() => {
+                  localAiRuntime.grantConsent();
+                  void localAiRuntime.prepareForTutor('local');
+                }}
+              >
+                Activar IA local
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tras posponer, queda una vía compacta para activar la IA sin repetir el modal. */}
+      {needsConsent && consentDismissed && (
+        <div className="border-t border-line bg-accent-soft/40 px-4 py-2.5" role="status" aria-live="polite">
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-meta text-muted">
+              La IA local necesita permiso para descargar sus recursos.
+            </span>
             <Button
               size="sm"
               variant="solid"
@@ -281,10 +356,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
                 void localAiRuntime.prepareForTutor('local');
               }}
             >
-              Activar IA local
-            </Button>
-            <Button size="sm" variant="quiet" onClick={() => setConsentDismissed(true)}>
-              Ahora no
+              Activar
             </Button>
           </div>
         </div>
