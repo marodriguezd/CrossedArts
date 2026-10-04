@@ -23,6 +23,7 @@ export type ProgressCallback = (progress: ModelLoadingProgress) => void;
 class LocalLlmEngine {
   private engineInstance: any = null;
   private currentModelId: string | null = null;
+  private currentBackend: 'webgpu' | 'wasm' = 'webgpu';
   private status: EngineStatus = 'idle';
   private lastError: string | null = null;
   private currentProgress: ModelLoadingProgress = { progress: 0, text: '' };
@@ -34,6 +35,10 @@ class LocalLlmEngine {
 
   public getStatus(): EngineStatus {
     return this.status;
+  }
+
+  public getBackend(): 'webgpu' | 'wasm' {
+    return this.currentBackend;
   }
 
   public getLoadedModelId(): string | null {
@@ -94,17 +99,18 @@ class LocalLlmEngine {
       const gpuCap = await detectWebGPUCapability();
       if (sessionId !== this.loadSessionId) return; // Sesión obsoleta
 
-      if (gpuCap.state !== 'supported') {
-        this.status = 'unsupported';
-        this.lastError = gpuCap.reason || 'WebGPU no está disponible en este dispositivo.';
-        this.notify();
-        throw new Error(this.lastError);
-      }
-
       const modelDef = getLocalModelById(modelId);
       if (!modelDef) {
         this.status = 'error';
         this.lastError = `Modelo local desconocido: ${modelId}`;
+        this.notify();
+        throw new Error(this.lastError);
+      }
+
+      // Validación de hardware según el backend requerido por el modelo
+      if (modelDef.runtimeBackend === 'webgpu' && gpuCap.state !== 'supported') {
+        this.status = 'unsupported';
+        this.lastError = gpuCap.reason || 'WebGPU no está disponible en este dispositivo.';
         this.notify();
         throw new Error(this.lastError);
       }
@@ -115,9 +121,69 @@ class LocalLlmEngine {
         if (sessionId !== this.loadSessionId) return;
       }
 
+      // -------------------------------------------------------------
+      // BACKEND CPU / WASM VÍA TRANSFORMERS.JS
+      // -------------------------------------------------------------
+      if (modelDef.runtimeBackend === 'wasm') {
+        this.status = 'loading';
+        this.lastError = null;
+        this.currentModelId = modelId;
+        this.currentBackend = 'wasm';
+        this.currentProgress = { progress: 0, text: 'Iniciando runtime ONNX/WASM en CPU...' };
+        this.notify();
+
+        try {
+          const { pipeline, env } = await import('@huggingface/transformers');
+          if (sessionId !== this.loadSessionId) return;
+
+          env.allowLocalModels = false;
+          env.useBrowserCache = true;
+
+          const instance = await pipeline('text-generation', modelId, {
+            device: 'wasm',
+            dtype: 'q4',
+            progress_callback: (item: any) => {
+              if (sessionId !== this.loadSessionId) return;
+              if (item.status === 'progress' && item.progress !== undefined) {
+                const pct = Math.round(item.progress);
+                this.currentProgress = {
+                  progress: pct,
+                  text: `Descargando modelo CPU (${item.file || ''}): ${pct}%`
+                };
+                this.notify();
+                if (onProgress) {
+                  try { onProgress(this.currentProgress); } catch {}
+                }
+              }
+            }
+          });
+
+          if (sessionId !== this.loadSessionId) return;
+
+          this.engineInstance = instance;
+          this.currentBackend = 'wasm';
+          this.status = 'ready';
+          this.currentProgress = { progress: 100, text: 'Modelo CPU (WASM) listo para inferencia.' };
+          this.notify();
+          return;
+        } catch (err: any) {
+          if (sessionId !== this.loadSessionId) return;
+          this.status = 'error';
+          this.lastError = err?.message || 'Error cargando modelo CPU/WASM.';
+          this.currentModelId = null;
+          this.engineInstance = null;
+          this.notify();
+          throw err;
+        }
+      }
+
+      // -------------------------------------------------------------
+      // BACKEND WEBGPU VÍA MLC WEB-LLM
+      // -------------------------------------------------------------
       this.status = 'loading';
       this.lastError = null;
       this.currentModelId = modelId;
+      this.currentBackend = 'webgpu';
       this.currentProgress = { progress: 0, text: 'Iniciando runtime WebLLM...' };
       this.notify();
 
@@ -195,7 +261,7 @@ class LocalLlmEngine {
     }
   ): Promise<string> {
     if (this.status !== 'ready' || !this.engineInstance) {
-      throw new Error('El motor local WebLLM no está listo. Carga el modelo antes de generar.');
+      throw new Error('El motor local no está listo. Carga el modelo antes de generar.');
     }
 
     this.status = 'generating';
@@ -206,6 +272,38 @@ class LocalLlmEngine {
     const max_tokens = Math.min(options?.max_tokens ?? 800, 1024);
 
     try {
+      // -----------------------------------------------------------
+      // GENERACIÓN EN CPU / WASM VÍA TRANSFORMERS.JS
+      // -----------------------------------------------------------
+      if (this.currentBackend === 'wasm') {
+        const prompt = messages
+          .map(m => `<|im_start|>${m.role}\n${m.content}<|im_end|>`)
+          .join('\n') + '\n<|im_start|>assistant\n';
+
+        const out = await this.engineInstance(prompt, {
+          max_new_tokens: max_tokens,
+          temperature,
+          do_sample: temperature > 0,
+          return_full_text: false
+        });
+
+        const generated = out?.[0]?.generated_text || '';
+        const cleanReply = (typeof generated === 'string'
+          ? generated.replace(/<\|im_end\|>.*$/s, '')
+          : String(generated)
+        ).trim();
+
+        if (options?.onChunk) {
+          options.onChunk(cleanReply);
+        }
+        this.status = 'ready';
+        this.notify();
+        return cleanReply;
+      }
+
+      // -----------------------------------------------------------
+      // GENERACIÓN EN GPU VÍA WEB-LLM
+      // -----------------------------------------------------------
       if (options?.stream && options.onChunk) {
         const stream = await this.engineInstance.chat.completions.create({
           messages,
@@ -271,9 +369,11 @@ class LocalLlmEngine {
       try {
         if (typeof this.engineInstance.unload === 'function') {
           await this.engineInstance.unload();
+        } else if (typeof this.engineInstance.dispose === 'function') {
+          await this.engineInstance.dispose();
         }
       } catch (err) {
-        console.warn('Advertencia al descargar modelo WebLLM:', err);
+        console.warn('Advertencia al descargar modelo local:', err);
       }
       this.engineInstance = null;
     }

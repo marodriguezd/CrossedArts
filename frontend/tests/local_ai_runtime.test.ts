@@ -122,8 +122,8 @@ test('26.3 Selection is deterministic and conservative', () => {
   const second = selectBestLocalModel(caps);
   assert.strictEqual(first?.id, second?.id, 'Mismo input -> misma selección');
 
-  // Conservador: el modelo viable de menor huella estimada.
-  const eligible = LOCAL_MODELS_REGISTRY.filter((m) => !m.requiredFeatures?.length);
+  // Conservador: el modelo viable de menor huella estimada para WebGPU.
+  const eligible = LOCAL_MODELS_REGISTRY.filter((m) => m.runtimeBackend === 'webgpu' && !m.requiredFeatures?.length);
   const smallest = [...eligible].sort((a, b) => a.vramRequiredMB - b.vramRequiredMB || a.id.localeCompare(b.id))[0];
   assert.strictEqual(first?.id, smallest.id);
 });
@@ -355,4 +355,28 @@ test('26.22 Cached model registry accepts old single-id values and upgrades to a
   const raw = storage.getItem(LOCAL_AI_CACHED_MODEL_KEY);
   assert.ok(raw);
   assert.ok(JSON.parse(raw!).includes(selected.id));
+});
+
+test('26.23 WASM Fallback: Device without WebGPU but with WASM selects lightweight CPU model', () => {
+  const profile = selectRuntimeProfile({
+    webgpu: 'unsupported',
+    hasWasm: true,
+  });
+  assert.ok(profile);
+  assert.strictEqual(profile!.reason, 'cpu-wasm-fallback');
+  assert.strictEqual(profile!.model.runtimeBackend, 'wasm');
+  assert.strictEqual(profile!.model.id, 'onnx-community/Qwen2.5-0.5B-Instruct');
+});
+
+test('26.24 WASM Fallback: Runtime loads WASM model successfully when WebGPU is absent', async () => {
+  const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted' });
+  const { runtime, llmEngine } = makeRuntime({}, {
+    storage,
+    capability: { state: 'unsupported', hasWasmFallback: true, reason: 'sin webgpu' }
+  });
+  const status = await runtime.ensureLocalAiReady({ provider: 'local' });
+  assert.strictEqual(status.stage, 'ready');
+  assert.strictEqual(status.modelId, 'onnx-community/Qwen2.5-0.5B-Instruct');
+  assert.strictEqual(llmEngine.calls.length, 1);
+  assert.strictEqual(llmEngine.calls[0], 'onnx-community/Qwen2.5-0.5B-Instruct');
 });

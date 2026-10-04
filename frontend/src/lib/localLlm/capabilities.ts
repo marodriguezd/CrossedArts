@@ -1,7 +1,10 @@
 export type WebGPUCapabilityState = 'supported' | 'unsupported' | 'checking';
+export type LocalRuntimeBackend = 'webgpu' | 'wasm' | 'none';
 
 export interface WebGPUCapabilityReport {
   state: WebGPUCapabilityState;
+  runtimeBackend: LocalRuntimeBackend;
+  hasWasmFallback: boolean;
   adapterInfo?: string;
   reason?: string;
   /**
@@ -21,9 +24,13 @@ export interface WebGPUCapabilityReport {
  * En entornos sin GPU (o Node.js), reporta 'unsupported' limpiamente.
  */
 export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> {
+  const hasWasm = typeof WebAssembly !== 'undefined';
+
   if (typeof navigator === 'undefined' || !('gpu' in navigator)) {
     return {
       state: 'unsupported',
+      runtimeBackend: hasWasm ? 'wasm' : 'none',
+      hasWasmFallback: hasWasm,
       reason: 'Tu navegador o entorno actual no dispone de soporte para la API WebGPU.'
     };
   }
@@ -33,6 +40,8 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
     if (!gpu || typeof gpu.requestAdapter !== 'function') {
       return {
         state: 'unsupported',
+        runtimeBackend: hasWasm ? 'wasm' : 'none',
+        hasWasmFallback: hasWasm,
         reason: 'La interfaz WebGPU no está completamente disponible en este dispositivo.'
       };
     }
@@ -41,6 +50,8 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
     if (!adapter) {
       return {
         state: 'unsupported',
+        runtimeBackend: hasWasm ? 'wasm' : 'none',
+        hasWasmFallback: hasWasm,
         reason: 'No se encontró un adaptador gráfico compatible con WebGPU en el sistema.'
       };
     }
@@ -89,6 +100,8 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
 
     return {
       state: 'supported',
+      runtimeBackend: 'webgpu',
+      hasWasmFallback: hasWasm,
       adapterInfo,
       supportedFeatures,
       deviceTier
@@ -96,6 +109,8 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
   } catch (err: any) {
     return {
       state: 'unsupported',
+      runtimeBackend: hasWasm ? 'wasm' : 'none',
+      hasWasmFallback: hasWasm,
       reason: `Error al verificar WebGPU: ${err?.message || 'Error desconocido'}`
     };
   }

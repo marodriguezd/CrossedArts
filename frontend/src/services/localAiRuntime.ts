@@ -319,7 +319,14 @@ export class LocalAiRuntime {
     this.setLlmStatus({ stage: 'preparing', progress: 0, message: 'Preparando tu IA…', errorCategory: undefined, errorAction: undefined });
 
     const cap = await this.deps.detectCapabilities();
-    if (cap.state !== 'supported') {
+    const profile = selectRuntimeProfile({
+      webgpu: cap.state === 'supported' ? 'supported' : 'unsupported',
+      hasWasm: cap.hasWasmFallback === true,
+      supportedFeatures: cap.supportedFeatures ?? null,
+      deviceTier: cap.deviceTier ?? 'unknown'
+    });
+
+    if (!profile) {
       return this.setLlmStatus({
         stage: 'unsupported',
         progress: 0,
@@ -329,23 +336,20 @@ export class LocalAiRuntime {
       });
     }
 
-    const profile = selectRuntimeProfile({
-      webgpu: 'supported',
-      supportedFeatures: cap.supportedFeatures ?? null,
-      deviceTier: cap.deviceTier ?? 'unknown'
-    });
-
-    // El override explícito (solo avanzado) se respeta si es compatible con las
-    // features conocidas; si no, se cae a la selección automática segura.
+    // El override explícito (solo avanzado) se respeta si es compatible con el hardware
     const overrideCandidate = options?.overrideModelId
       ? this.deps.getModelDefinition(options.overrideModelId)
       : undefined;
     const overrideCompatible = overrideCandidate && (
-      !overrideCandidate.requiredFeatures?.length ||
-      (Array.isArray(cap.supportedFeatures) &&
-        overrideCandidate.requiredFeatures.every((feature) => cap.supportedFeatures!.includes(feature)))
+      overrideCandidate.runtimeBackend === 'wasm' || (
+        cap.state === 'supported' && (
+          !overrideCandidate.requiredFeatures?.length ||
+          (Array.isArray(cap.supportedFeatures) &&
+            overrideCandidate.requiredFeatures.every((feature) => cap.supportedFeatures!.includes(feature)))
+        )
+      )
     );
-    const model = (overrideCompatible ? overrideCandidate : undefined) ?? profile?.model;
+    const model = (overrideCompatible ? overrideCandidate : undefined) ?? profile.model;
 
     if (!model) {
       return this.setLlmStatus({

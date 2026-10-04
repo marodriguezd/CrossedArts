@@ -17,6 +17,7 @@ export type WebGpuSupport = 'supported' | 'unsupported' | 'unknown';
 
 export interface LocalAiCapabilities {
   webgpu: WebGpuSupport;
+  hasWasm?: boolean;
   /**
    * Features reportadas por el adaptador. `null`/`undefined` significa
    * DESCONOCIDO: no se asume soporte de ningún requisito.
@@ -32,47 +33,60 @@ export interface LocalAiCapabilities {
 export interface LocalRuntimeProfile {
   model: LocalModelDefinition;
   /** Motivo interno (solo diagnóstico avanzado). */
-  reason: 'recommended-capable' | 'conservative-fallback';
+  reason: 'recommended-capable' | 'conservative-fallback' | 'cpu-wasm-fallback';
 }
 
 /**
- * Devuelve el modelo más adecuado para las capacidades dadas, o `null` si la
- * inferencia local no es viable en absoluto. Determinista: mismo input ->
- * mismo modelo.
+ * Devuelve el modelo más adecuado para las capacidades dadas.
+ * Si WebGPU está disponible, selecciona el modelo WebGPU óptimo.
+ * Si WebGPU no está disponible pero WebAssembly está activo, selecciona el modelo CPU/WASM ligero.
  */
 export function selectBestLocalModel(
   capabilities: LocalAiCapabilities
 ): LocalModelDefinition | null {
-  if (capabilities.webgpu !== 'supported') return null;
+  const isWebGpuSupported = capabilities.webgpu === 'supported';
+  const hasWasm = capabilities.hasWasm === true;
 
-  const knownFeatures = capabilities.supportedFeatures;
+  if (isWebGpuSupported) {
+    const knownFeatures = capabilities.supportedFeatures;
 
-  // Un requisito solo se considera satisfecho si la feature está EXPLÍCITAMENTE
-  // soportada. Con features desconocidas se excluyen los modelos que las exigen.
-  const eligible = LOCAL_MODELS_REGISTRY.filter((model) => {
-    if (!model.requiredFeatures || model.requiredFeatures.length === 0) return true;
-    if (!knownFeatures) return false;
-    return model.requiredFeatures.every((feature) => knownFeatures.includes(feature));
-  });
+    // Modelos WebGPU que satisfacen las features reportadas
+    const eligible = LOCAL_MODELS_REGISTRY.filter((model) => {
+      if (model.runtimeBackend !== 'webgpu') return false;
+      if (!model.requiredFeatures || model.requiredFeatures.length === 0) return true;
+      if (!knownFeatures) return false;
+      return model.requiredFeatures.every((feature) => knownFeatures.includes(feature));
+    });
 
-  if (eligible.length === 0) return null;
+    if (eligible.length > 0) {
+      const clearlySuitable =
+        capabilities.deviceTier === 'high' &&
+        Array.isArray(knownFeatures) &&
+        knownFeatures.length > 0;
 
-  // "Claramente adecuado" exige features conocidas y una pista de gama alta.
-  // Nunca se infiere VRAM exacta.
-  const clearlySuitable =
-    capabilities.deviceTier === 'high' &&
-    Array.isArray(knownFeatures) &&
-    knownFeatures.length > 0;
+      if (clearlySuitable) {
+        const recommended = eligible.find((model) => model.recommended);
+        if (recommended) return recommended;
+      }
 
-  if (clearlySuitable) {
-    const recommended = eligible.find((model) => model.recommended);
-    if (recommended) return recommended;
+      // Conservador: el modelo viable con menor huella estimada (desempate por id)
+      return [...eligible].sort(
+        (a, b) => a.vramRequiredMB - b.vramRequiredMB || a.id.localeCompare(b.id)
+      )[0];
+    }
   }
 
-  // Conservador: el modelo viable con menor huella estimada (desempate por id).
-  return [...eligible].sort(
-    (a, b) => a.vramRequiredMB - b.vramRequiredMB || a.id.localeCompare(b.id)
-  )[0];
+  // Fallback a CPU / WebAssembly si no hay WebGPU pero sí soporte WASM
+  if (hasWasm) {
+    const wasmModels = LOCAL_MODELS_REGISTRY.filter(m => m.runtimeBackend === 'wasm');
+    if (wasmModels.length > 0) {
+      // Priorizar Qwen2.5-0.5B por su soporte en español y razonamiento
+      const defaultWasm = wasmModels.find(m => m.id === 'onnx-community/Qwen2.5-0.5B-Instruct');
+      return defaultWasm || wasmModels[0];
+    }
+  }
+
+  return null;
 }
 
 /** Igual que `selectBestLocalModel` pero expone el motivo para diagnóstico. */
@@ -81,6 +95,14 @@ export function selectRuntimeProfile(
 ): LocalRuntimeProfile | null {
   const model = selectBestLocalModel(capabilities);
   if (!model) return null;
+
+  if (model.runtimeBackend === 'wasm') {
+    return {
+      model,
+      reason: 'cpu-wasm-fallback'
+    };
+  }
+
   const knownFeatures = capabilities.supportedFeatures;
   const clearlySuitable =
     capabilities.deviceTier === 'high' && Array.isArray(knownFeatures) && knownFeatures.length > 0;

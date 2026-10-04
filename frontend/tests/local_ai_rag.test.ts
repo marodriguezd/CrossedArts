@@ -274,11 +274,17 @@ test('8.11 Privacy Guarantee: Local AI makes 0 remote network fetch calls', asyn
   }
 });
 
-test('8.12 Model Registry Metadata Honesty: All 4 models have verified specs and no false claims', () => {
+test('8.12 Model Registry Metadata Honesty: All models have verified specs and no false claims', () => {
   for (const model of LOCAL_MODELS_REGISTRY) {
-    assert.strictEqual(model.provider, 'webllm');
-    assert.ok(model.vramRequiredMB > 500, 'VRAM requirement must be realistic');
-    assert.strictEqual(model.contextWindowSize, 4096);
+    if (model.runtimeBackend === 'webgpu') {
+      assert.strictEqual(model.provider, 'webllm');
+      assert.ok(model.vramRequiredMB > 500, 'VRAM requirement must be realistic');
+      assert.strictEqual(model.contextWindowSize, 4096);
+    } else {
+      assert.strictEqual(model.provider, 'transformers_wasm');
+      assert.strictEqual(model.vramRequiredMB, 0);
+      assert.strictEqual(model.contextWindowSize, 2048);
+    }
     assert.ok(model.downloadSizeApprox.includes('MB') || model.downloadSizeApprox.includes('GB'));
   }
   

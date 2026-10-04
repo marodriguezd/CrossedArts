@@ -157,3 +157,20 @@ test('4.9 Local Media Portability Isolation: SQLite backup does not contain blob
   }
 });
 
+test('4.10 JSON backup roundtrip handles stringified JSON and rejects malformed payloads safely', async () => {
+  const dump = generateJsonBackup();
+  const jsonText = JSON.stringify(dump);
+  const parsed = JSON.parse(jsonText);
+
+  // Debe restaurar limpiamente sin errores
+  await importJsonBackup(parsed);
+
+  // Un payload malformado o no objeto debe ser rechazado sin tocar la BD
+  await assert.rejects(
+    async () => {
+      await importJsonBackup("invalid-string" as any);
+    },
+    /no tiene un formato válido/
+  );
+});
+

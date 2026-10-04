@@ -256,3 +256,16 @@ def test_api_cover_path_removal(client: TestClient, db: Session):
     # Assert cover_path in database is None
     db.refresh(course)
     assert course.cover_path is None
+
+
+def test_api_cors_headers(client: TestClient):
+    """Verifica que el middleware CORS expone las cabeceras requeridas para acceso desde frontend."""
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET"
+        }
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") in ("*", "http://localhost:5173")

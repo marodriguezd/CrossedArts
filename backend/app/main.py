@@ -42,11 +42,22 @@ async def lifespan(app: FastAPI):
     await app.state.http_client.aclose()
     app.state.http_client_sync.close()
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="CrossedArts API",
     description="Learning Operating System autohospedable y local-first",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# Configuración de CORS para permitir consumo seguro desde el frontend web y clientes locales
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Registrar el router global de la API con versión /api/v1

@@ -45,3 +45,21 @@ def test_alembic_ini_exists():
 
     assert "script_location" in content
     assert "sqlalchemy.url" in content
+
+
+def test_alembic_upgrade_head_clean_database(tmp_path):
+    """Verify alembic upgrade head runs cleanly from scratch without duplicate index errors."""
+    import subprocess
+    import sys
+    test_db = tmp_path / "test_fresh_migration.db"
+    env = os.environ.copy()
+    env["DATABASE_URL"] = f"sqlite:///{test_db}"
+    res = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", "backend/alembic.ini", "upgrade", "head"],
+        env=env,
+        capture_output=True,
+        text=True,
+        cwd=os.getcwd()
+    )
+    assert res.returncode == 0, f"Alembic upgrade head failed: {res.stderr}"
+    assert test_db.exists()

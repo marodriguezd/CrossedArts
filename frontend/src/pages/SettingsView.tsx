@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, RotateCcw, Bot, ShieldCheck, Database, HardDrive, Check, Cpu, AlertTriangle, RefreshCw, Trash2, Info, Palette } from 'lucide-react';
-import { exportSqliteFile, importSqliteFile, exportJsonBackup } from '../db/exportImport.ts';
+import { exportSqliteFile, importSqliteFile, exportJsonBackup, importJsonBackup } from '../db/exportImport.ts';
 import { dbBridge } from '../db/sqliteBridge.ts';
 import { aiService, AISettings } from '../ai/aiService.ts';
 import { detectWebGPUCapability, WebGPUCapabilityReport } from '../lib/localLlm/capabilities.ts';
@@ -25,7 +25,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // WebGPU & Local LLM state
-  const [gpuReport, setGpuReport] = useState<WebGPUCapabilityReport>({ state: 'checking' });
+  const [gpuReport, setGpuReport] = useState<WebGPUCapabilityReport>({
+    state: 'checking',
+    runtimeBackend: 'none',
+    hasWasmFallback: typeof WebAssembly !== 'undefined',
+  });
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(localLlmEngine.getStatus());
   const [engineProgress, setEngineProgress] = useState<ModelLoadingProgress>(localLlmEngine.getProgress());
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -189,11 +193,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     setPendingImport(null);
     if (!file) return;
     try {
-      await importSqliteFile(file);
-      setDbFeedback({ type: 'success', text: `Base de datos restaurada desde "${file.name}".` });
+      const isJson = file.name.toLowerCase().endsWith('.json') || file.type === 'application/json';
+      if (isJson) {
+        const text = await file.text();
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          throw new Error('El archivo no contiene un JSON sintácticamente válido.');
+        }
+        await importJsonBackup(parsed as Record<string, any[]>);
+        setDbFeedback({ type: 'success', text: `Respaldo JSON restaurado correctamente desde "${file.name}".` });
+      } else {
+        await importSqliteFile(file);
+        setDbFeedback({ type: 'success', text: `Base de datos restaurada desde "${file.name}".` });
+      }
       onDataReset();
     } catch (err: any) {
-      setDbFeedback({ type: 'error', text: 'Error importando base de datos: ' + (err?.message || 'desconocido') });
+      setDbFeedback({ type: 'error', text: 'Error importando respaldo: ' + (err?.message || 'desconocido') });
     }
   };
 
@@ -284,7 +301,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </Button>
             <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-secondary font-medium text-ink transition-colors hover:bg-accent-soft/60">
               <Upload size={15} aria-hidden="true" /> Importar respaldo
-              <input type="file" accept=".sqlite,.db" onChange={handleFileUpload} className="hidden" />
+              <input type="file" accept=".sqlite,.db,.json" onChange={handleFileUpload} className="hidden" />
             </label>
           </div>
 
@@ -448,24 +465,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
               </p>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-meta font-semibold text-ink">
-                  <Cpu size={14} aria-hidden="true" /> Estado de hardware y WebGPU:
+                  <Cpu size={14} aria-hidden="true" /> Motor de aceleración:
                 </span>
                 {gpuReport.state === 'supported' ? (
-                  <Badge tone="success">Soportado ({gpuReport.adapterInfo || 'WebGPU activo'})</Badge>
+                  <Badge tone="success">WebGPU Activo ({gpuReport.adapterInfo || 'GPU'})</Badge>
+                ) : gpuReport.hasWasmFallback ? (
+                  <Badge tone="neutral">Modo CPU / WASM activo (Sin WebGPU)</Badge>
                 ) : gpuReport.state === 'checking' ? (
                   <Badge tone="neutral">Comprobando soporte…</Badge>
                 ) : (
-                  <Badge tone="error"><AlertTriangle size={10} aria-hidden="true" /> WebGPU no disponible</Badge>
+                  <Badge tone="error"><AlertTriangle size={10} aria-hidden="true" /> Sin soporte local</Badge>
                 )}
               </div>
 
-              {gpuReport.state === 'unsupported' && (
+              {gpuReport.state === 'unsupported' && !gpuReport.hasWasmFallback && (
                 <InlineStatus tone="error">
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
                   <span>
-                    <strong>Inferencia local deshabilitada en este dispositivo.</strong>
+                    <strong>Inferencia local no disponible en este dispositivo.</strong>
                     <span className="mt-0.5 block">
-                      {gpuReport.reason || 'Usa Chrome, Edge o navegadores compatibles con WebGPU activado.'}
+                      {gpuReport.reason || 'El navegador no soporta ni WebGPU ni WebAssembly para ejecución local.'}
+                    </span>
+                  </span>
+                </InlineStatus>
+              )}
+
+              {gpuReport.state === 'unsupported' && gpuReport.hasWasmFallback && (
+                <InlineStatus tone="info">
+                  <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    <strong>WebGPU no detectada: se utilizará la CPU y memoria RAM (WASM).</strong>
+                    <span className="mt-0.5 block">
+                      Los modelos optimizados para CPU se ejecutarán de forma completamente local y privada sin requerir GPU dedicada.
                     </span>
                   </span>
                 </InlineStatus>
@@ -477,14 +508,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                   id="local-model"
                   value={aiConfig.localModelId}
                   onChange={e => setAiConfig({ ...aiConfig, localModelId: e.target.value })}
-                  disabled={gpuReport.state !== 'supported'}
+                  disabled={gpuReport.state !== 'supported' && !gpuReport.hasWasmFallback}
                   className={INPUT_CLS}
                 >
-                  {LOCAL_MODELS_REGISTRY.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} — {m.downloadSizeApprox} ({m.vramRequiredMB} MB VRAM) {m.recommended ? '★ Recomendado' : ''}
-                    </option>
-                  ))}
+                  {LOCAL_MODELS_REGISTRY.map(m => {
+                    const isGpuOnly = m.runtimeBackend === 'webgpu';
+                    const isDisabled = isGpuOnly && gpuReport.state !== 'supported';
+                    return (
+                      <option key={m.id} value={m.id} disabled={isDisabled}>
+                        {m.name} — {m.downloadSizeApprox} ({m.runtimeBackend === 'wasm' ? 'CPU / RAM' : `${m.vramRequiredMB} MB VRAM`})
+                        {isDisabled ? ' [Requiere WebGPU]' : ''}
+                        {m.recommended ? ' ★ Recomendado' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
                 {selectedModelDef && (
                   <p className="type-meta mt-1">{selectedModelDef.description}</p>
@@ -521,7 +558,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                 <div className="flex items-center gap-2">
                   {engineStatus === 'ready' && (
                     <Button size="sm" variant="outline" onClick={handleUnloadLocalModel}>
-                      <Trash2 size={13} aria-hidden="true" /> Liberar VRAM
+                      <Trash2 size={13} aria-hidden="true" /> Liberar memoria
                     </Button>
                   )}
 
@@ -529,7 +566,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                     <Button
                       size="sm"
                       variant="solid"
-                      disabled={gpuReport.state !== 'supported' || engineStatus === 'loading'}
+                      disabled={
+                        (gpuReport.state !== 'supported' && !gpuReport.hasWasmFallback) ||
+                        engineStatus === 'loading'
+                      }
                       onClick={handleLoadLocalModel}
                     >
                       {engineStatus === 'loading' ? <RefreshCw size={13} className="animate-spin" aria-hidden="true" /> : <Cpu size={13} aria-hidden="true" />}
