@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Course, Book, SearchResult, UnorganizedResource, GraphNodeType } from '../types/models.ts';
 import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ArrowUpRight, UploadCloud } from 'lucide-react';
-import { resolveSearchResultDestination, filterSupportedFiles } from '../services/domainLogic.ts';
+import { resolveSearchResultDestination, filterSupportedFiles, adjustBookPage } from '../services/domainLogic.ts';
 import type { MediaScanReport } from '../services/localMediaService.ts';
 import { dao } from '../db/dao.ts';
 import { localIngestionService } from '../lib/localIngestion/service.ts';
@@ -927,28 +927,105 @@ export const Library: React.FC<LibraryProps> = ({
                     )}
 
                     {editingBookId === book.id ? (
-                      <div className="mt-2 rounded-lg border border-line bg-canvas p-2">
-                        <div className="flex items-center gap-1.5">
-                          <label className="sr-only" htmlFor={`page-input-${book.id}`}>Página actual</label>
+                      <div className="mt-2 space-y-2.5 rounded-xl border border-accent/40 bg-accent-soft/30 p-3 shadow-sm">
+                        <div className="flex items-center justify-between text-meta">
+                          <span className="font-semibold text-ink">Progreso de lectura</span>
+                          <span className="font-semibold text-accent">
+                            {Math.round(((parseInt(inputPage, 10) || 0) / (book.page_count || 1)) * 100)}%
+                          </span>
+                        </div>
+
+                        {/* Deslizador interactivo sincronizado */}
+                        <div className="space-y-1">
                           <input
-                            id={`page-input-${book.id}`}
-                            type="number"
+                            type="range"
                             min="0"
                             max={book.page_count}
-                            value={inputPage}
+                            value={parseInt(inputPage, 10) || 0}
                             onChange={(e) => setInputPage(e.target.value)}
-                            className="w-16 rounded-md border border-line bg-surface px-2 py-1 text-right text-meta text-ink focus:border-accent/50 focus:outline-none"
+                            className="w-full accent-accent cursor-pointer"
+                            aria-label={`Deslizador de lectura para ${book.title}`}
                           />
-                          <span className="text-meta">/ {book.page_count} pág</span>
-                          <Button size="sm" variant="solid" className="ml-auto" onClick={() => handleSaveProgress(book)}>
-                            <Check size={11} aria-hidden="true" /> Guardar
-                          </Button>
+                          <div className="flex items-center justify-between text-micro text-muted">
+                            <span>0 pág</span>
+                            <span className="font-medium text-ink">
+                              Página {parseInt(inputPage, 10) || 0} de {book.page_count}
+                            </span>
+                            <span>{book.page_count} pág</span>
+                          </div>
+                        </div>
+
+                        {/* Botones de incremento rápido */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 10, book.page_count)))}
+                            className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
+                            title="Avanzar 10 páginas"
+                          >
+                            +10 pág
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 25, book.page_count)))}
+                            className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
+                            title="Avanzar 25 páginas"
+                          >
+                            +25 pág
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 50, book.page_count)))}
+                            className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
+                            title="Avanzar 50 páginas"
+                          >
+                            +50 pág
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInputPage(String(book.page_count))}
+                            className="rounded-md border border-success/40 bg-success-soft px-2 py-0.5 text-micro font-medium text-success hover:opacity-80 transition-colors cursor-pointer"
+                            title="Marcar libro como completado"
+                          >
+                            Terminado (100%)
+                          </button>
+                        </div>
+
+                        {/* Fila de entrada manual y botones de acción */}
+                        <div className="flex items-center justify-between gap-2 border-t border-line/60 pt-2">
+                          <div className="flex items-center gap-1.5">
+                            <label htmlFor={`page-input-${book.id}`} className="text-micro text-muted">Pág:</label>
+                            <input
+                              id={`page-input-${book.id}`}
+                              type="number"
+                              min="0"
+                              max={book.page_count}
+                              value={inputPage}
+                              onChange={(e) => setInputPage(e.target.value)}
+                              className="w-16 rounded-md border border-line bg-surface px-2 py-1 text-right text-meta text-ink focus:border-accent/50 focus:outline-none"
+                            />
+                            <span className="text-meta text-muted">/ {book.page_count}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Button size="sm" variant="quiet" onClick={() => setEditingBookId(null)}>
+                              Cancelar
+                            </Button>
+                            <Button size="sm" variant="solid" onClick={() => handleSaveProgress(book)}>
+                              <Check size={12} aria-hidden="true" /> Guardar
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="mt-2">
+                      <div
+                        className="mt-2 cursor-pointer group/progress rounded-lg p-1.5 -m-1.5 hover:bg-canvas/60 transition-colors"
+                        onClick={() => handleStartEdit(book)}
+                        title="Haz clic para actualizar tu progreso de lectura"
+                      >
                         <div className="mb-1 flex items-center justify-between">
-                          <span className="text-meta">{book.current_page || 0}/{book.page_count} pág</span>
+                          <span className="text-meta group-hover/progress:text-accent group-hover/progress:underline underline-offset-2">
+                            {book.current_page || 0}/{book.page_count} pág
+                          </span>
                           <span className="text-meta font-semibold text-muted">{book.reading_percentage}%</span>
                         </div>
                         <ProgressBar value={book.reading_percentage || 0} label={`Lectura de ${book.title}`} />

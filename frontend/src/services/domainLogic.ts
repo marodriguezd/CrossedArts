@@ -45,6 +45,16 @@ export function calculateBookProgress(
   };
 }
 
+/**
+ * Ajusta la página actual de un libro aplicando un delta y restringiendo al rango [0, totalPages].
+ */
+export function adjustBookPage(currentPage: number, delta: number, totalPages: number): number {
+  if (typeof totalPages !== 'number' || isNaN(totalPages) || totalPages <= 0) return 0;
+  const current = typeof currentPage === 'number' && !isNaN(currentPage) ? currentPage : 0;
+  const target = current + delta;
+  return Math.max(0, Math.min(Math.round(target), totalPages));
+}
+
 export interface SM2State {
   repetitionCount: number;
   intervalDays: number;

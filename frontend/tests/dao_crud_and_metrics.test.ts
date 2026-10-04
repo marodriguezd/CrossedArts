@@ -236,7 +236,7 @@ test('2.9 dao.updateBookProgress validates input, clamps pages, and updates reso
 });
 
 test('2.10 domainLogic pure calculations for book progress and SM-2 work deterministically', async () => {
-  const { calculateBookProgress, calculateSM2 } = await import('../src/services/domainLogic.ts');
+  const { calculateBookProgress, adjustBookPage, calculateSM2 } = await import('../src/services/domainLogic.ts');
 
   // Book progress pure calculations
   const invalid = calculateBookProgress(5, -1);
@@ -257,6 +257,12 @@ test('2.10 domainLogic pure calculations for book progress and SM-2 work determi
     assert.strictEqual(half.data.percentage, 50);
     assert.strictEqual(half.data.status, 'IN_PROGRESS');
   }
+
+  // adjustBookPage pure calculations
+  assert.strictEqual(adjustBookPage(10, 15, 100), 25);
+  assert.strictEqual(adjustBookPage(90, 25, 100), 100);
+  assert.strictEqual(adjustBookPage(20, -50, 100), 0);
+  assert.strictEqual(adjustBookPage(0, 50, 0), 0);
 
   // SM-2 pure calculations
   const initial = { repetitionCount: 0, intervalDays: 1, easeFactor: 2.5 };
