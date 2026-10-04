@@ -1,6 +1,6 @@
 import uuid
 import time
-from datetime import timedelta, date
+from datetime import datetime, timedelta, date, time
 from backend.app.core.utils import utc_now_naive
 from sqlalchemy.orm import Session
 
@@ -47,23 +47,31 @@ def test_session_aggregations(db: Session):
     db.add_all([b1, b2])
     db.commit()
 
-    # Crear sesiones ficticias de distintas duraciones y días
-    # Hoy
-    s1 = SessionService.start_session(db, r1_id)
-    s1.started_at = utc_now_naive() - timedelta(minutes=20)
-    SessionService.end_session(db, s1.id)
+    # Crear sesiones ficticias de distintas duraciones y días.
+    # Usamos fechas ancladas a mediodía para que el test no cambie de resultado
+    # cuando CI se ejecuta cerca de medianoche.
+    now = utc_now_naive()
+    today = now.date()
+    yesterday = today - timedelta(days=1)
 
-    # Ayer
+    s1 = SessionService.start_session(db, r1_id)
+    s1.started_at = datetime.combine(today, time(12, 0))
+    s1.ended_at = s1.started_at + timedelta(minutes=20)
+    s1.duration_minutes = 20
+    db.add(s1)
+
     s2 = SessionService.start_session(db, r1_id)
-    s2.started_at = utc_now_naive() - timedelta(days=1, minutes=30)
+    s2.started_at = datetime.combine(yesterday, time(12, 0))
     s2.ended_at = s2.started_at + timedelta(minutes=30)
     s2.duration_minutes = 30
     db.add(s2)
 
-    # Hoy, otro recurso
     s3 = SessionService.start_session(db, r2_id)
-    s3.started_at = utc_now_naive() - timedelta(minutes=10)
-    SessionService.end_session(db, s3.id)
+    s3.started_at = datetime.combine(today, time(13, 0))
+    s3.ended_at = s3.started_at + timedelta(minutes=10)
+    s3.duration_minutes = 10
+    db.add(s3)
+
     db.commit()
 
     # Verificar agregaciones
