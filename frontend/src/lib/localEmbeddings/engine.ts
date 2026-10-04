@@ -169,19 +169,43 @@ class LocalEmbeddingEngine {
         env.allowLocalModels = false;
         env.useBrowserCache = true;
 
-        const pipe = await pipeline('feature-extraction', modelId, {
-          dtype: 'q8',
-          device: caps.backend === 'webgpu' ? 'webgpu' : 'wasm',
-          progress_callback: (item: any) => {
-            if (item.status === 'progress' && item.progress !== undefined) {
-              this.progress = {
-                progress: Math.round(item.progress),
-                text: `Descargando artefacto ONNX: ${item.file || ''}`
-              };
-              this.notify();
+        let pipe: any;
+        try {
+          pipe = await pipeline('feature-extraction', modelId, {
+            dtype: 'q8',
+            device: caps.backend === 'webgpu' ? 'webgpu' : 'wasm',
+            progress_callback: (item: any) => {
+              if (item.status === 'progress' && item.progress !== undefined) {
+                this.progress = {
+                  progress: Math.round(item.progress),
+                  text: `Descargando artefacto ONNX: ${item.file || ''}`
+                };
+                this.notify();
+              }
             }
+          });
+        } catch (deviceErr: any) {
+          // Si falló en WebGPU, reintentar con CPU (WASM) antes de arrojar error
+          if (caps.backend === 'webgpu') {
+            console.warn('Fallo inicializando embeddings en WebGPU, aplicando fallback a CPU/WASM:', deviceErr);
+            this.backend = 'wasm';
+            pipe = await pipeline('feature-extraction', modelId, {
+              dtype: 'q8',
+              device: 'wasm',
+              progress_callback: (item: any) => {
+                if (item.status === 'progress' && item.progress !== undefined) {
+                  this.progress = {
+                    progress: Math.round(item.progress),
+                    text: `Descargando artefacto ONNX: ${item.file || ''}`
+                  };
+                  this.notify();
+                }
+              }
+            });
+          } else {
+            throw deviceErr;
           }
-        });
+        }
 
         this.pipelineInstance = pipe;
         this.status = 'ready';
