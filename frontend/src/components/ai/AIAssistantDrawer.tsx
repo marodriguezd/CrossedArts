@@ -107,17 +107,28 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
     setLoading(true);
 
     try {
+      let streamingText = '';
       const response: AssistantResponse = await aiService.askTutor(
         newHistory.map(m => ({ role: m.role, content: m.content })),
         activeContext,
-        undefined,
+        (tokenChunk) => {
+          streamingText = tokenChunk;
+          setMessages([
+            ...newHistory,
+            {
+              role: 'assistant',
+              content: streamingText,
+              isLocalOnDevice: true
+            }
+          ]);
+        },
         retrievalScope
       );
       setMessages([
         ...newHistory,
         {
           role: 'assistant',
-          content: response.answer,
+          content: response.answer || streamingText,
           sources: response.sources,
           isLocalOnDevice: response.isLocalOnDevice,
           retrievalMode: response.retrievalMode

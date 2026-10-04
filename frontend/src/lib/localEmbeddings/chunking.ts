@@ -55,15 +55,12 @@ export async function createSemanticChunksFromResourcesAsync(
   }
 ): Promise<SemanticChunk[]> {
   const syncChunks = createSemanticChunksFromResources(resources);
-  const chunks: SemanticChunk[] = [];
-  for (const c of syncChunks) {
-    const sha = await computeSha256ContentHash(c.text);
-    chunks.push({
+  return Promise.all(
+    syncChunks.map(async (c) => ({
       ...c,
-      contentHash: sha
-    });
-  }
-  return chunks;
+      contentHash: await computeSha256ContentHash(c.text)
+    }))
+  );
 }
 
 /**

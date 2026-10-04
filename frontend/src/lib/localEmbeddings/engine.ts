@@ -168,6 +168,9 @@ class LocalEmbeddingEngine {
         // Configurar opciones de entorno local
         env.allowLocalModels = false;
         env.useBrowserCache = true;
+        if (env.backends?.onnx?.wasm) {
+          env.backends.onnx.wasm.numThreads = Math.min(4, typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 2) : 2);
+        }
 
         let pipe: any;
         try {

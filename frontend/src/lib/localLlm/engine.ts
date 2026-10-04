@@ -1,5 +1,6 @@
 import { DEFAULT_LOCAL_MODEL_ID, getLocalModelById } from './registry.ts';
 import { detectWebGPUCapability } from './capabilities.ts';
+import { WasmWorkerClient } from './wasmWorkerClient.ts';
 
 export type EngineStatus =
   | 'disabled'
@@ -22,6 +23,7 @@ export type ProgressCallback = (progress: ModelLoadingProgress) => void;
 
 class LocalLlmEngine {
   private engineInstance: any = null;
+  private wasmWorker = new WasmWorkerClient();
   private currentModelId: string | null = null;
   private currentBackend: 'webgpu' | 'wasm' = 'webgpu';
   private status: EngineStatus = 'idle';
@@ -133,34 +135,50 @@ class LocalLlmEngine {
         this.notify();
 
         try {
-          const { pipeline, env } = await import('@huggingface/transformers');
-          if (sessionId !== this.loadSessionId) return;
-
-          env.allowLocalModels = false;
-          env.useBrowserCache = true;
-
-          const instance = await pipeline('text-generation', modelId, {
-            device: 'wasm',
-            dtype: 'q4',
-            progress_callback: (item: any) => {
+          if (this.wasmWorker.isSupported()) {
+            await this.wasmWorker.load(modelId, (p) => {
               if (sessionId !== this.loadSessionId) return;
-              if (item.status === 'progress' && item.progress !== undefined) {
-                const pct = Math.round(item.progress);
-                this.currentProgress = {
-                  progress: pct,
-                  text: `Descargando modelo CPU (${item.file || ''}): ${pct}%`
-                };
-                this.notify();
-                if (onProgress) {
-                  try { onProgress(this.currentProgress); } catch {}
+              this.currentProgress = p;
+              this.notify();
+              if (onProgress) {
+                try { onProgress(this.currentProgress); } catch {}
+              }
+            });
+            if (sessionId !== this.loadSessionId) return;
+            this.engineInstance = { backend: 'wasm-worker' };
+          } else {
+            const { pipeline, env } = await import('@huggingface/transformers');
+            if (sessionId !== this.loadSessionId) return;
+
+            env.allowLocalModels = false;
+            env.useBrowserCache = true;
+            if (env.backends?.onnx?.wasm) {
+              env.backends.onnx.wasm.numThreads = Math.min(4, typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 2) : 2);
+            }
+
+            const instance = await pipeline('text-generation', modelId, {
+              device: 'wasm',
+              dtype: 'q4',
+              progress_callback: (item: any) => {
+                if (sessionId !== this.loadSessionId) return;
+                if (item.status === 'progress' && item.progress !== undefined) {
+                  const pct = Math.round(item.progress);
+                  this.currentProgress = {
+                    progress: pct,
+                    text: `Descargando modelo CPU (${item.file || ''}): ${pct}%`
+                  };
+                  this.notify();
+                  if (onProgress) {
+                    try { onProgress(this.currentProgress); } catch {}
+                  }
                 }
               }
-            }
-          });
+            });
 
-          if (sessionId !== this.loadSessionId) return;
+            if (sessionId !== this.loadSessionId) return;
+            this.engineInstance = instance;
+          }
 
-          this.engineInstance = instance;
           this.currentBackend = 'wasm';
           this.status = 'ready';
           this.currentProgress = { progress: 100, text: 'Modelo CPU (WASM) listo para inferencia.' };
@@ -273,23 +291,61 @@ class LocalLlmEngine {
 
     try {
       // -----------------------------------------------------------
-      // GENERACIÓN EN CPU / WASM VÍA TRANSFORMERS.JS
+      // GENERACIÓN EN CPU / WASM VÍA TRANSFORMERS.JS CON STREAMING
       // -----------------------------------------------------------
       if (this.currentBackend === 'wasm') {
         const prompt = messages
           .map(m => `<|im_start|>${m.role}\n${m.content}<|im_end|>`)
           .join('\n') + '\n<|im_start|>assistant\n';
 
-        const out = await this.engineInstance(prompt, {
-          max_new_tokens: max_tokens,
-          temperature,
-          do_sample: temperature > 0,
-          return_full_text: false
+        // En CPU configuramos 220 tokens: respuesta pedagógica ágil sin saturar el hilo
+        const wasmMaxTokens = Math.min(options?.max_tokens ?? 220, 250);
+
+        if (this.wasmWorker.isSupported() && this.engineInstance?.backend === 'wasm-worker') {
+          const cleanReply = await this.wasmWorker.generate(
+            prompt,
+            wasmMaxTokens,
+            temperature,
+            options?.onChunk
+          );
+          if (options?.onChunk) {
+            options.onChunk(cleanReply);
+          }
+          this.status = 'ready';
+          this.notify();
+          return cleanReply;
+        }
+
+        const { TextStreamer } = await import('@huggingface/transformers');
+        let accumulatedText = '';
+
+        const streamer = new TextStreamer(this.engineInstance.tokenizer, {
+          skip_prompt: true,
+          skip_special_tokens: true,
+          callback_function: (chunk: string) => {
+            accumulatedText += chunk;
+            if (options?.onChunk) {
+              try {
+                options.onChunk(accumulatedText);
+              } catch {}
+            }
+          }
         });
 
-        const generated = out?.[0]?.generated_text || '';
+        // Dar un respiro a la UI antes de arrancar los tensores de inferencia
+        await new Promise(r => setTimeout(r, 10));
+
+        const out = await this.engineInstance(prompt, {
+          max_new_tokens: wasmMaxTokens,
+          temperature,
+          do_sample: temperature > 0,
+          return_full_text: false,
+          streamer
+        });
+
+        const generated = out?.[0]?.generated_text || accumulatedText || '';
         const cleanReply = (typeof generated === 'string'
-          ? generated.replace(/<\|im_end\|>.*$/s, '')
+          ? generated.replace(/<\|im_end\|>.*$/s, '').replace(/<\|endoftext\|>.*$/s, '')
           : String(generated)
         ).trim();
 
@@ -364,6 +420,12 @@ class LocalLlmEngine {
     this.activeLoadPromise = null;
     this.status = 'unloading';
     this.notify();
+
+    if (this.currentBackend === 'wasm') {
+      try {
+        await this.wasmWorker.unload();
+      } catch {}
+    }
 
     if (this.engineInstance) {
       try {
