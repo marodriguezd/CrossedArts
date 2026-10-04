@@ -593,5 +593,82 @@ test('15.13 resolveNextPlaybackSpeed: Steps through supported speeds without ove
   assert.equal(resolveNextPlaybackSpeed(1.1, 'decrease'), 1);
 });
 
+test('15.14 Flashcard CRUD with lesson_id: Creates, queries, updates and deletes lesson flashcards', async () => {
+  await dbBridge.init();
+  const created = await dao.createCourse({ title: 'Curso Flashcards 15', category: 'Test' });
+  const courseId = created.id!;
+  const mod = await dao.createModule({ courseId, title: 'Módulo FC' });
+  const lesson = await dao.createLesson({ moduleId: mod.id!, title: 'Lección FC', durationMinutes: 10 });
+  const lessonId = lesson.id!;
 
+  // 1. Crear tarjeta con validación
+  const emptyRes = await dao.createFlashcard({ resource_id: courseId, lesson_id: lessonId, front: '', back: 'algo' });
+  assert.equal(emptyRes.success, false);
 
+  const cardRes = await dao.createFlashcard({
+    resource_id: courseId,
+    lesson_id: lessonId,
+    front: '¿Qué es el algoritmo SM-2?',
+    back: 'Un algoritmo de repetición espaciada basado en factor de facilidad e intervalos crecientes.'
+  });
+  assert.equal(cardRes.success, true);
+  assert.ok(cardRes.id);
+
+  // 2. Obtener tarjetas de la lección
+  const cards = await dao.getFlashcardsForLesson(lessonId);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].front, '¿Qué es el algoritmo SM-2?');
+  assert.equal(cards[0].lesson_id, lessonId);
+  assert.equal(cards[0].resource_id, courseId);
+  assert.equal(cards[0].interval_days, 1);
+  assert.equal(cards[0].ease_factor, 2.5);
+
+  // 3. Actualizar tarjeta
+  const updRes = await dao.updateFlashcard(cards[0].id, {
+    front: '¿Qué es el algoritmo SuperMemo-2 (SM-2)?',
+    back: 'Algoritmo de cálculo de intervalos para repetición espaciada.'
+  });
+  assert.equal(updRes.success, true);
+
+  const updatedCards = await dao.getFlashcardsForLesson(lessonId);
+  assert.equal(updatedCards[0].front, '¿Qué es el algoritmo SuperMemo-2 (SM-2)?');
+
+  // 4. Eliminar tarjeta
+  const delRes = await dao.deleteFlashcard(cards[0].id);
+  assert.equal(delRes.success, true);
+  const remaining = await dao.getFlashcardsForLesson(lessonId);
+  assert.equal(remaining.length, 0);
+
+  await cleanupCourse(courseId);
+});
+
+test('15.15 getLessonWorkspace includes lesson flashcards and tracks progress activity', async () => {
+  await dbBridge.init();
+  const created = await dao.createCourse({ title: 'Curso Workspace FC', category: 'Test' });
+  const courseId = created.id!;
+  const mod = await dao.createModule({ courseId, title: 'Módulo WFC' });
+  const lesson = await dao.createLesson({ moduleId: mod.id!, title: 'Lección WFC', durationMinutes: 10 });
+  const lessonId = lesson.id!;
+
+  // Inicialmente sin contenido, notas ni tarjetas -> NOT_STARTED
+  let ws = await dao.getLessonWorkspace(lessonId);
+  assert.ok(ws);
+  assert.equal(ws.progress, 'NOT_STARTED');
+  assert.equal(ws.flashcards?.length, 0);
+
+  // Añadir una tarjeta a la lección -> progress pasa a IN_PROGRESS
+  await dao.createFlashcard({
+    resource_id: courseId,
+    lesson_id: lessonId,
+    front: 'Pregunta de prueba',
+    back: 'Respuesta de prueba'
+  });
+
+  ws = await dao.getLessonWorkspace(lessonId);
+  assert.ok(ws);
+  assert.equal(ws.flashcards?.length, 1);
+  assert.equal(ws.flashcards![0].front, 'Pregunta de prueba');
+  assert.equal(ws.progress, 'IN_PROGRESS');
+
+  await cleanupCourse(courseId);
+});

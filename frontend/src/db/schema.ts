@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS note (
 CREATE TABLE IF NOT EXISTS flashcard (
   id TEXT PRIMARY KEY,
   resource_id TEXT REFERENCES learning_resource(id) ON DELETE CASCADE,
+  lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL,
   front TEXT NOT NULL,
   back TEXT NOT NULL,
   repetition_count INTEGER DEFAULT 0,
@@ -86,6 +87,7 @@ CREATE TABLE IF NOT EXISTS flashcard (
   due_date DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_reviewed DATETIME
 );
+CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);
 
 CREATE TABLE IF NOT EXISTS concept (
   id TEXT PRIMARY KEY,

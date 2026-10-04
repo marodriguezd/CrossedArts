@@ -3,7 +3,8 @@ import {
   Lesson,
   LessonWorkspace as LessonWorkspaceModel,
   StudySessionMode,
-  GraphNodeType
+  GraphNodeType,
+  Flashcard
 } from '../../types/models.ts';
 import {
   CheckCircle,
@@ -32,7 +33,8 @@ import {
   RotateCcw,
   RotateCw,
   Gauge,
-  PictureInPicture
+  PictureInPicture,
+  Trash2
 } from 'lucide-react';
 import { dao } from '../../db/dao.ts';
 import { localMediaService } from '../../services/localMediaService.ts';
@@ -47,6 +49,7 @@ import {
 } from '../../services/domainLogic.ts';
 import { FlashcardGenerationModal } from '../study/FlashcardGenerationModal.tsx';
 import { MarkdownViewer } from '../common/MarkdownViewer.tsx';
+import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
 import { Button, Badge, ProgressBar, EmptyState, InlineStatus, cn } from '../ui/index.tsx';
 
 interface LessonWorkspaceProps {
@@ -114,6 +117,13 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
   const [isCreatingNote, setIsCreatingNote] = useState(false);
   const [noteForm, setNoteForm] = useState({ title: '', content: '' });
+
+  const [isCreatingCard, setIsCreatingCard] = useState(false);
+  const [cardForm, setCardForm] = useState({ front: '', back: '' });
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [editCardForm, setEditCardForm] = useState({ front: '', back: '' });
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [isSavingCard, setIsSavingCard] = useState(false);
 
   const [isGenOpen, setIsGenOpen] = useState(false);
   const [nextLesson, setNextLesson] = useState<{ id: string; title: string; moduleTitle: string; allCompleted: boolean } | null>(null);
@@ -403,6 +413,74 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
     loadWorkspace();
   };
 
+  const handleCreateCard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cardForm.front.trim() || !cardForm.back.trim()) return;
+    setIsSavingCard(true);
+    try {
+      const res = await dao.createFlashcard({
+        resource_id: courseId,
+        lesson_id: lesson.id,
+        front: cardForm.front.trim(),
+        back: cardForm.back.trim()
+      });
+      if (res.success) {
+        setCardForm({ front: '', back: '' });
+        setIsCreatingCard(false);
+        setFeedback({ type: 'success', text: 'Tarjeta añadida a la lección y programada en SM-2.' });
+        await loadWorkspace();
+        onRefresh();
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'Error al crear tarjeta' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err?.message || 'Error al crear tarjeta' });
+    } finally {
+      setIsSavingCard(false);
+    }
+  };
+
+  const handleStartEditCard = (card: Flashcard) => {
+    setEditingCardId(card.id);
+    setEditCardForm({ front: card.front, back: card.back });
+  };
+
+  const handleUpdateCard = async (cardId: string) => {
+    if (!editCardForm.front.trim() || !editCardForm.back.trim()) return;
+    try {
+      const res = await dao.updateFlashcard(cardId, {
+        front: editCardForm.front.trim(),
+        back: editCardForm.back.trim()
+      });
+      if (res.success) {
+        setEditingCardId(null);
+        setFeedback({ type: 'success', text: 'Tarjeta actualizada correctamente.' });
+        await loadWorkspace();
+        onRefresh();
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'Error al actualizar tarjeta' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err?.message || 'Error al actualizar tarjeta' });
+    }
+  };
+
+  const handleDeleteCard = async (cardId: string) => {
+    try {
+      const res = await dao.deleteFlashcard(cardId);
+      if (res.success) {
+        setDeletingCardId(null);
+        setFeedback({ type: 'success', text: 'Tarjeta eliminada.' });
+        await loadWorkspace();
+        onRefresh();
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'Error al eliminar tarjeta' });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err?.message || 'Error al eliminar tarjeta' });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted">
@@ -422,6 +500,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
   }
 
   const { notes, resources, concepts, relatedBooks, flashcardCount, progress } = workspace;
+  const flashcards = workspace.flashcards || [];
   const progressTone =
     progress === 'COMPLETED'
       ? 'success'
@@ -722,6 +801,176 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         )}
       </section>
 
+      {/* Tarjetas de estudio de la lección (SM-2) */}
+      <section className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5" aria-label="Tarjetas de estudio de la lección">
+        <div className="mb-4 flex flex-col gap-3 border-b border-line pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Brain size={18} className="text-accent" aria-hidden="true" />
+            <h3 className="type-section text-ink">Tarjetas de estudio ({flashcards.length})</h3>
+            <Badge tone={flashcards.length > 0 ? 'success' : 'neutral'} className="font-mono text-micro">
+              SM-2
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {flashcards.length > 0 && (
+              <Button size="sm" variant="solid" onClick={() => onStudyLesson(lesson.id, 'flashcards')}>
+                <Play size={12} aria-hidden="true" /> Repasar tarjetas
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setIsCreatingCard(v => !v)}>
+              <Plus size={12} aria-hidden="true" /> {isCreatingCard ? 'Cerrar' : 'Nueva tarjeta'}
+            </Button>
+            <Button size="sm" variant="quiet" onClick={() => setIsGenOpen(true)}>
+              <Sparkles size={12} aria-hidden="true" /> Generar con IA
+            </Button>
+          </div>
+        </div>
+
+        {/* Formulario de creación de nueva tarjeta */}
+        {isCreatingCard && (
+          <form onSubmit={handleCreateCard} className="mb-4 space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
+            <p className="text-meta font-semibold text-ink">Nueva tarjeta de estudio para esta lección</p>
+            <div>
+              <label className="mb-1 block text-meta font-medium text-muted" htmlFor="new-card-front">
+                Anverso (pregunta, concepto o prompt)
+              </label>
+              <textarea
+                id="new-card-front"
+                rows={2}
+                value={cardForm.front}
+                onChange={e => setCardForm(f => ({ ...f, front: e.target.value }))}
+                placeholder="¿Qué es...? / Definición de..."
+                required
+                className={cn(INPUT_CLS, 'resize-y')}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-meta font-medium text-muted" htmlFor="new-card-back">
+                Reverso (respuesta esperada o explicación clave)
+              </label>
+              <textarea
+                id="new-card-back"
+                rows={3}
+                value={cardForm.back}
+                onChange={e => setCardForm(f => ({ ...f, back: e.target.value }))}
+                placeholder="La respuesta clave fundamentada en el contenido..."
+                required
+                className={cn(INPUT_CLS, 'resize-y')}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button size="sm" variant="quiet" onClick={() => setIsCreatingCard(false)}>
+                <X size={12} aria-hidden="true" /> Cancelar
+              </Button>
+              <Button size="sm" variant="solid" type="submit" disabled={isSavingCard}>
+                <Save size={12} aria-hidden="true" /> {isSavingCard ? 'Guardando…' : 'Guardar tarjeta'}
+              </Button>
+            </div>
+          </form>
+        )}
+
+        {/* Lista de tarjetas */}
+        {flashcards.length === 0 && !isCreatingCard ? (
+          <EmptyState
+            title="Esta lección aún no tiene tarjetas de estudio asociadas."
+            hint="Crea tarjetas manuales con «Nueva tarjeta» o extráelas automáticamente del contenido con «Generar con IA». Se integrarán inmediatamente en el algoritmo SuperMemo-2."
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {flashcards.map(card => {
+              const isEditingThis = editingCardId === card.id;
+              const isDueToday = new Date(card.due_date) <= new Date();
+
+              if (isEditingThis) {
+                return (
+                  <div key={card.id} className="col-span-full space-y-3 rounded-lg border border-accent bg-surface p-4 shadow-sm">
+                    <p className="text-meta font-semibold text-ink">Editando tarjeta</p>
+                    <div>
+                      <label className="mb-1 block text-meta font-medium text-muted" htmlFor={`edit-front-${card.id}`}>Anverso</label>
+                      <textarea
+                        id={`edit-front-${card.id}`}
+                        rows={2}
+                        value={editCardForm.front}
+                        onChange={e => setEditCardForm(f => ({ ...f, front: e.target.value }))}
+                        className={cn(INPUT_CLS, 'resize-y')}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-meta font-medium text-muted" htmlFor={`edit-back-${card.id}`}>Reverso</label>
+                      <textarea
+                        id={`edit-back-${card.id}`}
+                        rows={3}
+                        value={editCardForm.back}
+                        onChange={e => setEditCardForm(f => ({ ...f, back: e.target.value }))}
+                        className={cn(INPUT_CLS, 'resize-y')}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="quiet" onClick={() => setEditingCardId(null)}>
+                        <X size={12} aria-hidden="true" /> Cancelar
+                      </Button>
+                      <Button size="sm" variant="solid" onClick={() => void handleUpdateCard(card.id)}>
+                        <Save size={12} aria-hidden="true" /> Guardar cambios
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={card.id}
+                  className="flex flex-col justify-between rounded-lg border border-line bg-canvas p-3.5 transition hover:border-line-strong"
+                >
+                  <div className="space-y-2">
+                    <div>
+                      <span className="text-micro font-semibold uppercase tracking-wider text-faint">Anverso</span>
+                      <p className="mt-0.5 text-meta font-medium text-ink break-words">{card.front}</p>
+                    </div>
+                    <div className="border-t border-line/60 pt-2">
+                      <span className="text-micro font-semibold uppercase tracking-wider text-faint">Reverso</span>
+                      <p className="mt-0.5 text-secondary text-muted break-words">{card.back}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2.5 text-micro">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={isDueToday ? 'warning' : 'neutral'} className="font-mono">
+                        {isDueToday ? 'Para repasar' : `${card.interval_days}d`}
+                      </Badge>
+                      <span className="text-faint font-mono">
+                        Reps: {card.repetition_count} · EF: {card.ease_factor.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="quiet"
+                        onClick={() => handleStartEditCard(card)}
+                        aria-label="Editar tarjeta"
+                        className="h-7 px-2"
+                      >
+                        <Edit3 size={11} aria-hidden="true" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => setDeletingCardId(card.id)}
+                        aria-label="Eliminar tarjeta"
+                        className="h-7 px-2"
+                      >
+                        <Trash2 size={11} aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* Zona secundaria: notas, recursos, conceptos y contexto */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Notas de la lección */}
@@ -933,6 +1182,21 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </Button>
         </div>
       )}
+
+      {/* Confirmación accesible para eliminar flashcard */}
+      <ConfirmDialog
+        isOpen={Boolean(deletingCardId)}
+        title="Eliminar tarjeta de estudio"
+        consequence="Esta tarjeta se eliminará de la lección y del ciclo de repetición espaciada SM-2. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar tarjeta"
+        tone="danger"
+        onCancel={() => setDeletingCardId(null)}
+        onConfirm={async () => {
+          if (deletingCardId) {
+            await handleDeleteCard(deletingCardId);
+          }
+        }}
+      />
 
       <FlashcardGenerationModal
         isOpen={isGenOpen}

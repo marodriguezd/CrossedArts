@@ -70,6 +70,8 @@ export interface LessonWorkspace {
   relatedBooks: RelatedKnowledgeItem[];
   /** Nº de tarjetas SM-2 asociadas al curso de la lección (contexto de repaso). */
   flashcardCount: number;
+  /** Tarjetas de estudio asociadas a esta lección específica. */
+  flashcards?: Flashcard[];
   progress: LessonProgressState;
 }
 
@@ -119,6 +121,7 @@ export interface Note {
 export interface Flashcard {
   id: string;
   resource_id?: string;
+  lesson_id?: string;
   front: string;
   back: string;
   repetition_count: number;

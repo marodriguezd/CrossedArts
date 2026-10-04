@@ -601,7 +601,78 @@ export const dao = {
     return updated;
   },
 
-  async createFlashcards(cards: Array<{ resource_id?: string; front: string; back: string }>): Promise<string[]> {
+  async getFlashcardsForLesson(lessonId: string): Promise<Flashcard[]> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(
+      `SELECT id, resource_id, lesson_id, front, back, repetition_count, interval_days, ease_factor, due_date, last_reviewed
+       FROM flashcard
+       WHERE lesson_id = ?
+       ORDER BY rowid DESC`,
+      [lessonId]
+    );
+    if (!res.length || !res[0].values.length) return [];
+    return res[0].values.map((r: any[]) => ({
+      id: String(r[0]),
+      resource_id: r[1] ? String(r[1]) : undefined,
+      lesson_id: r[2] ? String(r[2]) : undefined,
+      front: String(r[3]),
+      back: String(r[4]),
+      repetition_count: Number(r[5]) || 0,
+      interval_days: Number(r[6]) || 1,
+      ease_factor: Number(r[7]) || 2.5,
+      due_date: String(r[8]),
+      last_reviewed: r[9] ? String(r[9]) : undefined
+    }));
+  },
+
+  async createFlashcard(card: { resource_id?: string; lesson_id?: string; front: string; back: string }): Promise<{ success: boolean; id?: string; error?: string }> {
+    const front = card.front.trim();
+    const back = card.back.trim();
+    if (!front || !back) {
+      return { success: false, error: 'El anverso y el reverso no pueden estar vacíos.' };
+    }
+    const db = dbBridge.getDatabase();
+    const id = `fc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    db.run(
+      `INSERT INTO flashcard (id, resource_id, lesson_id, front, back, repetition_count, interval_days, ease_factor, due_date)
+       VALUES (?, ?, ?, ?, ?, 0, 1, 2.5, datetime('now'))`,
+      [id, card.resource_id || null, card.lesson_id || null, front, back]
+    );
+    await dbBridge.persist();
+    return { success: true, id };
+  },
+
+  async updateFlashcard(id: string, updates: { front?: string; back?: string }): Promise<{ success: boolean; error?: string }> {
+    const db = dbBridge.getDatabase();
+    const clauses: string[] = [];
+    const params: any[] = [];
+    if (updates.front !== undefined) {
+      const f = updates.front.trim();
+      if (!f) return { success: false, error: 'El anverso no puede estar vacío.' };
+      clauses.push('front = ?');
+      params.push(f);
+    }
+    if (updates.back !== undefined) {
+      const b = updates.back.trim();
+      if (!b) return { success: false, error: 'El reverso no puede estar vacío.' };
+      clauses.push('back = ?');
+      params.push(b);
+    }
+    if (clauses.length === 0) return { success: true };
+    params.push(id);
+    db.run(`UPDATE flashcard SET ${clauses.join(', ')} WHERE id = ?`, params);
+    await dbBridge.persist();
+    return { success: true };
+  },
+
+  async deleteFlashcard(id: string): Promise<{ success: boolean; error?: string }> {
+    const db = dbBridge.getDatabase();
+    db.run('DELETE FROM flashcard WHERE id = ?', [id]);
+    await dbBridge.persist();
+    return { success: true };
+  },
+
+  async createFlashcards(cards: Array<{ resource_id?: string; lesson_id?: string; front: string; back: string }>): Promise<string[]> {
     if (!cards || cards.length === 0) return [];
     const db = dbBridge.getDatabase();
     const insertedIds: string[] = [];
@@ -609,9 +680,9 @@ export const dao = {
     for (const card of cards) {
       const id = `fc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       db.run(
-        `INSERT INTO flashcard (id, resource_id, front, back, repetition_count, interval_days, ease_factor, due_date)
-         VALUES (?, ?, ?, ?, 0, 1, 2.5, datetime('now'))`,
-        [id, card.resource_id || null, card.front, card.back]
+        `INSERT INTO flashcard (id, resource_id, lesson_id, front, back, repetition_count, interval_days, ease_factor, due_date)
+         VALUES (?, ?, ?, ?, ?, 0, 1, 2.5, datetime('now'))`,
+        [id, card.resource_id || null, card.lesson_id || null, card.front, card.back]
       );
       insertedIds.push(id);
     }
@@ -1106,18 +1177,19 @@ export const dao = {
     // lección. Reutilizar `getNotesForResource(courseId, lessonId)` mezclaría
     // notas de otras lecciones del mismo curso (comparten `resource_id`).
     const notes = await this.getNotesForLesson(lessonId);
+    const flashcards = await this.getFlashcardsForLesson(lessonId);
     const related = await this.getRelatedKnowledge(lessonId);
 
     const resources = related.filter(r => r.type === 'resource' || r.type === 'book' || r.type === 'course' || r.type === 'lesson' || r.type === 'module');
     const concepts = related.filter(r => r.type === 'concept');
     const relatedBooks = related.filter(r => r.type === 'book');
 
-    // "Actividad" significa contenido propio, notas o relaciones explícitas creadas
+    // "Actividad" significa contenido propio, notas, tarjetas o relaciones explícitas creadas
     // por el usuario. La mera pertenencia estructural (estar en un módulo/curso) no
     // cuenta como progreso, para no inventar un porcentaje sin significado.
     const hasOwnContent = Boolean(lesson.content && lesson.content.trim().length > 0);
     const hasExplicitRelation = related.some(r => !r.derived);
-    const hasActivity = hasOwnContent || notes.length > 0 || hasExplicitRelation;
+    const hasActivity = hasOwnContent || notes.length > 0 || flashcards.length > 0 || hasExplicitRelation;
     const progress: LessonProgressState = lesson.is_completed
       ? 'COMPLETED'
       : hasActivity
@@ -1129,6 +1201,7 @@ export const dao = {
       module,
       course,
       notes,
+      flashcards,
       resources,
       concepts,
       relatedBooks,

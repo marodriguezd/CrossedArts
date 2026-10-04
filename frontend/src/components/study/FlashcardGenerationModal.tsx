@@ -99,6 +99,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
     try {
       const cardsToPersist = previewCards.map(c => ({
         resource_id: resourceId,
+        lesson_id: lessonId,
         front: c.front.trim(),
         back: c.back.trim()
       })).filter(c => c.front && c.back);

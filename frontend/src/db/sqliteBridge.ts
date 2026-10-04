@@ -346,7 +346,8 @@ class SQLiteBridge {
           const migratedSession = this.migrateLearningSession(this.db);
           const migratedLesson = this.migrateLessonContent(this.db);
           const migratedGraph = this.migrateKnowledgeConnectionIndex(this.db);
-          migrated = migratedSession || migratedLesson || migratedGraph;
+          const migratedFlashcard = this.migrateFlashcardLessonId(this.db);
+          migrated = migratedSession || migratedLesson || migratedGraph || migratedFlashcard;
           this.validateDatabaseSchema(this.db);
         } catch (e: any) {
           try { this.db?.close(); } catch { /* cierre defensivo */ }
@@ -467,6 +468,7 @@ class SQLiteBridge {
     try { this.migrateLearningSession(reloaded); } catch { /* esquema legado: se acepta tal cual */ }
     try { this.migrateLessonContent(reloaded); } catch { /* idem */ }
     try { this.migrateKnowledgeConnectionIndex(reloaded); } catch { /* idem */ }
+    try { this.migrateFlashcardLessonId(reloaded); } catch { /* idem */ }
 
     if (this.db) {
       try { this.db.close(); } catch { /* ya cerrado */ }
@@ -584,6 +586,7 @@ class SQLiteBridge {
       this.migrateLearningSession(tempDb);
       this.migrateLessonContent(tempDb);
       this.migrateKnowledgeConnectionIndex(tempDb);
+      this.migrateFlashcardLessonId(tempDb);
       this.validateDatabaseSchema(tempDb);
 
       const persistedBytes = tempDb.export();
@@ -640,6 +643,21 @@ class SQLiteBridge {
     const hasContent = info[0].values.some((row) => String(row[1]) === 'content');
     if (hasContent) return false;
     db.run('ALTER TABLE lesson ADD COLUMN content TEXT;');
+    return true;
+  }
+
+  /**
+   * Migración idempotente de la columna lesson_id en flashcard.
+   * Permite asociar tarjetas de estudio directamente a lecciones de forma opcional.
+   * @returns true si la tabla fue migrada y debe persistirse.
+   */
+  private migrateFlashcardLessonId(db: Database): boolean {
+    const info = db.exec('PRAGMA table_info(flashcard)');
+    if (!info.length || !info[0].values.length) return false;
+    const hasLessonId = info[0].values.some((row) => String(row[1]) === 'lesson_id');
+    if (hasLessonId) return false;
+    db.run('ALTER TABLE flashcard ADD COLUMN lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL;');
+    db.run('CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);');
     return true;
   }
 
