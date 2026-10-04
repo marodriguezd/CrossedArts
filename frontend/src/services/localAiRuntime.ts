@@ -36,6 +36,7 @@ export type LocalAiStage =
 
 export type LocalAiErrorCategory =
   | 'unsupported-browser'
+  | 'shader-incompatible'
   | 'download-failed'
   | 'initialization-failed'
   | 'insufficient-resources'
@@ -143,6 +144,18 @@ function createDefaultStorage(): LocalAiStorage {
 
 function categorizeLlmError(err: any): Pick<LocalAiStatus, 'errorCategory' | 'errorAction'> {
   const raw = String(err?.message || err || '').toLowerCase();
+  if (
+    raw.includes('shadermodule') ||
+    raw.includes('index_kernel') ||
+    raw.includes('compute stage') ||
+    raw.includes('wgsl') ||
+    raw.includes('incompatibilidad de shaders')
+  ) {
+    return {
+      errorCategory: 'shader-incompatible',
+      errorAction: 'Incompatibilidad de shaders WebGPU con tu tarjeta gráfica. Te recomendamos cambiar a Llama 3.2 1B o usar el modelo CPU (WASM).'
+    };
+  }
   if (raw.includes('webgpu') || raw.includes('adapter') || raw.includes('unsupported')) {
     return {
       errorCategory: 'unsupported-browser',

@@ -82,10 +82,10 @@
   --c-muted: 162 155 145;
   --c-faint: 126 120 111;
 
-  /* --- Acento contenido en oscuro (sin neón) --- */
-  --c-accent: 168 150 205;
-  --c-accent-soft: 50 44 66;
-  --c-on-accent: 26 23 32;
+  /* --- Acento en oscuro (púrpura vibrante, con texto blanco de alto contraste) --- */
+  --c-accent: 139 108 212;      /* #8b6cd4: legible sobre fondos oscuros y excelente fondo para botones */
+  --c-accent-soft: 46 38 62;    /* #2e263e: superficie ciruela oscura para badges y fondos tenues */
+  --c-on-accent: 255 255 255;   /* SIEMPRE blanco nítido (#ffffff) para texto sobre botones sólidos */
 
   /* --- Semánticos (baja saturación, sin glare) --- */
   --c-success: 133 180 143;
@@ -96,7 +96,7 @@
   --c-error-soft: 59 40 35;
   --c-info: 143 179 204;
   --c-info-soft: 37 48 57;
-  --c-focus: 168 150 205;
+  --c-focus: 139 108 212;
 
   /* --- Sombras discretas: en oscuro mandan los bordes --- */
   --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.25);

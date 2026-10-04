@@ -249,11 +249,16 @@ class LocalLlmEngine {
       } catch (err: any) {
         if (sessionId !== this.loadSessionId) return;
         this.status = 'error';
-        this.lastError = err?.message || 'Error desconocido al inicializar el modelo local.';
+        const rawMsg = err?.message || String(err || '');
+        if (/ShaderModule|index_kernel|compute stage|validating compute stage|WGSL/i.test(rawMsg)) {
+          this.lastError = 'Incompatibilidad de shaders WebGPU con el driver gráfico para este modelo (entryPoint: index_kernel). Prueba con Llama 3.2 1B (Instruct) o el modelo CPU (WASM).';
+        } else {
+          this.lastError = rawMsg || 'Error desconocido al inicializar el modelo local.';
+        }
         this.currentModelId = null;
         this.engineInstance = null;
         this.notify();
-        throw err;
+        throw new Error(this.lastError);
       }
     })();
 

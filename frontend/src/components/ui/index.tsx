@@ -21,7 +21,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  solid: 'bg-accent text-on-accent border border-transparent hover:opacity-90 shadow-card',
+  solid: 'bg-accent text-white font-medium border border-transparent hover:opacity-90 shadow-card',
   outline: 'bg-surface text-ink border border-line-strong hover:bg-accent-soft/60',
   quiet: 'bg-transparent text-muted border border-transparent hover:bg-accent-soft/60 hover:text-ink',
   danger: 'bg-transparent text-error border border-error/40 hover:bg-error-soft',

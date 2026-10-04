@@ -356,7 +356,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
               <button
                 onClick={handleCreateModule}
                 disabled={!newModuleTitle.trim()}
-                className="rounded-lg border border-line bg-accent-soft p-1.5 text-accent transition hover:opacity-80 disabled:opacity-40"
+                className="rounded-lg bg-accent p-1.5 text-on-accent transition hover:opacity-90 disabled:opacity-40"
                 title="Crear módulo"
                 aria-label="Crear módulo"
               >
@@ -515,7 +515,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                   <button
                     onClick={handleCreateLesson}
                     disabled={!newLessonTitle.trim()}
-                    className="rounded-lg border border-line bg-accent-soft p-1.5 text-accent transition hover:opacity-80 disabled:opacity-40"
+                    className="rounded-lg bg-accent p-1.5 text-on-accent transition hover:opacity-90 disabled:opacity-40"
                     title="Crear lección"
                     aria-label="Crear lección"
                   >

@@ -457,8 +457,8 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                                 className={cn(
                                   "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-micro font-medium transition-colors cursor-pointer",
                                   isCurrentTag
-                                    ? "bg-accent text-canvas"
-                                    : "bg-accent-soft text-accent hover:bg-accent/20"
+                                    ? "bg-accent text-on-accent shadow-sm"
+                                    : "bg-surface text-muted border border-line hover:text-ink hover:border-line-strong"
                                 )}
                                 title={`Filtrar lista por #${t}`}
                               >

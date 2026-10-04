@@ -168,6 +168,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     await localLlmEngine.unload();
   };
 
+  const handleSwitchAndLoadModel = async (newModelId: string) => {
+    const updated = { ...aiConfig, localModelId: newModelId };
+    setAiConfig(updated);
+    aiService.saveSettings(updated);
+    setLoadingError(null);
+    try {
+      const status = await localAiRuntime.prepareForTutor('local', newModelId);
+      if (status.stage !== 'ready' && status.stage !== 'preparing' && status.stage !== 'downloading' && status.stage !== 'compiling') {
+        setLoadingError(status.message);
+      }
+    } catch (err: any) {
+      setLoadingError(err?.message || 'Error cargando el modelo');
+    }
+  };
+
   const [storageReport, setStorageReport] = useState(dbBridge.getStorageReport());
   const [lastExported, setLastExported] = useState<string | null>(null);
   const [dbFeedback, setDbFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -611,7 +626,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
               )}
 
               {loadingError && (
-                <p className="text-meta text-error">{loadingError}</p>
+                <div className="space-y-2 rounded-lg border border-error/30 bg-error-soft/30 p-3 text-meta text-ink">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={15} className="mt-0.5 shrink-0 text-error" aria-hidden="true" />
+                    <div>
+                      <p className="font-semibold text-error">Fallo al inicializar el modelo local</p>
+                      <p className="mt-0.5 text-muted">{loadingError}</p>
+                    </div>
+                  </div>
+                  {/shader|index_kernel|comput|incompatibilidad/i.test(loadingError) && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="solid"
+                        onClick={() => void handleSwitchAndLoadModel('Llama-3.2-1B-Instruct-q4f16_1-MLC')}
+                      >
+                        Probar con Llama 3.2 1B (WebGPU)
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleSwitchAndLoadModel('onnx-community/Qwen2.5-0.5B-Instruct')}
+                      >
+                        Cambiar a CPU / WASM
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
