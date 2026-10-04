@@ -189,6 +189,10 @@ export async function importJsonBackup(data: Record<string, any[]>): Promise<voi
         db.run(`INSERT INTO ${table} (${cols}) VALUES (${placeholders});`, values);
       }
     }
+    const foreignKeyViolations = db.exec('PRAGMA foreign_key_check;');
+    if (foreignKeyViolations.length && foreignKeyViolations[0].values.length > 0) {
+      throw new Error('El respaldo contiene referencias internas incompatibles y no se puede restaurar de forma segura.');
+    }
     db.run('PRAGMA foreign_keys = ON;');
     db.run('COMMIT;');
   } catch (err) {

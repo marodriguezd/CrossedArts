@@ -335,7 +335,10 @@ test('26.21 High-capability device falls back to a lighter model after resource 
     storage,
     capability: { state: 'supported', supportedFeatures: ['shader-f16'], deviceTier: 'high' }
   });
-  const status = await runtime.ensureLocalAiReady({ provider: 'local' });
+  const status = await runtime.ensureLocalAiReady({
+    provider: 'local',
+    overrideModelId: 'Qwen3-1.7B-q4f16_1-MLC'
+  });
   assert.strictEqual(status.stage, 'ready');
   assert.notStrictEqual(status.modelId, 'Qwen3-1.7B-q4f16_1-MLC');
   assert.ok(status.message.includes('ligera'));

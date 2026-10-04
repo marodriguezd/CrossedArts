@@ -12,7 +12,7 @@
 //   - No se cachean orígenes externos: Ollama y APIs remotas quedan fuera.
 //   - `sql-wasm.wasm` se precachea para que SQLite siga funcionando sin red.
 
-const APP_SHELL_VERSION = 'v2';
+const APP_SHELL_VERSION = 'v3';
 const CACHE_PREFIX = 'crossedarts-shell-';
 const CACHE_NAME = `${CACHE_PREFIX}${APP_SHELL_VERSION}`;
 
