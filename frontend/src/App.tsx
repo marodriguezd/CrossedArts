@@ -286,6 +286,7 @@ export const App: React.FC = () => {
             books={books}
             recentSessions={recentSessions}
             onSelectCourse={handleSelectCourse}
+            onOpenLesson={handleOpenLesson}
             onNavigate={handleNavigateTab}
           />
         )}

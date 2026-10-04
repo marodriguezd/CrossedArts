@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Course, Book, SearchResult, UnorganizedResource, GraphNodeType } from '../types/models.ts';
-import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ArrowUpRight } from 'lucide-react';
-import { resolveSearchResultDestination } from '../services/domainLogic.ts';
+import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ArrowUpRight, UploadCloud } from 'lucide-react';
+import { resolveSearchResultDestination, filterSupportedFiles } from '../services/domainLogic.ts';
 import type { MediaScanReport } from '../services/localMediaService.ts';
 import { dao } from '../db/dao.ts';
 import { localIngestionService } from '../lib/localIngestion/service.ts';
@@ -208,6 +208,11 @@ export const Library: React.FC<LibraryProps> = ({
     resource: BookOpen
   };
 
+  // Estado de arrastrar y soltar (Drag and Drop)
+  const [isWindowDragging, setIsWindowDragging] = useState(false);
+  const [isDropzoneDragging, setIsDropzoneDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -218,13 +223,18 @@ export const Library: React.FC<LibraryProps> = ({
     }
   };
 
-  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  /**
+   * Procesa una lista de archivos seleccionados o arrastrados.
+   * Si es 1 archivo compatible, abre el modal de previsualización.
+   * Si son múltiples archivos, los ingesta en lote con reporte de progreso.
+   */
+  const processIncomingFiles = useCallback(async (incoming: File[] | FileList | null | undefined) => {
+    const validFiles = filterSupportedFiles(incoming);
+    if (!validFiles || validFiles.length === 0) return;
 
     // Si es un único archivo, abrir modal de preview con validación y elección de destino
-    if (files.length === 1) {
-      const file = files[0];
+    if (validFiles.length === 1) {
+      const file = validFiles[0];
       try {
         const parsed = await localIngestionService.parseFile(file);
         const existingId = await localIngestionService.findExistingResourceByFingerprint(parsed.fingerprint);
@@ -255,7 +265,7 @@ export const Library: React.FC<LibraryProps> = ({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    const fileList = Array.from(files);
+    const fileList = validFiles;
     try {
       const results = await localIngestionService.ingestBatch(fileList, {
         signal: controller.signal,
@@ -305,7 +315,62 @@ export const Library: React.FC<LibraryProps> = ({
       setIngestionProgress(null);
       abortControllerRef.current = null;
     }
+  }, [onUpdateBookProgress, onDocumentImported]);
+
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await processIncomingFiles(files);
   };
+
+  // Eventos globales de ventana para arrastrar y soltar archivos
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+        dragCounterRef.current += 1;
+        setIsWindowDragging(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current -= 1;
+      if (dragCounterRef.current <= 0) {
+        dragCounterRef.current = 0;
+        setIsWindowDragging(false);
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setIsWindowDragging(false);
+      setIsDropzoneDragging(false);
+      if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+        await processIncomingFiles(e.dataTransfer.files);
+      }
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('drop', handleDrop);
+
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, [processIncomingFiles]);
 
   const handleConfirmPreviewImport = async () => {
     if (!previewDoc) return;
@@ -542,6 +607,55 @@ export const Library: React.FC<LibraryProps> = ({
           )}
         </InlineStatus>
       )}
+
+      {/* Zona visual para arrastrar y soltar archivos (Dropzone Card) */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDropzoneDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDropzoneDragging(false);
+        }}
+        onDrop={async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDropzoneDragging(false);
+          setIsWindowDragging(false);
+          dragCounterRef.current = 0;
+          if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+            await processIncomingFiles(e.dataTransfer.files);
+          }
+        }}
+        onClick={handleTriggerFilePicker}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleTriggerFilePicker();
+          }
+        }}
+        className={cn(
+          'group relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center transition-all duration-fast cursor-pointer select-none',
+          isDropzoneDragging
+            ? 'border-accent bg-accent-soft/40 shadow-sm scale-[1.005]'
+            : 'border-line hover:border-accent/40 hover:bg-surface/60 bg-surface/30'
+        )}
+      >
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-soft text-accent transition-transform duration-fast group-hover:scale-110">
+          <UploadCloud size={22} aria-hidden="true" />
+        </div>
+        <p className="type-item mt-3 text-ink">
+          Arrastra y suelta documentos aquí o <span className="text-accent underline underline-offset-2">selecciona archivos</span>
+        </p>
+        <p className="type-meta mt-1 text-muted">
+          Formatos admitidos: <strong>.pdf</strong>, <strong>.epub</strong>, <strong>.md</strong>, <strong>.txt</strong> (procesamiento 100% local en tu navegador)
+        </p>
+      </div>
 
       {/* Búsqueda y filtros */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1091,6 +1205,24 @@ export const Library: React.FC<LibraryProps> = ({
               </Button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Overlay a pantalla completa al arrastrar archivos sobre cualquier parte de la ventana */}
+      {isWindowDragging && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/80 backdrop-blur-sm pointer-events-none animate-fade-in"
+          aria-hidden="true"
+        >
+          <div className="m-6 flex max-w-lg flex-col items-center justify-center rounded-2xl border-4 border-dashed border-accent bg-surface/90 p-10 text-center shadow-overlay animate-scale-in">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <UploadCloud size={40} className="animate-bounce" />
+            </div>
+            <h3 className="type-title mt-5 text-ink">Suelta tus documentos aquí</h3>
+            <p className="type-secondary mt-2">
+              Importaremos tus archivos (.pdf, .epub, .md, .txt) directamente a tu biblioteca local.
+            </p>
+          </div>
         </div>
       )}
     </div>

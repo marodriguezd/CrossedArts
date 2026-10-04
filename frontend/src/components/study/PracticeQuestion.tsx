@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckCircle, XCircle, ArrowRight, BookOpen } from 'lucide-react';
 import type { GeneratedQuestion } from '../../lib/studyGeneration/types.ts';
-import { Button, cn } from '../ui/index.tsx';
+import { Button, Kbd, cn } from '../ui/index.tsx';
 
 interface PracticeQuestionProps {
   question: GeneratedQuestion;
@@ -71,6 +71,9 @@ export const PracticeQuestion: React.FC<PracticeQuestionProps> = ({
               {String.fromCharCode(65 + idx)}
             </span>
             <span className="flex-1">{opt}</span>
+            {!isAnswerSubmitted && (
+              <Kbd className="opacity-60">{idx + 1}</Kbd>
+            )}
           </label>
         ))}
       </div>
@@ -104,12 +107,13 @@ export const PracticeQuestion: React.FC<PracticeQuestionProps> = ({
 
       <div className="flex justify-end">
         {!isAnswerSubmitted ? (
-          <Button variant="solid" onClick={onSubmit} disabled={selectedOption === null}>
-            Comprobar respuesta
+          <Button variant="solid" onClick={onSubmit} disabled={selectedOption === null} className="gap-2">
+            Comprobar respuesta <Kbd className="border-current/25 bg-black/10 text-inherit">Enter</Kbd>
           </Button>
         ) : (
-          <Button variant="solid" onClick={onNext}>
+          <Button variant="solid" onClick={onNext} className="gap-2">
             {nextLabel || (isLast ? 'Ver resumen' : 'Siguiente pregunta')} <ArrowRight size={14} aria-hidden="true" />
+            <Kbd className="border-current/25 bg-black/10 text-inherit">Enter</Kbd>
           </Button>
         )}
       </div>

@@ -12,6 +12,7 @@ import { createSemanticChunksFromResourcesAsync } from '../src/lib/localEmbeddin
 import { retrieveLocalContext } from '../src/lib/localRag/retrieval.ts';
 import { buildRagContext } from '../src/lib/localRag/contextBuilder.ts';
 import { aiService } from '../src/ai/aiService.ts';
+import { filterSupportedFiles, SUPPORTED_INGESTION_EXTENSIONS } from '../src/services/domainLogic.ts';
 
 // Helper mock file
 function createMockFile(name: string, content: string | Uint8Array) {
@@ -295,5 +296,32 @@ test('11.3 Grounded Pedagogical Action: aiService.explainResource with local con
   const respInsuf = await aiService.explainResource('Teletransportación Cuántica Multiversal Inexistente 9999');
   assert.ok(respInsuf.answer.includes('no contiene suficiente información'));
   assert.strictEqual(respInsuf.sources.length, 0);
+});
+
+test('10.5 Drag & Drop File Filtering: filterSupportedFiles preserves valid docs and discards unsupported types', () => {
+  assert.deepStrictEqual(SUPPORTED_INGESTION_EXTENSIONS, ['.txt', '.md', '.markdown', '.pdf', '.epub']);
+
+  const mockFiles = [
+    { name: 'documento.pdf' },
+    { name: 'notas.md' },
+    { name: 'resumen.markdown' },
+    { name: 'libro.epub' },
+    { name: 'apuntes.txt' },
+    { name: 'video.mp4' },
+    { name: 'imagen.png' },
+    { name: 'script.exe' }
+  ] as File[];
+
+  const filtered = filterSupportedFiles(mockFiles);
+  assert.strictEqual(filtered.length, 5);
+  assert.strictEqual(filtered[0].name, 'documento.pdf');
+  assert.strictEqual(filtered[1].name, 'notas.md');
+  assert.strictEqual(filtered[2].name, 'resumen.markdown');
+  assert.strictEqual(filtered[3].name, 'libro.epub');
+  assert.strictEqual(filtered[4].name, 'apuntes.txt');
+
+  assert.deepStrictEqual(filterSupportedFiles(null), []);
+  assert.deepStrictEqual(filterSupportedFiles(undefined), []);
+  assert.deepStrictEqual(filterSupportedFiles([]), []);
 });
 

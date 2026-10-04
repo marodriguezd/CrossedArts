@@ -3,6 +3,12 @@ import assert from 'node:assert';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
 import { resolveLocalDay } from '../src/services/localDate.ts';
+import {
+  generateDailyActivitySeries,
+  extractUniqueTagsWithCounts,
+  filterNotesByQueryAndTag,
+  getStoredPlaybackSeconds
+} from '../src/services/domainLogic.ts';
 
 test('2.1 dao.getKPIs calculates metrics from relational tables accurately', async () => {
   await dbBridge.init();
@@ -267,5 +273,169 @@ test('2.10 domainLogic pure calculations for book progress and SM-2 work determi
   assert.strictEqual(failPass.intervalDays, 1);
   assert.ok(failPass.easeFactor >= 1.3);
 });
+
+test('2.10 generateDailyActivitySeries: Generates continuous 7d/30d series filling empty days with zeros', () => {
+  const history = [
+    { date: '2026-10-02', minutes: 25, reviews: 15 },
+    { date: '2026-10-04', minutes: 40, reviews: 30 }
+  ];
+
+  const series7d = generateDailyActivitySeries(history, '7d', '2026-10-04');
+  assert.strictEqual(series7d.length, 7);
+  assert.strictEqual(series7d[series7d.length - 1].date, '2026-10-04');
+  assert.strictEqual(series7d[series7d.length - 1].minutes, 40);
+  assert.strictEqual(series7d[series7d.length - 1].reviews, 30);
+
+  // 2026-10-02 está 2 días antes de hoy
+  const dayOct2 = series7d.find((p: any) => p.date === '2026-10-02');
+  assert.ok(dayOct2);
+  assert.strictEqual(dayOct2.minutes, 25);
+  assert.strictEqual(dayOct2.reviews, 15);
+
+  // 2026-10-03 no tenía actividad -> 0
+  const dayOct3 = series7d.find((p: any) => p.date === '2026-10-03');
+  assert.ok(dayOct3);
+  assert.strictEqual(dayOct3.minutes, 0);
+  assert.strictEqual(dayOct3.reviews, 0);
+
+  const series30d = generateDailyActivitySeries(history, '30d', '2026-10-04');
+  assert.strictEqual(series30d.length, 30);
+});
+
+test('2.11 dao.getDailyActivitySeries: Queries real learning sessions grouped by local calendar day', async () => {
+  await dbBridge.init();
+  const series7d = await dao.getDailyActivitySeries('7d');
+  assert.strictEqual(series7d.length, 7);
+  assert.ok(series7d.every((p: any) => typeof p.minutes === 'number' && typeof p.reviews === 'number'));
+
+  const series30d = await dao.getDailyActivitySeries('30d');
+  assert.strictEqual(series30d.length, 30);
+});
+
+test('2.12 extractUniqueTagsWithCounts: Extracts normalized tags, counts occurrences and ignores technical sha256 tags', () => {
+  const sampleNotes: any[] = [
+    { id: '1', title: 'N1', content: 'C1', tags: 'React, Hooks, typescript' },
+    { id: '2', title: 'N2', content: 'C2', tags: 'react, state' },
+    { id: '3', title: 'N3', content: 'C3', tags: 'TypeScript, sha256:abcd1234efgh' },
+    { id: '4', title: 'N4', content: 'C4', tags: '' },
+    { id: '5', title: 'N5', content: 'C5' }
+  ];
+
+  const result = extractUniqueTagsWithCounts(sampleNotes);
+
+  // react (2), typescript (2), hooks (1), state (1)
+  assert.strictEqual(result.length, 4);
+  assert.deepStrictEqual(result.find(r => r.tag === 'react'), { tag: 'react', count: 2 });
+  assert.deepStrictEqual(result.find(r => r.tag === 'typescript'), { tag: 'typescript', count: 2 });
+  assert.deepStrictEqual(result.find(r => r.tag === 'hooks'), { tag: 'hooks', count: 1 });
+  assert.deepStrictEqual(result.find(r => r.tag === 'state'), { tag: 'state', count: 1 });
+
+  // No debe incluir sha256
+  assert.strictEqual(result.some(r => r.tag.startsWith('sha256:')), false);
+});
+
+test('2.13 filterNotesByQueryAndTag: Filters accurately by tag, text query, and both combined', () => {
+  const sampleNotes: any[] = [
+    { id: '1', title: 'useEffect Guide', content: 'Guía de ciclo de vida', tags: 'react, hooks' },
+    { id: '2', title: 'Zustand Store', content: 'Gestor de estado ligero', tags: 'react, state' },
+    { id: '3', title: 'SQL Joins', content: 'Consultas relacionales', tags: 'sqlite, db' }
+  ];
+
+  // Sin filtros -> retorna todas
+  assert.strictEqual(filterNotesByQueryAndTag(sampleNotes, '', null).length, 3);
+
+  // Filtro por tag exacto
+  const reactOnly = filterNotesByQueryAndTag(sampleNotes, '', 'react');
+  assert.strictEqual(reactOnly.length, 2);
+  assert.deepStrictEqual(reactOnly.map(n => n.id), ['1', '2']);
+
+  const hooksOnly = filterNotesByQueryAndTag(sampleNotes, '', 'hooks');
+  assert.strictEqual(hooksOnly.length, 1);
+  assert.strictEqual(hooksOnly[0].id, '1');
+
+  // Filtro por query y tag combinados
+  const combined = filterNotesByQueryAndTag(sampleNotes, 'zustand', 'react');
+  assert.strictEqual(combined.length, 1);
+  assert.strictEqual(combined[0].id, '2');
+
+  // Búsqueda que no coincide con el tag seleccionado
+  const noMatch = filterNotesByQueryAndTag(sampleNotes, 'joins', 'react');
+  assert.strictEqual(noMatch.length, 0);
+});
+
+test('2.14 getStoredPlaybackSeconds: Retrieves and validates stored playback seconds safely', () => {
+  // Sin localStorage o entrada nula
+  assert.strictEqual(getStoredPlaybackSeconds(''), null);
+  assert.strictEqual(getStoredPlaybackSeconds('non-existent-lesson'), null);
+
+  // Simular localStorage
+  const originalLocalStorage = globalThis.localStorage;
+  const store: Record<string, string> = {};
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => store[k] || null,
+    setItem: (k: string, v: string) => { store[k] = v; },
+    removeItem: (k: string) => { delete store[k]; }
+  };
+
+  try {
+    // Clave ausente
+    assert.strictEqual(getStoredPlaybackSeconds('les-1'), null);
+
+    // Clave con valor no numérico
+    store['crossedarts-playback:les-1'] = 'invalid';
+    assert.strictEqual(getStoredPlaybackSeconds('les-1'), null);
+
+    // Clave con valor <= 0
+    store['crossedarts-playback:les-1'] = '0';
+    assert.strictEqual(getStoredPlaybackSeconds('les-1'), null);
+
+    // Clave con valor numérico válido
+    store['crossedarts-playback:les-1'] = '145.5';
+    assert.strictEqual(getStoredPlaybackSeconds('les-1'), 145.5);
+  } finally {
+    if (originalLocalStorage) {
+      (globalThis as any).localStorage = originalLocalStorage;
+    } else {
+      delete (globalThis as any).localStorage;
+    }
+  }
+});
+
+test('2.15 dao.toggleLessonCompleted and toggleModuleLessonsCompleted: Update lesson states and synchronize course totals', async () => {
+  await dbBridge.init();
+
+  const courses = await dao.getCourses();
+  const reactCourse = courses.find(c => c.id === 'c1-react');
+  assert.ok(reactCourse, 'El curso React debe existir');
+
+  const fullCourse = await dao.getCourseById('c1-react');
+  assert.ok(fullCourse?.modules?.[0]?.lessons?.[0], 'Debe tener al menos un módulo con lecciones');
+
+  const targetModule = fullCourse.modules[0];
+  const targetLesson = targetModule.lessons![0];
+
+  // 1. Alternar lección individual
+  await dao.toggleLessonCompleted(targetLesson.id, true);
+  let updatedCourse = await dao.getCourseById('c1-react');
+  let updatedLesson = updatedCourse?.modules?.[0]?.lessons?.find(l => l.id === targetLesson.id);
+  assert.strictEqual(updatedLesson?.is_completed, true);
+  assert.ok((updatedCourse?.completed_lessons || 0) >= 1);
+
+  // 2. Alternar todas las lecciones del módulo a falso
+  await dao.toggleModuleLessonsCompleted(targetModule.id, false);
+  updatedCourse = await dao.getCourseById('c1-react');
+  let modLessons = updatedCourse?.modules?.find(m => m.id === targetModule.id)?.lessons || [];
+  assert.ok(modLessons.every(l => !l.is_completed), 'Todas las lecciones del módulo deben estar incompletas');
+
+  // 3. Alternar todas las lecciones del módulo a verdadero
+  await dao.toggleModuleLessonsCompleted(targetModule.id, true);
+  updatedCourse = await dao.getCourseById('c1-react');
+  modLessons = updatedCourse?.modules?.find(m => m.id === targetModule.id)?.lessons || [];
+  assert.ok(modLessons.every(l => l.is_completed), 'Todas las lecciones del módulo deben estar completadas');
+  assert.ok((updatedCourse?.completed_lessons || 0) >= modLessons.length);
+});
+
+
+
 
 

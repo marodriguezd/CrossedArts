@@ -1,8 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Note, LearningResource } from '../types/models.ts';
-import { FileText, Plus, Tag, Calendar, Save, Link2, GraduationCap } from 'lucide-react';
+import {
+  FileText,
+  Plus,
+  Tag,
+  Calendar,
+  Save,
+  Link2,
+  GraduationCap,
+  Edit3,
+  Trash2,
+  Eye,
+  PenTool,
+  X,
+  Download
+} from 'lucide-react';
 import { dao } from '../db/dao.ts';
-import { Button, SearchInput, Badge, EmptyState, cn } from '../components/ui/index.tsx';
+import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
+import { MarkdownViewer } from '../components/common/MarkdownViewer.tsx';
+import {
+  exportNoteToMarkdown,
+  exportNotesToSingleMarkdown,
+  triggerTextDownload,
+  extractUniqueTagsWithCounts,
+  filterNotesByQueryAndTag
+} from '../services/domainLogic.ts';
+import { Button, SearchInput, Badge, EmptyState, Chip, cn } from '../components/ui/index.tsx';
 
 interface NotesViewProps {
   notes: Note[];
@@ -12,12 +35,22 @@ interface NotesViewProps {
 
 export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialNoteId }) => {
   const [selectedNote, setSelectedNote] = useState<Note | null>(notes[0] || null);
-  const [newTitle, setNewTitle] = useState('');
-  const [newContent, setNewContent] = useState('');
-  const [newTags, setNewTags] = useState('');
-  const [newResourceId, setNewResourceId] = useState('');
-  const [newLessonId, setNewLessonId] = useState('');
+
+  // Estados de creación y edición
   const [isCreating, setIsCreating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write');
+
+  // Formulario unificado de creación / edición
+  const [formData, setFormData] = useState({
+    title: '',
+    content: '',
+    tags: '',
+    resource_id: '',
+    lesson_id: ''
+  });
+
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [resources, setResources] = useState<LearningResource[]>([]);
   const [lessons, setLessons] = useState<Array<{ id: string; title: string; courseTitle: string }>>([]);
   const [query, setQuery] = useState('');
@@ -43,47 +76,99 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
     if (target) {
       setSelectedNote(target);
       setIsCreating(false);
+      setIsEditing(false);
     }
   }, [initialNoteId, notes]);
 
   useEffect(() => {
-    if (selectedNote && !notes.some(n => n.id === selectedNote.id)) {
-      setSelectedNote(notes[0] || null);
+    if (selectedNote) {
+      const updated = notes.find(n => n.id === selectedNote.id);
+      if (updated) {
+        setSelectedNote(updated);
+      } else if (!notes.some(n => n.id === selectedNote.id)) {
+        setSelectedNote(notes[0] || null);
+      }
+    } else if (notes.length > 0 && !isCreating) {
+      setSelectedNote(notes[0]);
     }
-  }, [notes, selectedNote]);
+  }, [notes, selectedNote, isCreating]);
 
-  const handleCreateNote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) return;
-    await dao.addNote({
-      title: newTitle,
-      content: newContent,
-      tags: newTags,
-      resource_id: newResourceId || undefined,
-      lesson_id: newLessonId || undefined
+  const handleStartCreate = () => {
+    setFormData({
+      title: '',
+      content: '',
+      tags: '',
+      resource_id: '',
+      lesson_id: ''
     });
-    setNewTitle('');
-    setNewContent('');
-    setNewTags('');
-    setNewResourceId('');
-    setNewLessonId('');
+    setIsCreating(true);
+    setIsEditing(false);
+    setActiveTab('write');
+  };
+
+  const handleStartEdit = () => {
+    if (!selectedNote) return;
+    setFormData({
+      title: selectedNote.title,
+      content: selectedNote.content,
+      tags: selectedNote.tags || '',
+      resource_id: selectedNote.resource_id || '',
+      lesson_id: selectedNote.lesson_id || ''
+    });
+    setIsEditing(true);
     setIsCreating(false);
+    setActiveTab('write');
+  };
+
+  const handleCancelForm = () => {
+    setIsCreating(false);
+    setIsEditing(false);
+  };
+
+  const handleSubmitForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title.trim()) return;
+
+    if (isCreating) {
+      await dao.addNote({
+        title: formData.title.trim(),
+        content: formData.content,
+        tags: formData.tags.trim() || undefined,
+        resource_id: formData.resource_id || undefined,
+        lesson_id: formData.lesson_id || undefined
+      });
+      setIsCreating(false);
+    } else if (isEditing && selectedNote) {
+      await dao.updateNote(selectedNote.id, {
+        title: formData.title.trim(),
+        content: formData.content,
+        tags: formData.tags.trim() || undefined,
+        resource_id: formData.resource_id || null,
+        lesson_id: formData.lesson_id || null
+      });
+      setIsEditing(false);
+    }
+    onRefresh();
+  };
+
+  const handleDeleteNote = async () => {
+    if (!selectedNote) return;
+    await dao.deleteNote(selectedNote.id);
+    setDeleteConfirmOpen(false);
+    setSelectedNote(null);
     onRefresh();
   };
 
   const resourceName = (id?: string) => resources.find(r => r.id === id)?.title;
   const lessonName = (id?: string) => lessons.find(l => l.id === id)?.title;
 
-  // Filtro local sobre títulos, contenido y etiquetas (sin red, sobre datos existentes).
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+  const availableTags = useMemo(() => extractUniqueTagsWithCounts(notes), [notes]);
+
   const filteredNotes = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return notes;
-    return notes.filter(n =>
-      n.title.toLowerCase().includes(q) ||
-      n.content.toLowerCase().includes(q) ||
-      (n.tags || '').toLowerCase().includes(q)
-    );
-  }, [notes, query]);
+    return filterNotesByQueryAndTag(notes, query, selectedTag);
+  }, [notes, query, selectedTag]);
 
   const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
   const LABEL_CLS = 'mb-1 block text-meta font-medium text-muted';
@@ -94,11 +179,25 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="type-display text-ink">Notas</h1>
-          <p className="type-secondary mt-1">Tus notas, ideas y referencias siempre a mano.</p>
+          <p className="type-secondary mt-1">Tus notas, ideas y referencias en Markdown con persistencia local.</p>
         </div>
-        <Button variant="solid" onClick={() => setIsCreating(true)}>
-          <Plus size={15} aria-hidden="true" /> Nueva nota
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {notes.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                const md = exportNotesToSingleMarkdown(filteredNotes.length > 0 ? filteredNotes : notes);
+                triggerTextDownload(md, `crossedarts-notas-${new Date().toISOString().slice(0, 10)}.md`);
+              }}
+              title="Exportar todas las notas visibles en un único archivo Markdown (.md)"
+            >
+              <Download size={14} aria-hidden="true" /> Exportar notas ({filteredNotes.length > 0 ? filteredNotes.length : notes.length})
+            </Button>
+          )}
+          <Button variant="solid" onClick={handleStartCreate}>
+            <Plus size={15} aria-hidden="true" /> Nueva nota
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
@@ -111,18 +210,62 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
             onChange={setQuery}
             className="mb-3"
           />
+
+          {availableTags.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5" role="toolbar" aria-label="Filtrar por etiqueta">
+              <Chip
+                active={selectedTag === null}
+                onClick={() => setSelectedTag(null)}
+              >
+                Todas ({notes.length})
+              </Chip>
+              {availableTags.map(({ tag, count }) => (
+                <Chip
+                  key={tag}
+                  active={selectedTag === tag}
+                  onClick={() => setSelectedTag(prev => prev === tag ? null : tag)}
+                >
+                  #{tag} ({count})
+                </Chip>
+              ))}
+            </div>
+          )}
+
           <div className="max-h-[600px] space-y-2 overflow-y-auto pr-1">
             {filteredNotes.length === 0 ? (
-              <p className="type-meta px-1">
-                {notes.length === 0 ? 'Aún no hay notas.' : 'Sin coincidencias para esa búsqueda.'}
-              </p>
+              <div className="rounded-xl border border-line bg-surface/50 p-4 text-center">
+                <p className="type-meta text-muted">
+                  {notes.length === 0
+                    ? 'Aún no hay notas.'
+                    : selectedTag
+                    ? `No hay notas con la etiqueta «#${selectedTag}»${query ? ' y esa búsqueda' : ''}.`
+                    : 'Sin coincidencias para esa búsqueda.'}
+                </p>
+                {(selectedTag || query) && (
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    className="mt-2 text-micro"
+                    onClick={() => {
+                      setSelectedTag(null);
+                      setQuery('');
+                    }}
+                  >
+                    Limpiar filtros
+                  </Button>
+                )}
+              </div>
             ) : (
               filteredNotes.map(note => {
                 const isSelected = selectedNote?.id === note.id && !isCreating;
                 return (
                   <button
                     key={note.id}
-                    onClick={() => { setSelectedNote(note); setIsCreating(false); }}
+                    onClick={() => {
+                      setSelectedNote(note);
+                      setIsCreating(false);
+                      setIsEditing(false);
+                    }}
                     aria-current={isSelected ? 'true' : undefined}
                     className={cn(
                       'w-full rounded-xl border p-3.5 text-left transition-colors duration-fast',
@@ -138,9 +281,26 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                         <Calendar size={10} aria-hidden="true" /> {note.created_at?.slice(0, 10)}
                       </span>
                       {note.tags && (
-                        <span className="flex items-center gap-1 text-accent">
-                          <Tag size={10} aria-hidden="true" /> {note.tags}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1 text-accent">
+                          <Tag size={10} aria-hidden="true" />
+                          {note.tags
+                            .split(',')
+                            .map(t => t.trim())
+                            .filter(t => t && !t.startsWith('sha256:'))
+                            .map(t => (
+                              <span
+                                key={t}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedTag(prev => prev === t.toLowerCase() ? null : t.toLowerCase());
+                                }}
+                                className="cursor-pointer hover:underline"
+                                title={`Filtrar por #${t}`}
+                              >
+                                #{t}
+                              </span>
+                            ))}
+                        </div>
                       )}
                     </div>
                   </button>
@@ -152,54 +312,86 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
 
         {/* Lector / editor del documento (derecha) */}
         <div className="min-h-[450px] rounded-xl border border-line bg-surface p-6 shadow-card md:col-span-2 sm:p-8">
-          {isCreating ? (
-            <form onSubmit={handleCreateNote} className="space-y-4">
-              <h3 className="type-section text-ink">Crear nueva nota</h3>
+          {isCreating || isEditing ? (
+            <form onSubmit={handleSubmitForm} className="space-y-4">
+              <div className="flex items-center justify-between border-b border-line pb-3">
+                <h3 className="type-section text-ink">
+                  {isCreating ? 'Crear nueva nota' : `Editar: ${selectedNote?.title}`}
+                </h3>
+                {/* Pestañas Escribir / Vista previa */}
+                <div className="flex items-center gap-1 rounded-lg border border-line bg-canvas p-1" role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'write'}
+                    onClick={() => setActiveTab('write')}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-meta font-medium transition-colors',
+                      activeTab === 'write' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
+                    )}
+                  >
+                    <PenTool size={12} aria-hidden="true" /> Escribir
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'preview'}
+                    onClick={() => setActiveTab('preview')}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-meta font-medium transition-colors',
+                      activeTab === 'preview' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
+                    )}
+                  >
+                    <Eye size={12} aria-hidden="true" /> Vista previa
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className={LABEL_CLS} htmlFor="note-title">Título</label>
                 <input
                   id="note-title"
                   type="text"
-                  value={newTitle}
-                  onChange={e => setNewTitle(e.target.value)}
-                  placeholder="Título del apunte o concepto…"
-                  className={INPUT_CLS}
+                  value={formData.title}
+                  onChange={e => setFormData(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Título de la nota"
                   required
-                />
-              </div>
-              <div>
-                <label className={LABEL_CLS} htmlFor="note-tags">Etiquetas</label>
-                <input
-                  id="note-tags"
-                  type="text"
-                  value={newTags}
-                  onChange={e => setNewTags(e.target.value)}
-                  placeholder="Separadas por coma, ej: react, hooks, arquitectura"
                   className={INPUT_CLS}
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
-                  <label className={LABEL_CLS} htmlFor="note-resource">Asociar a recurso (opcional)</label>
+                  <label className={LABEL_CLS} htmlFor="note-tags">Etiquetas (separadas por coma)</label>
+                  <input
+                    id="note-tags"
+                    type="text"
+                    value={formData.tags}
+                    onChange={e => setFormData(f => ({ ...f, tags: e.target.value }))}
+                    placeholder="react, hooks, arquitectura"
+                    className={INPUT_CLS}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL_CLS} htmlFor="note-resource">Recurso asociado (opcional)</label>
                   <select
                     id="note-resource"
-                    value={newResourceId}
-                    onChange={e => setNewResourceId(e.target.value)}
+                    value={formData.resource_id}
+                    onChange={e => setFormData(f => ({ ...f, resource_id: e.target.value }))}
                     className={INPUT_CLS}
                   >
-                    <option value="">Sin recurso</option>
+                    <option value="">Sin recurso específico</option>
                     {resources.map(r => (
                       <option key={r.id} value={r.id}>{r.title}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className={LABEL_CLS} htmlFor="note-lesson">Asociar a lección (opcional)</label>
+                  <label className={LABEL_CLS} htmlFor="note-lesson">Lección asociada (opcional)</label>
                   <select
                     id="note-lesson"
-                    value={newLessonId}
-                    onChange={e => setNewLessonId(e.target.value)}
+                    value={formData.lesson_id}
+                    onChange={e => setFormData(f => ({ ...f, lesson_id: e.target.value }))}
                     className={INPUT_CLS}
                   >
                     <option value="">Sin lección</option>
@@ -210,56 +402,120 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                 </div>
               </div>
 
-              <div>
-                <label className={LABEL_CLS} htmlFor="note-content">Contenido</label>
-                <textarea
-                  id="note-content"
-                  value={newContent}
-                  onChange={e => setNewContent(e.target.value)}
-                  placeholder="Escribe tus notas y reflexiones aquí…"
-                  rows={10}
-                  className={cn(INPUT_CLS, 'resize-y font-mono text-secondary')}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="quiet" onClick={() => setIsCreating(false)}>
-                  Cancelar
+              {activeTab === 'write' ? (
+                <div>
+                  <label className={LABEL_CLS} htmlFor="note-content">Contenido (Markdown soportado)</label>
+                  <textarea
+                    id="note-content"
+                    value={formData.content}
+                    onChange={e => setFormData(f => ({ ...f, content: e.target.value }))}
+                    placeholder="Escribe tus notas en Markdown (# títulos, **negrita**, *cursiva*, ```bloques de código```, - listas, [02:30] marcas de tiempo)…"
+                    rows={12}
+                    className={cn(INPUT_CLS, 'resize-y font-mono text-secondary')}
+                  />
+                </div>
+              ) : (
+                <div className="min-h-[280px] rounded-lg border border-line bg-canvas p-4">
+                  {formData.content.trim() ? (
+                    <MarkdownViewer content={formData.content} />
+                  ) : (
+                    <p className="type-meta italic text-muted">Escribe algo en la pestaña «Escribir» para previsualizarlo en Markdown.</p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 border-t border-line pt-3">
+                <Button variant="quiet" onClick={handleCancelForm}>
+                  <X size={14} aria-hidden="true" /> Cancelar
                 </Button>
                 <Button variant="solid" type="submit">
-                  <Save size={14} aria-hidden="true" /> Guardar nota en SQLite
+                  <Save size={14} aria-hidden="true" /> {isCreating ? 'Guardar nota en SQLite' : 'Guardar cambios'}
                 </Button>
               </div>
             </form>
           ) : selectedNote ? (
             <article className="space-y-4">
               {/* Cabecera documental de la nota */}
-              <header className="border-b border-line pb-4">
-                <h2 className="type-title text-ink">{selectedNote.title}</h2>
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <span className="text-meta">Fecha: {selectedNote.created_at}</span>
-                  {selectedNote.tags && <Badge tone="accent">{selectedNote.tags}</Badge>}
-                </div>
-                {(selectedNote.resource_id || selectedNote.lesson_id) && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-meta">
-                    <span className="inline-flex items-center gap-1 text-faint">
-                      <Link2 size={11} aria-hidden="true" /> Asociada a:
-                    </span>
-                    {resourceName(selectedNote.resource_id) && (
-                      <Badge tone="info">
-                        <GraduationCap size={10} aria-hidden="true" /> {resourceName(selectedNote.resource_id)}
-                      </Badge>
-                    )}
-                    {lessonName(selectedNote.lesson_id) && (
-                      <Badge tone="neutral">
-                        <FileText size={10} aria-hidden="true" /> {lessonName(selectedNote.lesson_id)}
-                      </Badge>
+              <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
+                <div className="min-w-0">
+                  <h2 className="type-title text-ink break-words">{selectedNote.title}</h2>
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <span className="text-meta">Fecha: {selectedNote.created_at?.slice(0, 10)}</span>
+                    {selectedNote.tags && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {selectedNote.tags
+                          .split(',')
+                          .map(t => t.trim())
+                          .filter(t => t && !t.startsWith('sha256:'))
+                          .map(t => {
+                            const isCurrentTag = selectedTag === t.toLowerCase();
+                            return (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => setSelectedTag(prev => prev === t.toLowerCase() ? null : t.toLowerCase())}
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-micro font-medium transition-colors cursor-pointer",
+                                  isCurrentTag
+                                    ? "bg-accent text-canvas"
+                                    : "bg-accent-soft text-accent hover:bg-accent/20"
+                                )}
+                                title={`Filtrar lista por #${t}`}
+                              >
+                                <Tag size={10} aria-hidden="true" /> #{t}
+                              </button>
+                            );
+                          })}
+                      </div>
                     )}
                   </div>
-                )}
+                  {(selectedNote.resource_id || selectedNote.lesson_id) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-meta">
+                      <span className="inline-flex items-center gap-1 text-faint">
+                        <Link2 size={11} aria-hidden="true" /> Asociada a:
+                      </span>
+                      {resourceName(selectedNote.resource_id) && (
+                        <Badge tone="info">
+                          <GraduationCap size={10} aria-hidden="true" /> {resourceName(selectedNote.resource_id)}
+                        </Badge>
+                      )}
+                      {lessonName(selectedNote.lesson_id) && (
+                        <Badge tone="neutral">
+                          <FileText size={10} aria-hidden="true" /> {lessonName(selectedNote.lesson_id)}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Acciones de la nota */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const md = exportNoteToMarkdown(selectedNote, {
+                        resourceTitle: resourceName(selectedNote.resource_id),
+                        lessonTitle: lessonName(selectedNote.lesson_id)
+                      });
+                      const safeTitle = selectedNote.title.toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 30);
+                      triggerTextDownload(md, `${safeTitle || 'nota'}.md`);
+                    }}
+                    title="Exportar esta nota en archivo Markdown (.md)"
+                  >
+                    <Download size={13} aria-hidden="true" /> Exportar .md
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleStartEdit}>
+                    <Edit3 size={13} aria-hidden="true" /> Editar
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => setDeleteConfirmOpen(true)}>
+                    <Trash2 size={13} aria-hidden="true" /> Eliminar
+                  </Button>
+                </div>
               </header>
-              {/* Contenido con tipografía de lectura */}
-              <div className="type-prose whitespace-pre-wrap break-words">
-                {selectedNote.content}
+
+              {/* Contenido con MarkdownViewer */}
+              <div className="p-1">
+                <MarkdownViewer content={selectedNote.content} />
               </div>
             </article>
           ) : (
@@ -271,6 +527,18 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
           )}
         </div>
       </div>
+
+      {/* Diálogo accesible de confirmación para eliminar nota */}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="Eliminar nota"
+        consequence={`Se eliminará permanentemente la nota "${selectedNote?.title}". Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar nota"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onConfirm={handleDeleteNote}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 };

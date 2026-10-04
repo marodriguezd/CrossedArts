@@ -6,6 +6,13 @@ import { SCHEMA_SQL } from '../src/db/schema.ts';
 import { retrieveLocalContext } from '../src/lib/localRag/retrieval.ts';
 import { createSemanticChunksFromResourcesAsync, computeSha256ContentHash } from '../src/lib/localEmbeddings/chunking.ts';
 import { aiService } from '../src/ai/aiService.ts';
+import {
+  formatPlaybackTime,
+  parseTimestampToSeconds,
+  extractTimestampParts,
+  parseInlineMarkdownTokens,
+  filterCourseLessons
+} from '../src/services/domainLogic.ts';
 
 async function cleanupCourse(courseId: string): Promise<void> {
   const db = dbBridge.getDatabase();
@@ -401,3 +408,138 @@ test('15.15 Lesson workspace notes and progress stay isolated per lesson (regres
   await dbBridge.persist();
   await cleanupCourse(courseId);
 });
+
+test('15.8 Video playback formatting, timestamp parsing and interactive note segment extraction', () => {
+  // formatPlaybackTime
+  assert.equal(formatPlaybackTime(0), '00:00');
+  assert.equal(formatPlaybackTime(75), '01:15');
+  assert.equal(formatPlaybackTime(3665), '01:01:05');
+  assert.equal(formatPlaybackTime(-10), '00:00');
+  assert.equal(formatPlaybackTime(NaN), '00:00');
+
+  // parseTimestampToSeconds
+  assert.equal(parseTimestampToSeconds('01:15'), 75);
+  assert.equal(parseTimestampToSeconds('1:15'), 75);
+  assert.equal(parseTimestampToSeconds('[01:15]'), 75);
+  assert.equal(parseTimestampToSeconds('01:01:05'), 3665);
+  assert.equal(parseTimestampToSeconds('[01:01:05]'), 3665);
+  assert.equal(parseTimestampToSeconds('01:65'), null, 'Segundos >= 60 deben ser rechazados');
+  assert.equal(parseTimestampToSeconds('invalido'), null);
+  assert.equal(parseTimestampToSeconds(''), null);
+
+  // extractTimestampParts
+  const plain = extractTimestampParts('Nota simple sin marcas de tiempo');
+  assert.equal(plain.length, 1);
+  assert.equal(plain[0].isTimestamp, false);
+
+  const mixed = extractTimestampParts('Ver explicación en [02:30] y luego repasar [01:15:00] al final.');
+  assert.equal(mixed.length, 5);
+  assert.equal(mixed[0].text, 'Ver explicación en ');
+  assert.equal(mixed[0].isTimestamp, false);
+  assert.equal(mixed[1].text, '[02:30]');
+  assert.equal(mixed[1].isTimestamp, true);
+  assert.equal(mixed[1].seconds, 150);
+  assert.equal(mixed[1].rawTimestamp, '02:30');
+  assert.equal(mixed[2].text, ' y luego repasar ');
+  assert.equal(mixed[2].isTimestamp, false);
+  assert.equal(mixed[3].text, '[01:15:00]');
+  assert.equal(mixed[3].isTimestamp, true);
+  assert.equal(mixed[3].seconds, 4500);
+  assert.equal(mixed[4].text, ' al final.');
+  assert.equal(mixed[4].isTimestamp, false);
+});
+
+test('15.9 dao.deleteNote removes notes from SQLite with clean persistence', async () => {
+  await dbBridge.init();
+  const created = await dao.createCourse({ title: 'Curso Test Notas Delete', category: 'Test' });
+  const courseId = created.id!;
+
+  await dao.addNote({ title: 'Nota Borrable', content: 'Contenido a eliminar', resource_id: courseId });
+  let notes = await dao.getNotesForResource(courseId);
+  assert.equal(notes.length, 1);
+  const noteId = notes[0].id;
+
+  const deleted = await dao.deleteNote(noteId);
+  assert.equal(deleted, true);
+
+  notes = await dao.getNotesForResource(courseId);
+  assert.equal(notes.length, 0, 'La nota debe haber sido eliminada de la base de datos');
+
+  await cleanupCourse(courseId);
+});
+
+test('15.10 parseInlineMarkdownTokens parses code, bold, italic and timestamps into tokens', () => {
+  const tokens = parseInlineMarkdownTokens('Texto con **negrita**, *cursiva*, `codigo` y marca [01:30] al final.');
+  
+  const boldToken = tokens.find(t => t.type === 'bold');
+  assert.ok(boldToken);
+  assert.equal(boldToken!.content, 'negrita');
+
+  const italicToken = tokens.find(t => t.type === 'italic');
+  assert.ok(italicToken);
+  assert.equal(italicToken!.content, 'cursiva');
+
+  const codeToken = tokens.find(t => t.type === 'code');
+  assert.ok(codeToken);
+  assert.equal(codeToken!.content, 'codigo');
+
+  const tsToken = tokens.find(t => t.type === 'timestamp');
+  assert.ok(tsToken);
+  assert.equal(tsToken!.content, '01:30');
+  assert.equal(tsToken!.seconds, 90);
+});
+
+test('15.11 filterCourseLessons: Filters modules and lessons by title or content with accurate counters', () => {
+  const sampleModules = [
+    {
+      id: 'm1',
+      course_id: 'c1',
+      title: 'Fundamentos de React',
+      order_index: 1,
+      lessons: [
+        { id: 'l1', module_id: 'm1', title: 'Componentes Funcionales', content: 'Uso de funciones puras', order_index: 1, duration_minutes: 10, lesson_type: 'VIDEO' as const, is_completed: true },
+        { id: 'l2', module_id: 'm1', title: 'Hooks Básicos', content: 'useState y useEffect', order_index: 2, duration_minutes: 15, lesson_type: 'VIDEO' as const, is_completed: false }
+      ]
+    },
+    {
+      id: 'm2',
+      course_id: 'c1',
+      title: 'Arquitectura de Estado',
+      order_index: 2,
+      lessons: [
+        { id: 'l3', module_id: 'm2', title: 'Context API', content: 'Evitar prop drilling', order_index: 1, duration_minutes: 20, lesson_type: 'VIDEO' as const, is_completed: false },
+        { id: 'l4', module_id: 'm2', title: 'Zustand y Redux', content: 'Gestores globales', order_index: 2, duration_minutes: 25, lesson_type: 'VIDEO' as const, is_completed: false }
+      ]
+    }
+  ];
+
+  // 1. Consulta vacía -> todos los módulos y lecciones
+  const empty = filterCourseLessons(sampleModules, '');
+  assert.equal(empty.filteredModules.length, 2);
+  assert.equal(empty.totalMatchingLessons, 4);
+
+  // 2. Coincidencia por título de lección ('hooks')
+  const hooks = filterCourseLessons(sampleModules, 'hooks');
+  assert.equal(hooks.filteredModules.length, 1);
+  assert.equal(hooks.totalMatchingLessons, 1);
+  assert.equal(hooks.filteredModules[0].lessons![0].id, 'l2');
+
+  // 3. Coincidencia por contenido de lección ('prop drilling')
+  const propDrilling = filterCourseLessons(sampleModules, 'prop drilling');
+  assert.equal(propDrilling.filteredModules.length, 1);
+  assert.equal(propDrilling.totalMatchingLessons, 1);
+  assert.equal(propDrilling.filteredModules[0].lessons![0].id, 'l3');
+
+  // 4. Coincidencia por título de módulo ('Arquitectura') -> incluye todas las lecciones de ese módulo
+  const arch = filterCourseLessons(sampleModules, 'Arquitectura');
+  assert.equal(arch.filteredModules.length, 1);
+  assert.equal(arch.totalMatchingLessons, 2);
+
+  // 5. Sin coincidencias
+  const none = filterCourseLessons(sampleModules, 'inexistente 999');
+  assert.equal(none.filteredModules.length, 0);
+  assert.equal(none.totalMatchingLessons, 0);
+});
+
+
+

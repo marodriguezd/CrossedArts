@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Lesson,
   LessonWorkspace as LessonWorkspaceModel,
@@ -32,8 +32,9 @@ import {
 } from 'lucide-react';
 import { dao } from '../../db/dao.ts';
 import { localMediaService } from '../../services/localMediaService.ts';
-import { GRAPH_NODE_LABELS, GRAPH_RELATION_LABELS } from '../../services/domainLogic.ts';
+import { GRAPH_NODE_LABELS, GRAPH_RELATION_LABELS, formatPlaybackTime, extractTimestampParts } from '../../services/domainLogic.ts';
 import { FlashcardGenerationModal } from '../study/FlashcardGenerationModal.tsx';
+import { MarkdownViewer } from '../common/MarkdownViewer.tsx';
 import { Button, Badge, ProgressBar, EmptyState, InlineStatus, cn } from '../ui/index.tsx';
 
 interface LessonWorkspaceProps {
@@ -89,6 +90,12 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
   const [isLocalMedia, setIsLocalMedia] = useState(false);
   const [mediaLoading, setMediaLoading] = useState(false);
 
+  // Control y memoria de posición del reproductor multimedia
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lastSavedTimeRef = useRef<number>(0);
+  const [currentPlaybackSeconds, setCurrentPlaybackSeconds] = useState<number>(0);
+  const [resumedTime, setResumedTime] = useState<number | null>(null);
+
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ title: '', content: '', durationMinutes: 0 });
   const [isSaving, setIsSaving] = useState(false);
@@ -98,6 +105,63 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
   const [isGenOpen, setIsGenOpen] = useState(false);
   const [nextLesson, setNextLesson] = useState<{ id: string; title: string; moduleTitle: string; allCompleted: boolean } | null>(null);
+
+  // Restaurar y registrar posición en almacenamiento local (localStorage)
+  const handleLoadedMetadata = () => {
+    if (!videoRef.current) return;
+    try {
+      const saved = localStorage.getItem(`crossedarts-playback:${lesson.id}`);
+      if (saved) {
+        const pos = parseFloat(saved);
+        if (!isNaN(pos) && pos > 0 && pos < (videoRef.current.duration || Infinity) - 2) {
+          videoRef.current.currentTime = pos;
+          setResumedTime(pos);
+          setCurrentPlaybackSeconds(pos);
+        }
+      }
+    } catch {
+      // Ignorar restricciones de almacenamiento
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (!videoRef.current) return;
+    const cur = videoRef.current.currentTime;
+    setCurrentPlaybackSeconds(cur);
+    const now = Date.now();
+    if (now - lastSavedTimeRef.current > 3000) {
+      lastSavedTimeRef.current = now;
+      try {
+        localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(cur));
+      } catch {
+        // Ignorar
+      }
+    }
+  };
+
+  const handleSeekTo = (seconds: number, autoPlay = true) => {
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = Math.max(0, seconds);
+    setCurrentPlaybackSeconds(seconds);
+    if (autoPlay) {
+      videoRef.current.play().catch(() => {});
+    }
+    videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  useEffect(() => {
+    setResumedTime(null);
+    setCurrentPlaybackSeconds(0);
+    return () => {
+      if (videoRef.current && videoRef.current.currentTime > 0) {
+        try {
+          localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
+        } catch {
+          // Ignorar
+        }
+      }
+    };
+  }, [lesson.id]);
 
   const loadWorkspace = useCallback(async () => {
     setIsLoading(true);
@@ -320,7 +384,24 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
       {/* Reproductor de medios locales */}
       <div className={cn('overflow-hidden rounded-xl border border-line', playbackUrl ? 'bg-black' : 'bg-surface')}>
         {playbackUrl ? (
-          <video key={lesson.id} src={playbackUrl} controls className="max-h-[420px] w-full bg-black object-contain" />
+          <video
+            ref={videoRef}
+            key={lesson.id}
+            src={playbackUrl}
+            controls
+            onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
+            onPause={() => {
+              if (videoRef.current) {
+                try {
+                  localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
+                } catch {
+                  // Ignorar
+                }
+              }
+            }}
+            className="max-h-[420px] w-full bg-black object-contain"
+          />
         ) : (
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <Video size={34} className="mb-2 text-faint" aria-hidden="true" />
@@ -334,10 +415,23 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface px-3 py-2">
-          <span className="flex items-center gap-1.5 text-meta text-muted">
-            <Video size={13} className="text-accent" aria-hidden="true" />
-            {isLocalMedia ? 'Medio local efímero (no persistido)' : playbackUrl ? 'Medio remoto' : 'Sin medio'}
-          </span>
+          <div className="flex flex-wrap items-center gap-2 text-meta text-muted">
+            <span className="flex items-center gap-1.5">
+              <Video size={13} className="text-accent" aria-hidden="true" />
+              {isLocalMedia ? 'Medio local efímero' : playbackUrl ? 'Medio remoto' : 'Sin medio'}
+            </span>
+            {playbackUrl && (
+              <span className="inline-flex items-center gap-1 font-mono text-micro text-ink">
+                <Clock size={11} className="text-accent" aria-hidden="true" />
+                {formatPlaybackTime(currentPlaybackSeconds)}
+              </span>
+            )}
+            {resumedTime !== null && resumedTime > 0 && (
+              <Badge tone="info" className="font-mono text-micro">
+                Reanudado en {formatPlaybackTime(resumedTime)}
+              </Badge>
+            )}
+          </div>
           <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-meta font-medium text-muted transition-colors hover:bg-accent-soft/60 hover:text-ink">
             <Video size={13} aria-hidden="true" />
             <span>Asociar archivo local</span>
@@ -418,10 +512,10 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
             </div>
           </div>
         ) : lesson.content && lesson.content.trim() ? (
-          /* Tipografía de lectura: medida cómoda, ritmo vertical y sin ruido. */
-          <article className="type-prose whitespace-pre-wrap break-words">
-            {lesson.content}
-          </article>
+          <MarkdownViewer
+            content={lesson.content}
+            onSeekTimestamp={seconds => handleSeekTo(seconds, true)}
+          />
         ) : (
           <EmptyState
             title="Esta lección aún no tiene contenido."
@@ -457,13 +551,33 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                 />
               </div>
               <div>
-                <label className="sr-only" htmlFor="new-note-content">Contenido de la nueva nota</label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-micro font-medium text-muted" htmlFor="new-note-content">Contenido</label>
+                  {playbackUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = videoRef.current?.currentTime || currentPlaybackSeconds || 0;
+                        const stamp = `[${formatPlaybackTime(cur)}]`;
+                        setNoteForm(f => ({
+                          ...f,
+                          content: f.content ? `${f.content} ${stamp} ` : `${stamp} `
+                        }));
+                      }}
+                      className="inline-flex items-center gap-1 rounded border border-line bg-canvas px-1.5 py-0.5 text-micro font-medium text-muted hover:border-line-strong hover:text-ink transition-colors"
+                      title="Insertar marca de tiempo actual del vídeo en la nota"
+                    >
+                      <Clock size={11} className="text-accent" aria-hidden="true" />
+                      <span>Marca [{formatPlaybackTime(videoRef.current?.currentTime || currentPlaybackSeconds || 0)}]</span>
+                    </button>
+                  )}
+                </div>
                 <textarea
                   id="new-note-content"
                   value={noteForm.content}
                   onChange={e => setNoteForm(f => ({ ...f, content: e.target.value }))}
                   rows={3}
-                  placeholder="Contenido…"
+                  placeholder="Contenido… (incluye marcas como [02:30] para saltar al vídeo)"
                   aria-label="Contenido de la nueva nota"
                   className={cn(INPUT_CLS, 'resize-y')}
                 />
@@ -484,20 +598,38 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           ) : (
             <ul className="space-y-1.5">
               {notes.map(note => (
-                <li key={note.id} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-canvas p-2.5">
-                  <span className="min-w-0">
-                    <span className="block truncate text-meta font-semibold text-ink">{note.title}</span>
-                    <span className="block truncate text-micro">{note.content.slice(0, 90)}</span>
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="quiet"
-                    className="shrink-0"
-                    onClick={() => onOpenNote(note.id)}
-                    aria-label={`Abrir nota ${note.title}`}
-                  >
-                    Abrir <ArrowRight size={12} aria-hidden="true" />
-                  </Button>
+                <li key={note.id} className="space-y-1.5 rounded-lg border border-line bg-canvas p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-meta font-semibold text-ink">{note.title}</span>
+                    <Button
+                      size="sm"
+                      variant="quiet"
+                      className="shrink-0"
+                      onClick={() => onOpenNote(note.id)}
+                      aria-label={`Abrir nota ${note.title}`}
+                    >
+                      Abrir <ArrowRight size={12} aria-hidden="true" />
+                    </Button>
+                  </div>
+                  <div className="text-micro text-muted break-words leading-relaxed">
+                    {extractTimestampParts(note.content.slice(0, 160)).map((part, pIdx) => {
+                      if (part.isTimestamp && part.seconds !== undefined) {
+                        return (
+                          <button
+                            key={pIdx}
+                            type="button"
+                            onClick={() => handleSeekTo(part.seconds!, true)}
+                            className="mx-0.5 inline-flex items-center gap-0.5 rounded border border-accent/40 bg-accent-soft px-1.5 py-0.5 font-mono text-micro font-semibold text-accent transition-colors hover:border-accent hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+                            title={`Saltar a ${part.rawTimestamp} en el vídeo`}
+                          >
+                            <Clock size={10} aria-hidden="true" />
+                            {part.rawTimestamp}
+                          </button>
+                        );
+                      }
+                      return <span key={pIdx}>{part.text}</span>;
+                    })}
+                  </div>
                 </li>
               ))}
             </ul>

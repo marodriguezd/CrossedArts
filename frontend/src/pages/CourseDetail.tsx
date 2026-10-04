@@ -17,14 +17,16 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowRight,
-  FolderCheck
+  FolderCheck,
+  Search,
+  Check
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { localMediaService } from '../services/localMediaService.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
-import { describeDestructiveAction } from '../services/domainLogic.ts';
+import { describeDestructiveAction, filterCourseLessons } from '../services/domainLogic.ts';
 import { LessonWorkspace } from '../components/lesson/LessonWorkspace.tsx';
-import { Button, Badge, InlineStatus, ProgressBar, EmptyState, cn } from '../components/ui/index.tsx';
+import { Button, Badge, InlineStatus, ProgressBar, EmptyState, SearchInput, cn } from '../components/ui/index.tsx';
 
 interface CourseDetailProps {
   course: Course;
@@ -79,6 +81,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   const [newLessonModuleId, setNewLessonModuleId] = useState(course.modules?.[0]?.id || '');
   const [newLessonTitle, setNewLessonTitle] = useState('');
 
+  // Búsqueda de lecciones dentro del curso
+  const [lessonQuery, setLessonQuery] = useState('');
+
+  const { filteredModules, totalMatchingLessons } = filterCourseLessons(course.modules, lessonQuery);
+
   useEffect(() => {
     const target = findLesson(initialLessonId);
     if (target) setSelectedLesson(target);
@@ -86,10 +93,46 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   }, [initialLessonId]);
 
   useEffect(() => {
-    if (selectedLesson && !course.modules?.some(m => m.lessons?.some(l => l.id === selectedLesson.id))) {
-      setSelectedLesson(course.modules?.[0]?.lessons?.[0] || null);
+    if (selectedLesson) {
+      const refreshed = course.modules
+        ?.flatMap(m => m.lessons || [])
+        .find(l => l.id === selectedLesson.id);
+      if (refreshed) {
+        setSelectedLesson(refreshed);
+      } else {
+        setSelectedLesson(course.modules?.[0]?.lessons?.[0] || null);
+      }
     }
   }, [course]);
+
+  const handleToggleLessonCompletion = async (lessonId: string, completed: boolean) => {
+    try {
+      await dao.toggleLessonCompleted(lessonId, completed);
+      onRefresh();
+      if (selectedLesson && selectedLesson.id === lessonId) {
+        setSelectedLesson(prev => prev ? { ...prev, is_completed: completed } : null);
+      }
+      setFeedbackMsg({
+        type: 'success',
+        text: completed ? 'Lección marcada como completada.' : 'Lección marcada como pendiente.'
+      });
+    } catch {
+      setFeedbackMsg({ type: 'error', text: 'No se pudo actualizar el estado de la lección.' });
+    }
+  };
+
+  const handleToggleModuleLessons = async (moduleId: string, completed: boolean) => {
+    try {
+      await dao.toggleModuleLessonsCompleted(moduleId, completed);
+      onRefresh();
+      setFeedbackMsg({
+        type: 'success',
+        text: completed ? 'Todas las lecciones del módulo marcadas como completadas.' : 'Todas las lecciones del módulo marcadas como pendientes.'
+      });
+    } catch {
+      setFeedbackMsg({ type: 'error', text: 'No se pudo actualizar el módulo.' });
+    }
+  };
 
   useEffect(() => {
     if (!newLessonModuleId && course.modules?.[0]?.id) setNewLessonModuleId(course.modules[0].id);
@@ -276,6 +319,29 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
             <h2 className="type-micro">Plan de estudio</h2>
 
             {/* Crear módulo */}
+            {/* Buscador de lecciones del curso */}
+            <div className="space-y-1.5">
+              <SearchInput
+                label="Buscar lecciones"
+                placeholder="Buscar lección en este curso…"
+                value={lessonQuery}
+                onChange={setLessonQuery}
+                className="w-full"
+              />
+              {lessonQuery.trim() && (
+                <div className="flex items-center justify-between px-1 text-meta text-muted">
+                  <span>Coincidencias: <strong className="text-ink">{totalMatchingLessons}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => setLessonQuery('')}
+                    className="underline text-faint hover:text-ink"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center gap-1.5">
               <label htmlFor="new-module-title" className="sr-only">Título del nuevo módulo</label>
               <input
@@ -298,19 +364,48 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
               </button>
             </div>
 
-            {(course.modules || []).map((mod) => (
-              <div key={mod.id} className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <h4 className="text-meta font-semibold text-ink">{mod.title}</h4>
-                  <button
-                    onClick={() => handleDeleteModule(mod.id, mod.title)}
-                    className="p-0.5 text-faint transition-colors hover:text-error"
-                    title="Eliminar módulo"
-                    aria-label={`Eliminar módulo ${mod.title}`}
-                  >
-                    <Trash2 size={12} aria-hidden="true" />
-                  </button>
-                </div>
+            {filteredModules.length === 0 ? (
+              <p className="type-meta px-1 text-muted">
+                {course.modules?.length === 0 ? 'Sin módulos.' : 'No hay lecciones que coincidan con la búsqueda.'}
+              </p>
+            ) : (
+              filteredModules.map((mod) => (
+                <div key={mod.id} className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h4 className="text-meta font-semibold text-ink truncate">{mod.title}</h4>
+                      {mod.lessons && mod.lessons.length > 0 && (
+                        <span className="text-micro font-medium text-muted">
+                          ({mod.lessons.filter(l => l.is_completed).length}/{mod.lessons.length})
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {mod.lessons && mod.lessons.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleModuleLessons(mod.id, !mod.lessons?.every(l => l.is_completed))}
+                          className="p-1 text-faint hover:text-accent text-micro transition-colors cursor-pointer"
+                          title={mod.lessons.every(l => l.is_completed) ? 'Marcar módulo como pendiente' : 'Marcar módulo como completado'}
+                          aria-label={`Marcar todas las lecciones del módulo ${mod.title} como ${mod.lessons.every(l => l.is_completed) ? 'pendientes' : 'completadas'}`}
+                        >
+                          {mod.lessons.every(l => l.is_completed) ? (
+                            <CheckCircle size={13} className="text-success" aria-hidden="true" />
+                          ) : (
+                            <Check size={13} aria-hidden="true" />
+                          )}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteModule(mod.id, mod.title)}
+                        className="p-1 text-faint transition-colors hover:text-error cursor-pointer"
+                        title="Eliminar módulo"
+                        aria-label={`Eliminar módulo ${mod.title}`}
+                      >
+                        <Trash2 size={12} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
                 <div className="space-y-1">
                   {mod.lessons?.map((les) => {
                     const isSelected = selectedLesson?.id === les.id;
@@ -327,11 +422,22 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                         )}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          {les.is_completed ? (
-                            <CheckCircle size={14} className="shrink-0 text-success" aria-hidden="true" />
-                          ) : (
-                            <Circle size={14} className="shrink-0 text-faint" aria-hidden="true" />
-                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleLessonCompletion(les.id, !les.is_completed);
+                            }}
+                            aria-label={les.is_completed ? `Marcar lección «${les.title}» como incompleta` : `Marcar lección «${les.title}» como completada`}
+                            title={les.is_completed ? 'Marcar como pendiente' : 'Marcar como completada'}
+                            className="p-0.5 -m-0.5 rounded text-faint hover:text-success transition-colors cursor-pointer"
+                          >
+                            {les.is_completed ? (
+                              <CheckCircle size={15} className="shrink-0 text-success" aria-hidden="true" />
+                            ) : (
+                              <Circle size={15} className="shrink-0 text-faint hover:text-success" aria-hidden="true" />
+                            )}
+                          </button>
                           <span className="truncate">{les.title}</span>
                         </span>
                         <span className="ml-2 flex shrink-0 items-center gap-1">
@@ -375,7 +481,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                   })}
                 </div>
               </div>
-            ))}
+            )))}
 
             {/* Crear lección */}
             {(course.modules || []).length > 0 && (

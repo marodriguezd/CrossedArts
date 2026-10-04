@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
+import { filterFlashcardsByOrigin } from '../src/services/domainLogic.ts';
+import type { Flashcard } from '../src/types/models.ts';
 
 test('3.1 SM-2: Grade 5 increases repetition count, calculates proper interval, and raises ease factor', async () => {
   await dbBridge.init();
@@ -72,4 +74,37 @@ test('3.3 SM-2: Ease factor never drops below minimum threshold of 1.30', async 
   const cards = await dao.getFlashcards();
   const card = cards.find(c => c.id === testCardId);
   assert.strictEqual(card?.ease_factor, 1.3, 'Ease factor must be clamped at exactly 1.30 minimum');
+});
+
+test('3.4 Flashcard Deck Origin Filtering: Filters cards by course, book or general origin accurately', () => {
+  const kindMap = new Map<string, 'course' | 'book' | 'learning_resource'>([
+    ['res-course-1', 'course'],
+    ['res-book-1', 'book'],
+    ['res-doc-1', 'learning_resource']
+  ]);
+
+  const mockCards: Flashcard[] = [
+    { id: 'fc1', resource_id: 'res-course-1', front: 'Q1', back: 'A1', repetition_count: 0, interval_days: 1, ease_factor: 2.5, due_date: '2026-10-04' },
+    { id: 'fc2', resource_id: 'res-book-1', front: 'Q2', back: 'A2', repetition_count: 0, interval_days: 1, ease_factor: 2.5, due_date: '2026-10-04' },
+    { id: 'fc3', resource_id: 'res-doc-1', front: 'Q3', back: 'A3', repetition_count: 0, interval_days: 1, ease_factor: 2.5, due_date: '2026-10-04' },
+    { id: 'fc4', front: 'Q4', back: 'A4', repetition_count: 0, interval_days: 1, ease_factor: 2.5, due_date: '2026-10-04' }
+  ];
+
+  // 'all' -> todas
+  assert.strictEqual(filterFlashcardsByOrigin(mockCards, 'all', kindMap).length, 4);
+
+  // 'course' -> solo fc1
+  const courseCards = filterFlashcardsByOrigin(mockCards, 'course', kindMap);
+  assert.strictEqual(courseCards.length, 1);
+  assert.strictEqual(courseCards[0].id, 'fc1');
+
+  // 'book' -> solo fc2
+  const bookCards = filterFlashcardsByOrigin(mockCards, 'book', kindMap);
+  assert.strictEqual(bookCards.length, 1);
+  assert.strictEqual(bookCards[0].id, 'fc2');
+
+  // 'general' -> fc3 (learning_resource) y fc4 (sin resource_id)
+  const generalCards = filterFlashcardsByOrigin(mockCards, 'general', kindMap);
+  assert.strictEqual(generalCards.length, 2);
+  assert.deepStrictEqual(generalCards.map(c => c.id), ['fc3', 'fc4']);
 });

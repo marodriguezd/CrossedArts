@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { generateJsonBackup, importJsonBackup, getDatabaseTables } from '../src/db/exportImport.ts';
+import { exportNoteToMarkdown, exportNotesToSingleMarkdown } from '../src/services/domainLogic.ts';
 
 test('4.1 SQLite binary export produces valid SQLite format 3 byte stream', async () => {
   await dbBridge.init();
@@ -172,5 +173,45 @@ test('4.10 JSON backup roundtrip handles stringified JSON and rejects malformed 
     },
     /no tiene un formato válido/
   );
+});
+
+test('4.11 Markdown Note Export: Converts single note and batch notes to portable Markdown files', () => {
+  const sampleNote = {
+    id: 'note-test-1',
+    title: 'Patrones Arquitectónicos',
+    content: '## Microkernels\n\nEl núcleo proporciona servicios mínimos.',
+    tags: 'arquitectura,software',
+    created_at: '2026-10-04T10:00:00Z',
+    updated_at: '2026-10-04T10:00:00Z'
+  };
+
+  const mdSingle = exportNoteToMarkdown(sampleNote, {
+    resourceTitle: 'Curso de Sistemas',
+    lessonTitle: 'Lección 1: Microkernel'
+  });
+
+  assert.ok(mdSingle.startsWith('---'), 'Should start with YAML frontmatter delimiter');
+  assert.ok(mdSingle.includes('title: "Patrones Arquitectónicos"'));
+  assert.ok(mdSingle.includes('resource: "Curso de Sistemas"'));
+  assert.ok(mdSingle.includes('lesson: "Lección 1: Microkernel"'));
+  assert.ok(mdSingle.includes('# Patrones Arquitectónicos'));
+  assert.ok(mdSingle.includes('El núcleo proporciona servicios mínimos.'));
+  assert.ok(mdSingle.includes('CrossedArts Learning OS'));
+
+  const secondNote = {
+    id: 'note-test-2',
+    title: 'Bases de Datos SQLite',
+    content: 'Persistencia en navegador mediante WASM.',
+    tags: 'database,wasm',
+    created_at: '2026-10-04T11:00:00Z',
+    updated_at: '2026-10-04T11:00:00Z'
+  };
+
+  const mdBatch = exportNotesToSingleMarkdown([sampleNote, secondNote]);
+  assert.ok(mdBatch.includes('# Cuaderno de Estudio — CrossedArts'));
+  assert.ok(mdBatch.includes('Colección de 2 notas'));
+  assert.ok(mdBatch.includes('## 1. Patrones Arquitectónicos'));
+  assert.ok(mdBatch.includes('## 2. Bases de Datos SQLite'));
+  assert.ok(mdBatch.includes('Persistencia en navegador mediante WASM.'));
 });
 

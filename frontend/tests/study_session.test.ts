@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
 import { initialStudySessionState, studySessionReducer } from '../src/services/studySession.ts';
-import { buildMixedStudyPlan, summarizeStudySession, formatNextReviewInterval } from '../src/services/domainLogic.ts';
+import {
+  buildMixedStudyPlan,
+  summarizeStudySession,
+  formatNextReviewInterval,
+  resolveShortcutOptionIndex
+} from '../src/services/domainLogic.ts';
 import { aiService } from '../src/ai/aiService.ts';
 
 async function removeSession(id: string): Promise<void> {
@@ -389,3 +394,30 @@ test('13.15 Study history preserves the lesson scope and exposes it to the Dashb
   db.run('DELETE FROM learning_resource WHERE id = ?', [courseId]);
   await dbBridge.persist();
 });
+
+test('13.16 Study session keyboard shortcut resolution: numbers, letters and bounds', () => {
+  // Pruebas para teclas numéricas (1..N)
+  assert.equal(resolveShortcutOptionIndex('1', 4), 0);
+  assert.equal(resolveShortcutOptionIndex('2', 4), 1);
+  assert.equal(resolveShortcutOptionIndex('3', 4), 2);
+  assert.equal(resolveShortcutOptionIndex('4', 4), 3);
+  assert.equal(resolveShortcutOptionIndex('5', 4), null, 'Índice fuera de rango debe retornar null');
+  assert.equal(resolveShortcutOptionIndex('0', 4), null, 'Índice 0 no es una opción válida (1-based)');
+
+  // Pruebas para letras (A..D tanto mayúsculas como minúsculas)
+  assert.equal(resolveShortcutOptionIndex('a', 4), 0);
+  assert.equal(resolveShortcutOptionIndex('A', 4), 0);
+  assert.equal(resolveShortcutOptionIndex('b', 4), 1);
+  assert.equal(resolveShortcutOptionIndex('B', 4), 1);
+  assert.equal(resolveShortcutOptionIndex('c', 4), 2);
+  assert.equal(resolveShortcutOptionIndex('C', 4), 2);
+  assert.equal(resolveShortcutOptionIndex('d', 4), 3);
+  assert.equal(resolveShortcutOptionIndex('D', 4), 3);
+  assert.equal(resolveShortcutOptionIndex('e', 4), null, 'Opción E fuera de límite de 4');
+
+  // Teclas no válidas
+  assert.equal(resolveShortcutOptionIndex('Enter', 4), null);
+  assert.equal(resolveShortcutOptionIndex(' ', 4), null);
+  assert.equal(resolveShortcutOptionIndex('', 4), null);
+});
+

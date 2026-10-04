@@ -15,7 +15,10 @@ import {
   Layers,
   ListChecks,
   Shuffle,
-  CalendarClock
+  CalendarClock,
+  Filter,
+  GraduationCap,
+  BookOpen
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import confetti from 'canvas-confetti';
@@ -27,9 +30,11 @@ import { initialStudySessionState, studySessionReducer } from '../services/study
 import {
   buildMixedStudyPlan,
   formatNextReviewInterval,
-  summarizeStudySession
+  summarizeStudySession,
+  resolveShortcutOptionIndex,
+  filterFlashcardsByOrigin
 } from '../services/domainLogic.ts';
-import { Button, InlineStatus, ProgressBar, cn } from '../components/ui/index.tsx';
+import { Button, InlineStatus, ProgressBar, Kbd, Chip, cn } from '../components/ui/index.tsx';
 
 interface ReviewCenterProps {
   flashcards: Flashcard[];
@@ -86,6 +91,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
   const [lessonOptions, setLessonOptions] = useState<Array<{ id: string; title: string; courseTitle: string }>>([]);
   const [selectedResourceId, setSelectedResourceId] = useState<string>('');
   const [selectedLessonId, setSelectedLessonId] = useState<string>('');
+  const [originFilter, setOriginFilter] = useState<'all' | 'course' | 'book' | 'general'>('all');
   const [mode, setMode] = useState<StudySessionMode>('flashcards');
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState<number>(3);
@@ -133,14 +139,26 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
     if (initialMode) setMode(initialMode);
   }, [initialResourceId, initialLessonId, initialMode]);
 
+  const resourceKindMap = useMemo(() => {
+    const map = new Map<string, 'course' | 'book' | 'learning_resource'>();
+    for (const r of resources) {
+      map.set(r.id, r.type);
+    }
+    return map;
+  }, [resources]);
+
+  const filteredFlashcards = useMemo(() => {
+    return filterFlashcardsByOrigin(flashcards, originFilter, resourceKindMap);
+  }, [flashcards, originFilter, resourceKindMap]);
+
   const selectedResource = useMemo(
     () => resources.find(r => r.id === selectedResourceId) || null,
     [resources, selectedResourceId]
   );
 
   const dueCount = useMemo(
-    () => flashcards.filter(f => isDue(f.due_date) && (!selectedResourceId || f.resource_id === selectedResourceId)).length,
-    [flashcards, selectedResourceId]
+    () => filteredFlashcards.filter(f => isDue(f.due_date) && (!selectedResourceId || f.resource_id === selectedResourceId)).length,
+    [filteredFlashcards, selectedResourceId]
   );
 
   const currentItem = items[itemIndex];
@@ -167,7 +185,8 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       let questions: GeneratedQuestion[] = [];
 
       if (sessionMode === 'flashcards' || sessionMode === 'mixed') {
-        dueCards = await dao.getDueFlashcards(resourceId);
+        const rawDue = await dao.getDueFlashcards(resourceId);
+        dueCards = filterFlashcardsByOrigin(rawDue, originFilter, resourceKindMap);
       }
 
       if (sessionMode === 'practice' || sessionMode === 'mixed') {
@@ -287,7 +306,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
     }
   }, [itemIndex, items.length, state.sessionId, onRefresh]);
 
-  const handleGrade = async (grade: number) => {
+  const handleGrade = useCallback(async (grade: number) => {
     if (!currentCard || !state.sessionId) return;
     setActionError(null);
     try {
@@ -305,9 +324,9 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
     } catch (err: any) {
       setActionError(err?.message || 'No se pudo guardar el repaso SM-2 en el almacenamiento local.');
     }
-  };
+  }, [currentCard, state.sessionId]);
 
-  const handleSubmitAnswer = async () => {
+  const handleSubmitAnswer = useCallback(async () => {
     if (selectedOption === null || !currentQuestion) return;
     setIsAnswerSubmitted(true);
     const correct = selectedOption === currentQuestion.correctIndex;
@@ -318,7 +337,96 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         setActionError('No se pudo registrar la respuesta en el historial local de la sesión.');
       }
     }
-  };
+  }, [selectedOption, currentQuestion, state.sessionId]);
+
+  useEffect(() => {
+    if (state.phase !== 'active' || isPreparing || isFlashcardModalOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorar si el foco está en un campo de texto interactivo
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable) {
+          return;
+        }
+      }
+
+      // Atajos de flashcards
+      if (currentCard) {
+        if (gradeFeedback) {
+          if (e.code === 'Space' || e.key === 'Enter') {
+            e.preventDefault();
+            advance();
+          }
+          return;
+        }
+
+        if (!showAnswer) {
+          if (e.code === 'Space' || e.key === 'Enter') {
+            e.preventDefault();
+            setShowAnswer(true);
+          }
+          return;
+        }
+
+        if (showAnswer) {
+          const keyNum = e.key >= '0' && e.key <= '5' ? parseInt(e.key, 10) : null;
+          if (keyNum !== null) {
+            e.preventDefault();
+            handleGrade(keyNum);
+            return;
+          }
+          if (e.code === 'Space') {
+            e.preventDefault();
+            setShowAnswer(false);
+            return;
+          }
+        }
+      }
+
+      // Atajos de preguntas de práctica
+      if (currentQuestion) {
+        if (!isAnswerSubmitted) {
+          const optIdx = resolveShortcutOptionIndex(e.key, currentQuestion.options.length);
+          if (optIdx !== null) {
+            e.preventDefault();
+            setSelectedOption(optIdx);
+            return;
+          }
+          // Enter para comprobar respuesta si hay opción elegida
+          if (e.key === 'Enter' && selectedOption !== null) {
+            e.preventDefault();
+            handleSubmitAnswer();
+            return;
+          }
+        } else {
+          // Ya comprobada: Enter o Espacio para avanzar
+          if (e.key === 'Enter' || e.code === 'Space') {
+            e.preventDefault();
+            advance();
+            return;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    state.phase,
+    isPreparing,
+    isFlashcardModalOpen,
+    currentCard,
+    currentQuestion,
+    showAnswer,
+    gradeFeedback,
+    isAnswerSubmitted,
+    selectedOption,
+    advance,
+    handleGrade,
+    handleSubmitAnswer
+  ]);
 
   const handleCancel = async () => {
     if (!state.sessionId) {
@@ -445,9 +553,42 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
             </div>
           </div>
 
+          {/* Filtro por origen de tarjeta */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="type-micro flex items-center gap-1.5">
+                <Filter size={12} className="text-accent" aria-hidden="true" />
+                Origen del mazo ({dueCount} pendientes)
+              </span>
+              {originFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setOriginFilter('all')}
+                  className="text-meta text-muted underline hover:text-ink"
+                >
+                  Restablecer
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por origen">
+              <Chip active={originFilter === 'all'} onClick={() => setOriginFilter('all')}>
+                Todo ({flashcards.filter(f => isDue(f.due_date)).length})
+              </Chip>
+              <Chip active={originFilter === 'course'} onClick={() => setOriginFilter('course')}>
+                <GraduationCap size={13} aria-hidden="true" className="mr-1 inline" /> Cursos
+              </Chip>
+              <Chip active={originFilter === 'book'} onClick={() => setOriginFilter('book')}>
+                <BookOpen size={13} aria-hidden="true" className="mr-1 inline" /> Libros
+              </Chip>
+              <Chip active={originFilter === 'general'} onClick={() => setOriginFilter('general')}>
+                General
+              </Chip>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-meta font-medium text-muted" htmlFor="study-resource">Recurso (opcional)</label>
+              <label className="mb-1 block text-meta font-medium text-muted" htmlFor="study-resource">Recurso específico (opcional)</label>
               <select
                 id="study-resource"
                 value={selectedResourceId}
@@ -608,7 +749,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                     ) : (
                       <div className="pt-8 text-center">
                         <span className="inline-flex items-center gap-1.5 text-meta text-faint">
-                          <Sparkles size={13} aria-hidden="true" /> Pulsa o presiona Enter para revelar la respuesta
+                          <Sparkles size={13} aria-hidden="true" /> Pulsa o presiona <Kbd>Espacio</Kbd> para revelar la respuesta
                         </span>
                       </div>
                     )}
@@ -620,8 +761,9 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                       <p className="text-secondary text-muted">
                         Próximo repaso: <strong className="text-success">{gradeFeedback.nextReview}</strong>
                       </p>
-                      <Button variant="solid" onClick={advance}>
+                      <Button variant="solid" onClick={advance} className="gap-2">
                         {itemIndex + 1 < items.length ? 'Siguiente ítem' : 'Ver resumen'} <ArrowRight size={14} aria-hidden="true" />
+                        <Kbd className="border-current/25 bg-black/10 text-inherit">Espacio</Kbd>
                       </Button>
                     </div>
                   ) : showAnswer && (
@@ -634,12 +776,15 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                             onClick={() => handleGrade(opt.grade)}
                             aria-label={`Calificar como ${opt.label}. ${opt.hint}`}
                             className={cn(
-                              'rounded-xl border p-3 text-meta font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
+                              'flex flex-col justify-between rounded-xl border p-3 text-meta font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
                               opt.tone
                             )}
                           >
-                            {opt.label}
-                            <span className="mt-0.5 block text-micro font-normal opacity-80">{opt.hint}</span>
+                            <div className="flex w-full items-center justify-between gap-1">
+                              <span>{opt.label}</span>
+                              <Kbd className="border-current/30 bg-transparent text-current opacity-80">{opt.grade}</Kbd>
+                            </div>
+                            <span className="mt-0.5 block text-left text-micro font-normal opacity-80">{opt.hint}</span>
                           </button>
                         ))}
                       </div>
@@ -659,6 +804,36 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                   isLast={itemIndex + 1 >= items.length}
                 />
               )}
+
+              {/* Barra de atajos de teclado contextual */}
+              <div
+                className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-line bg-surface/70 px-4 py-2.5 text-meta text-muted shadow-sm backdrop-blur"
+                aria-label="Guía de atajos de teclado"
+              >
+                <span className="flex items-center gap-1.5 font-medium text-ink">
+                  <Sparkles size={13} className="text-accent" aria-hidden="true" /> Atajos activos:
+                </span>
+                <div className="flex flex-wrap items-center gap-3">
+                  {currentCard && !showAnswer && !gradeFeedback && (
+                    <span><Kbd>Espacio</Kbd> o <Kbd>Enter</Kbd> Revelar respuesta</span>
+                  )}
+                  {currentCard && showAnswer && !gradeFeedback && (
+                    <span><Kbd>0</Kbd> al <Kbd>5</Kbd> Calificar SM-2</span>
+                  )}
+                  {currentCard && gradeFeedback && (
+                    <span><Kbd>Espacio</Kbd> o <Kbd>Enter</Kbd> Siguiente tarjeta</span>
+                  )}
+                  {currentQuestion && !isAnswerSubmitted && (
+                    <>
+                      <span><Kbd>1</Kbd>-<Kbd>{currentQuestion.options.length}</Kbd> o <Kbd>A</Kbd>-<Kbd>{String.fromCharCode(64 + currentQuestion.options.length)}</Kbd> Seleccionar</span>
+                      <span><Kbd>Enter</Kbd> Comprobar</span>
+                    </>
+                  )}
+                  {currentQuestion && isAnswerSubmitted && (
+                    <span><Kbd>Enter</Kbd> o <Kbd>Espacio</Kbd> Siguiente pregunta</span>
+                  )}
+                </div>
+              </div>
             </>
           ) : (
             <div className="space-y-4 rounded-xl border border-line bg-surface p-8 text-center shadow-card">

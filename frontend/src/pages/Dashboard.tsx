@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { KPIMetrics, Course, Book, LearningSession } from '../types/models.ts';
+import { KPIMetrics, Course, Book, LearningSession, TimeRangeFilter, DailyActivityPoint } from '../types/models.ts';
 import {
   GraduationCap,
   BookOpen,
@@ -11,9 +11,14 @@ import {
   Library,
   Flame,
   History,
+  BarChart3,
+  Calendar,
+  Clock,
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
-import { Button, ProgressBar, Panel, SectionHeading, EmptyState } from '../components/ui/index.tsx';
+import { resolveLocalDay } from '../services/localDate.ts';
+import { getStoredPlaybackSeconds, formatPlaybackTime } from '../services/domainLogic.ts';
+import { Button, ProgressBar, Panel, SectionHeading, EmptyState, Chip, Badge, cn } from '../components/ui/index.tsx';
 
 interface DashboardProps {
   kpis: KPIMetrics | null;
@@ -21,12 +26,16 @@ interface DashboardProps {
   books: Book[];
   recentSessions: LearningSession[];
   onSelectCourse: (id: string) => void;
+  onOpenLesson?: (lessonId: string) => void;
   onNavigate: (tab: string) => void;
 }
 
 interface ContinueTarget {
   course: Course;
+  lessonId?: string;
   lessonTitle: string;
+  moduleTitle?: string;
+  savedSeconds?: number | null;
 }
 
 /**
@@ -41,12 +50,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   books,
   recentSessions,
   onSelectCourse,
+  onOpenLesson,
   onNavigate,
 }) => {
   const today = kpis?.today;
   const [continueTarget, setContinueTarget] = useState<ContinueTarget | null>(null);
 
-  // Continuación determinista: primer curso incompleto + próxima lección real.
+  // Continuación determinista: primer curso incompleto + próxima lección real con memoria de reproducción.
   useEffect(() => {
     let cancelled = false;
     const target = courses.find((c) => (c.completed_lessons || 0) < (c.total_lessons || 0)) || courses[0];
@@ -58,7 +68,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
       .getNextLessonForCourse(target.id)
       .then((next) => {
         if (cancelled) return;
-        setContinueTarget({ course: target, lessonTitle: next?.lesson?.title || '' });
+        const lessonId = next?.lesson?.id;
+        const savedSeconds = lessonId ? getStoredPlaybackSeconds(lessonId) : null;
+        setContinueTarget({
+          course: target,
+          lessonId,
+          lessonTitle: next?.lesson?.title || '',
+          moduleTitle: next?.moduleTitle || '',
+          savedSeconds
+        });
       })
       .catch(() => {
         if (!cancelled) setContinueTarget({ course: target, lessonTitle: '' });
@@ -67,6 +85,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
       cancelled = true;
     };
   }, [courses]);
+
+  // Estado del gráfico de actividad diaria y rango temporal
+  const [timeRange, setTimeRange] = useState<TimeRangeFilter>('7d');
+  const [chartMetric, setChartMetric] = useState<'minutes' | 'reviews'>('minutes');
+  const [activityPoints, setActivityPoints] = useState<DailyActivityPoint[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingActivity(true);
+    dao
+      .getDailyActivitySeries(timeRange)
+      .then((points) => {
+        if (!cancelled) setActivityPoints(points);
+      })
+      .catch((err) => console.warn('Error al cargar serie de actividad diaria:', err))
+      .finally(() => {
+        if (!cancelled) setLoadingActivity(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [timeRange, kpis]);
 
   const coursePct = (c: Course) =>
     c.total_lessons ? Math.round(((c.completed_lessons || 0) / c.total_lessons) * 100) : 0;
@@ -93,10 +134,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {continueTarget ? (
             <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <h2 className="type-title text-ink truncate">{continueTarget.course.title}</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="type-title text-ink truncate">{continueTarget.course.title}</h2>
+                  {continueTarget.savedSeconds && continueTarget.savedSeconds > 5 && (
+                    <Badge tone="accent">
+                      <Clock size={11} aria-hidden="true" />
+                      Minuto {formatPlaybackTime(continueTarget.savedSeconds)}
+                    </Badge>
+                  )}
+                </div>
                 <p className="type-secondary mt-1 truncate">
                   {continueTarget.lessonTitle
-                    ? `Próxima: ${continueTarget.lessonTitle}`
+                    ? `Próxima: ${continueTarget.lessonTitle}${continueTarget.moduleTitle ? ` (${continueTarget.moduleTitle})` : ''}`
                     : 'Curso completo — vuelve a repasar cuando quieras.'}
                 </p>
                 <div className="mt-3 flex items-center gap-3">
@@ -113,10 +162,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </span>
                 </div>
               </div>
-              <div className="flex shrink-0 gap-2">
-                <Button variant="solid" onClick={() => onSelectCourse(continueTarget.course.id)}>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <Button
+                  variant="solid"
+                  onClick={() => {
+                    if (continueTarget.lessonId && onOpenLesson) {
+                      onOpenLesson(continueTarget.lessonId);
+                    } else {
+                      onSelectCourse(continueTarget.course.id);
+                    }
+                  }}
+                  title={
+                    continueTarget.savedSeconds && continueTarget.savedSeconds > 5
+                      ? `Reanudar lección en el minuto ${formatPlaybackTime(continueTarget.savedSeconds)}`
+                      : 'Continuar lección directamente'
+                  }
+                >
                   <Play size={14} aria-hidden="true" />
-                  Continuar
+                  {continueTarget.savedSeconds && continueTarget.savedSeconds > 5 ? 'Reanudar lección' : 'Continuar lección'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => onSelectCourse(continueTarget.course.id)}
+                  title="Ver temario del curso"
+                >
+                  Ver curso
                 </Button>
               </div>
             </div>
@@ -182,6 +252,130 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="mt-1 text-xl font-semibold text-ink">{kpis?.active_streak_days ?? 0} días</p>
         </div>
       </div>
+
+      {/* --- Gráfico de actividad diaria interactivo con selector de rango y métrica --- */}
+      <Panel className="p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <BarChart3 size={16} className="text-accent" aria-hidden="true" />
+              <h2 className="type-title text-ink">Historial de estudio</h2>
+            </div>
+            <p className="type-secondary mt-1">
+              Registro diario de constancia: {chartMetric === 'minutes' ? 'minutos dedicados' : 'ítems repasados'}.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Selector de métrica */}
+            <div className="flex items-center gap-1 rounded-lg border border-line bg-canvas p-0.5" role="group" aria-label="Métrica a visualizar">
+              <button
+                type="button"
+                onClick={() => setChartMetric('minutes')}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-meta font-medium transition-colors',
+                  chartMetric === 'minutes' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
+                )}
+              >
+                Minutos
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartMetric('reviews')}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-meta font-medium transition-colors',
+                  chartMetric === 'reviews' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
+                )}
+              >
+                Repasos
+              </button>
+            </div>
+
+            {/* Selector de rango temporal */}
+            <div className="flex items-center gap-1" role="group" aria-label="Rango temporal">
+              {(['7d', '30d', 'all'] as const).map((r) => (
+                <Chip
+                  key={r}
+                  active={timeRange === r}
+                  onClick={() => setTimeRange(r)}
+                >
+                  {r === '7d' ? '7 días' : r === '30d' ? '30 días' : 'Histórico'}
+                </Chip>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Visualización de barras verticales CSS semánticas */}
+        <div className="mt-6">
+          {(() => {
+            const values = activityPoints.map((p) => (chartMetric === 'minutes' ? p.minutes : p.reviews));
+            const maxValue = Math.max(...values, chartMetric === 'minutes' ? 30 : 10);
+            const totalValue = values.reduce((sum, v) => sum + v, 0);
+
+            return (
+              <div>
+                <div className="mb-3 flex items-center justify-between text-meta text-muted">
+                  <span>
+                    Total en periodo: <strong className="text-ink">{totalValue} {chartMetric === 'minutes' ? 'minutos' : 'repasos'}</strong>
+                  </span>
+                  <span>Máximo diario: <strong className="text-ink">{Math.max(...values, 0)}</strong></span>
+                </div>
+
+                <div className="flex h-44 items-end gap-1 sm:gap-2 overflow-x-auto pb-6 pt-2">
+                  {activityPoints.map((point) => {
+                    const val = chartMetric === 'minutes' ? point.minutes : point.reviews;
+                    const heightPct = maxValue > 0 ? Math.min(100, Math.max(val > 0 ? 8 : 2, Math.round((val / maxValue) * 100))) : 2;
+                    const isToday = point.date === resolveLocalDay().day;
+
+                    return (
+                      <div
+                        key={point.date}
+                        className="group relative flex flex-1 flex-col items-center h-full justify-end min-w-[20px] max-w-[48px]"
+                      >
+                        {/* Tooltip accesible flotante */}
+                        <div
+                          className="pointer-events-none absolute bottom-full mb-2 hidden -translate-x-1/2 left-1/2 whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 text-micro shadow-overlay group-hover:block group-focus-within:block z-20"
+                          role="tooltip"
+                        >
+                          <p className="font-semibold text-ink">{point.label} ({point.date})</p>
+                          <p className="text-accent">{point.minutes} min de estudio</p>
+                          <p className="text-muted">{point.reviews} ítems repasados</p>
+                        </div>
+
+                        {/* Barra vertical */}
+                        <button
+                          type="button"
+                          tabIndex={0}
+                          aria-label={`${point.label}: ${val} ${chartMetric === 'minutes' ? 'minutos' : 'repasos'}`}
+                          className={cn(
+                            'w-full rounded-t-md transition-all duration-fast focus:outline-none focus:ring-2 focus:ring-accent',
+                            val > 0
+                              ? 'bg-accent hover:opacity-90 group-hover:brightness-110'
+                              : 'bg-line/40 hover:bg-line/70'
+                          )}
+                          style={{ height: `${heightPct}%` }}
+                        />
+
+                        {/* Etiqueta de fecha inferior */}
+                        <span
+                          className={cn(
+                            'absolute top-full mt-1.5 truncate text-[10px] font-mono select-none',
+                            activityPoints.length > 14 ? 'hidden sm:block text-[9px]' : 'block',
+                            val > 0 ? 'text-ink font-semibold' : 'text-faint'
+                          )}
+                        >
+                          {point.label.split(' ')[0]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </Panel>
 
       {/* --- Cursos + actividad --- */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -264,9 +458,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </p>
                       {/* El ámbito de lección solo se muestra cuando existe realmente. */}
                       {session.lesson_id && (
-                        <p className="type-meta truncate text-accent">
-                          Lección: {session.lesson_title || session.lesson_id}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="type-meta truncate text-accent">
+                            Lección: {session.lesson_title || session.lesson_id}
+                          </p>
+                          {onOpenLesson && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenLesson(session.lesson_id!)}
+                              className="inline-flex items-center gap-0.5 text-micro font-medium text-accent hover:underline cursor-pointer"
+                              title="Abrir esta lección"
+                            >
+                              <Play size={9} aria-hidden="true" /> Reanudar
+                            </button>
+                          )}
+                        </div>
                       )}
                       <p className="type-meta mt-0.5">
                         {session.cards_reviewed} tarjetas · {session.questions_answered} preguntas

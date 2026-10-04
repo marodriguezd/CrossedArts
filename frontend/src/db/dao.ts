@@ -1,6 +1,6 @@
 import { dbBridge } from './sqliteBridge.ts';
-import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, Module, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState } from '../types/models.ts';
-import { calculateBookProgress, calculateSM2, validateKnowledgeConnection } from '../services/domainLogic.ts';
+import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, Module, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter } from '../types/models.ts';
+import { calculateBookProgress, calculateSM2, validateKnowledgeConnection, generateDailyActivitySeries } from '../services/domainLogic.ts';
 import { resolveLocalDay, computeActiveStreak } from '../services/localDate.ts';
 import type { SM2Result } from '../services/domainLogic.ts';
 
@@ -77,6 +77,37 @@ export const dao = {
       questions_answered: questions,
       correct_answers: Number(row[2]) || 0
     };
+  },
+
+  /**
+   * Obtiene la serie temporal agregada por día calendario local para gráficos de actividad.
+   */
+  async getDailyActivitySeries(range: TimeRangeFilter = '7d'): Promise<DailyActivityPoint[]> {
+    const db = dbBridge.getDatabase();
+    const { day: todayStr, utcOffsetModifier } = resolveLocalDay();
+
+    const res = db.exec(`
+      SELECT date(started_at, ?) AS study_day,
+             COALESCE(SUM(duration_minutes), 0) AS total_minutes,
+             COALESCE(SUM(cards_reviewed + questions_answered), 0) AS total_reviews
+      FROM learning_session
+      WHERE (cards_reviewed + questions_answered) > 0 OR duration_minutes > 0
+      GROUP BY study_day
+      ORDER BY study_day ASC
+    `, [utcOffsetModifier]);
+
+    const history: Array<{ date: string; minutes: number; reviews: number }> = [];
+    if (res.length && res[0].values.length) {
+      for (const row of res[0].values) {
+        history.push({
+          date: String(row[0]),
+          minutes: Number(row[1]) || 0,
+          reviews: Number(row[2]) || 0
+        });
+      }
+    }
+
+    return generateDailyActivitySeries(history, range, todayStr);
   },
 
   async getRecentStudySessions(limit: number = 5): Promise<LearningSession[]> {
@@ -387,6 +418,19 @@ export const dao = {
     const courseRes = db.exec('SELECT m.course_id FROM lesson l JOIN module m ON l.module_id = m.id WHERE l.id = ?', [lessonId]);
     if (courseRes.length && courseRes[0].values.length) {
       await this.recalculateCourseTotals(String(courseRes[0].values[0][0]));
+    }
+    await dbBridge.persist();
+  },
+
+  async toggleModuleLessonsCompleted(moduleId: string, completed: boolean): Promise<void> {
+    const db = dbBridge.getDatabase();
+    db.run(
+      'UPDATE lesson SET is_completed = ? WHERE module_id = ?',
+      [completed ? 1 : 0, moduleId]
+    );
+    const modRes = db.exec('SELECT course_id FROM module WHERE id = ?', [moduleId]);
+    if (modRes.length && modRes[0].values.length) {
+      await this.recalculateCourseTotals(String(modRes[0].values[0][0]));
     }
     await dbBridge.persist();
   },
@@ -1187,6 +1231,13 @@ export const dao = {
       ]
     );
     await dbBridge.persist();
+  },
+
+  async deleteNote(id: string): Promise<boolean> {
+    const db = dbBridge.getDatabase();
+    db.run('DELETE FROM note WHERE id = ?', [id]);
+    await dbBridge.persist();
+    return true;
   },
 
   async getNotesForResource(resourceId: string, lessonId?: string): Promise<Note[]> {

@@ -335,3 +335,24 @@ export const MetadataRow: React.FC<MetadataRowProps> = ({ label, children, class
     <dd className="text-right text-muted font-medium">{children}</dd>
   </div>
 );
+
+/* -------------------------------------------------------------------------- */
+/* Kbd (Atajo de teclado visual)                                              */
+/* -------------------------------------------------------------------------- */
+
+interface KbdProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export const Kbd: React.FC<KbdProps> = ({ children, className }) => (
+  <kbd
+    className={cn(
+      'inline-flex items-center justify-center rounded border border-line-strong bg-canvas px-1.5 py-0.5 font-mono text-micro font-semibold text-muted shadow-sm',
+      className
+    )}
+  >
+    {children}
+  </kbd>
+);
+

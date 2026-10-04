@@ -267,6 +267,16 @@ export type ResourceDestination =
   | { tab: 'concept'; conceptId: string }
   | { tab: 'library' };
 
+export type TimeRangeFilter = '7d' | '30d' | 'all';
+
+/** Punto diario de actividad para gráficos deterministas sin bibliotecas externas. */
+export interface DailyActivityPoint {
+  date: string;       // YYYY-MM-DD local
+  label: string;      // ej. 'Lun 04', '04 Oct'
+  minutes: number;    // Minutos de estudio
+  reviews: number;    // Ítems repasados (tarjetas + preguntas)
+}
+
 export interface KPIMetrics {
   total_resources: number;
   completed_resources: number;

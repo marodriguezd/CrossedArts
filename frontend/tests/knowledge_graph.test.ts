@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
-import { normalizeGraphRelation, validateKnowledgeConnection } from '../src/services/domainLogic.ts';
+import {
+  normalizeGraphRelation,
+  validateKnowledgeConnection,
+  searchGraphNodes,
+  exportCanvasAsImage
+} from '../src/services/domainLogic.ts';
 import { SCHEMA_SQL } from '../src/db/schema.ts';
 
 async function cleanupCourse(courseId: string): Promise<void> {
@@ -270,3 +275,32 @@ test('14.14 Legacy databases keep their knowledge_connection rows after migratio
     await dbBridge.importDatabase(originalBytes);
   }
 });
+
+test('14.15 searchGraphNodes matches by name and description and exportCanvasAsImage handles edge cases', () => {
+  const nodes = [
+    { id: '1', name: 'React Hooks', description: 'Manejo de estado en componentes' },
+    { id: '2', name: 'TypeScript Tipado', description: 'Seguridad en tiempo de compilación' },
+    { id: '3', name: 'Redux Toolkit', description: 'Store global para react' }
+  ];
+
+  // Búsqueda por nombre
+  const r1 = searchGraphNodes(nodes, 'hooks');
+  assert.equal(r1.length, 1);
+  assert.equal(r1[0].id, '1');
+
+  // Búsqueda por descripción
+  const r2 = searchGraphNodes(nodes, 'compilación');
+  assert.equal(r2.length, 1);
+  assert.equal(r2[0].id, '2');
+
+  // Búsqueda múltiple
+  const r3 = searchGraphNodes(nodes, 'react');
+  assert.equal(r3.length, 2);
+
+  // Búsqueda vacía
+  assert.equal(searchGraphNodes(nodes, '').length, 0);
+
+  // exportCanvasAsImage en entorno sin DOM o con canvas nulo
+  assert.equal(exportCanvasAsImage(null as any), false);
+});
+

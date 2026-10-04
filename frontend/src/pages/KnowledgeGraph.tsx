@@ -16,11 +16,21 @@ import {
   Layers,
   Lightbulb,
   Link2,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Search
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { dbBridge, type DbInitFailure } from '../db/sqliteBridge.ts';
-import { GRAPH_NODE_LABELS, GRAPH_RELATION_LABELS, GRAPH_RELATION_TYPES, resolveGraphNodeDestination, describeDestructiveAction } from '../services/domainLogic.ts';
+import {
+  GRAPH_NODE_LABELS,
+  GRAPH_RELATION_LABELS,
+  GRAPH_RELATION_TYPES,
+  resolveGraphNodeDestination,
+  describeDestructiveAction,
+  searchGraphNodes,
+  exportCanvasAsImage
+} from '../services/domainLogic.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { Button, Chip, cn } from '../components/ui/index.tsx';
 
@@ -203,6 +213,8 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isSavingConnection, setIsSavingConnection] = useState(false);
   const [pendingDeleteEdge, setPendingDeleteEdge] = useState<{ id: string; label: string } | null>(null);
+  const [nodeSearchQuery, setNodeSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() =>
     typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
   );
@@ -442,6 +454,41 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     };
   });
 
+  const searchResults = useMemo(
+    () => searchGraphNodes(graphData.nodes, nodeSearchQuery, 8),
+    [graphData.nodes, nodeSearchQuery]
+  );
+
+  const handleSelectSearchResult = (node: ConceptNode) => {
+    setSelectedNodeId(node.id);
+    setNodeSearchQuery('');
+    setIsSearchOpen(false);
+
+    const type = (node.node_type || 'resource') as GraphNodeType;
+    if (!activeTypes.has(type)) {
+      setActiveTypes(prev => new Set([...prev, type]));
+    }
+
+    if (networkRef.current) {
+      networkRef.current.selectNodes([node.id]);
+      networkRef.current.focus(node.id, {
+        scale: 1.25,
+        animation: {
+          duration: 700,
+          easingFunction: 'easeInOutQuad'
+        }
+      });
+    }
+  };
+
+  const handleExportPng = () => {
+    if (!containerRef.current) return;
+    const canvas = containerRef.current.querySelector('canvas');
+    if (!canvas) return;
+    const bgColor = theme === 'dark' ? '#1C1917' : '#FAF7F2';
+    exportCanvasAsImage(canvas, bgColor, `crossedarts-grafo-${new Date().toISOString().slice(0, 10)}.png`);
+  };
+
   const SelectedIcon = selectedNode ? NODE_ICONS[(selectedNode.node_type || 'resource')] : Share2;
   const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-body text-ink focus:border-accent/50 focus:outline-none';
 
@@ -456,32 +503,89 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             notas, conceptos y recursos con relaciones explícitas guardadas en SQLite.
           </p>
         </div>
-        <Button
-          variant="outline"
-          className="self-start"
-          onClick={() => { setConnectionError(null); setIsConnectionDialogOpen(true); }}
-        >
-          <Plus size={15} aria-hidden="true" /> Añadir conexión
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Button
+            variant="outline"
+            onClick={handleExportPng}
+            disabled={graphData.nodes.length === 0}
+            title="Exportar imagen del grafo actual en formato PNG de alta resolución"
+          >
+            <Download size={14} aria-hidden="true" /> Exportar PNG
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => { setConnectionError(null); setIsConnectionDialogOpen(true); }}
+          >
+            <Plus size={15} aria-hidden="true" /> Añadir conexión
+          </Button>
+        </div>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtros de nodos del grafo">
-        <Chip
-          active={activeTypes.size === FILTER_ORDER.length}
-          onClick={() => setActiveTypes(new Set(FILTER_ORDER))}
-        >
-          Todos
-        </Chip>
-        {FILTER_ORDER.map(type => {
-          const Icon = NODE_ICONS[type];
-          const active = activeTypes.has(type);
-          return (
-            <Chip key={type} active={active} onClick={() => toggleType(type)}>
-              <Icon size={13} aria-hidden="true" /> {GRAPH_NODE_LABELS[type]}
-            </Chip>
-          );
-        })}
+      {/* Barra de filtros y buscador interactivo de nodos */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Filtros por tipo de nodo */}
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtros de nodos del grafo">
+          <Chip
+            active={activeTypes.size === FILTER_ORDER.length}
+            onClick={() => setActiveTypes(new Set(FILTER_ORDER))}
+          >
+            Todos
+          </Chip>
+          {FILTER_ORDER.map(type => {
+            const Icon = NODE_ICONS[type];
+            const active = activeTypes.has(type);
+            return (
+              <Chip key={type} active={active} onClick={() => toggleType(type)}>
+                <Icon size={13} aria-hidden="true" /> {GRAPH_NODE_LABELS[type]}
+              </Chip>
+            );
+          })}
+        </div>
+
+        {/* Buscador de nodos con centrado animado */}
+        <div className="relative w-full sm:w-72 shrink-0">
+          <div className="relative">
+            <input
+              type="search"
+              value={nodeSearchQuery}
+              onChange={e => {
+                setNodeSearchQuery(e.target.value);
+                setIsSearchOpen(true);
+              }}
+              onFocus={() => setIsSearchOpen(true)}
+              placeholder="Buscar y centrar nodo…"
+              className="w-full rounded-lg border border-line bg-canvas pl-8 pr-3 py-1.5 text-meta text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none"
+              aria-label="Buscar y centrar nodo en el grafo"
+            />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+          </div>
+
+          {/* Menú de resultados de búsqueda */}
+          {isSearchOpen && nodeSearchQuery.trim() && (
+            <div className="absolute left-0 right-0 z-30 mt-1 max-h-60 overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-pop">
+              {searchResults.length === 0 ? (
+                <p className="px-3 py-2 text-meta text-muted">Sin coincidencias.</p>
+              ) : (
+                searchResults.map(node => {
+                  const type = (node.node_type || 'resource') as GraphNodeType;
+                  const Icon = NODE_ICONS[type] || Lightbulb;
+                  return (
+                    <button
+                      key={node.id}
+                      type="button"
+                      onClick={() => handleSelectSearchResult(node)}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-meta text-ink hover:bg-accent-soft transition-colors"
+                    >
+                      <Icon size={13} className="shrink-0 text-accent" aria-hidden="true" />
+                      <span className="truncate flex-1 font-medium">{node.name}</span>
+                      <span className="text-micro text-muted shrink-0">{GRAPH_NODE_LABELS[type]}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
