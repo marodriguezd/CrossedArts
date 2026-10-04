@@ -578,7 +578,7 @@ class SQLiteBridge {
       tempDb.run('PRAGMA foreign_keys = ON;');
       const markers = tempDb.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name IN ('learning_resource', 'learning_session', 'note', 'course', 'book', 'lesson')`);
       if (!markers.length || markers[0].values.length === 0) {
-        throw new Error('El archivo SQLite no contiene tablas reconocibles de CrossedArts.');
+        throw new Error('El archivo SQLite no contiene las tablas de CrossedArts (learning_resource ausente).');
       }
       tempDb.run(SCHEMA_SQL);
       this.migrateLearningSession(tempDb);
