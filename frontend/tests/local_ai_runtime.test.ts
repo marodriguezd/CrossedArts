@@ -342,7 +342,9 @@ test('26.21 High-capability device falls back to a lighter model after resource 
   assert.strictEqual(status.stage, 'ready');
   assert.notStrictEqual(status.modelId, 'Qwen3-1.7B-q4f16_1-MLC');
   assert.ok(status.message.includes('ligera'));
-  assert.strictEqual(llmEngine.calls.length, 2);
+  // La llamada al modelo pesado se intercepta antes del fake interno, por eso solo la carga de fallback queda registrada.
+  assert.strictEqual(llmEngine.calls.length, 1);
+  assert.notStrictEqual(llmEngine.calls[0], 'Qwen3-1.7B-q4f16_1-MLC');
 });
 
 test('26.22 Cached model registry accepts old single-id values and upgrades to a multi-model list', async () => {
