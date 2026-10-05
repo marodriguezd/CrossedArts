@@ -266,11 +266,13 @@ test('17.7 getAllEntriesForModel filters correctly by model, pipeline version an
   await embeddingCache.clearCache();
 });
 
-test('17.8 The embedding cache declares the modelId index it relies on', () => {
+test('17.8 The embedding cache declares the model+pipeline indexes it relies on', () => {
   const cache = readFileSync(new URL('../src/lib/localEmbeddings/cache.ts', import.meta.url), 'utf8');
-  assert.ok(cache.includes("createIndex('modelId', 'modelId'"), 'El índice modelId debe existir en el esquema');
-  assert.ok(cache.includes("indexNames.contains('modelId')"), 'Debe comprobarse la disponibilidad del índice');
-  assert.ok(cache.includes("index('modelId').getAll("), 'Debe consultarse el índice en lugar de getAll()');
+  // Esquema v3: clave lógica compuesta e índice (modelId, pipelineVersion).
+  assert.ok(cache.includes("keyPath: 'cacheKey'"), 'El almacén v3 debe usar la clave lógica compuesta');
+  assert.ok(cache.includes("['modelId', 'pipelineVersion']"), 'El índice compuesto modelo+pipeline debe existir en el esquema');
+  assert.ok(cache.includes("indexNames.contains('modelPipeline')"), 'Debe comprobarse la disponibilidad del índice');
+  assert.ok(cache.includes("index('modelPipeline').getAll("), 'Debe consultarse el índice compuesto en lugar de getAll()');
   // La degradación segura se mantiene si el índice no está disponible.
   assert.ok(cache.includes('store.getAll()'), 'Debe existir la degradación a lectura completa');
 });

@@ -410,9 +410,12 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                   {mod.lessons?.map((les) => {
                     const isSelected = selectedLesson?.id === les.id;
                     return (
-                      <button
+                      // Fila de lección: contenedor NO interactivo con controles
+                      // independientes (seleccionar, completar, mover, eliminar).
+                      // Anidar controles interactivos es HTML inválido y rompe
+                      // foco, teclado y lectores de pantalla.
+                      <div
                         key={les.id}
-                        onClick={() => setSelectedLesson(les)}
                         aria-current={isSelected ? 'true' : undefined}
                         className={cn(
                           'group flex w-full items-center justify-between rounded-lg border p-2.5 text-left text-meta transition-colors duration-fast',
@@ -424,11 +427,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                         <span className="flex min-w-0 items-center gap-2">
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               handleToggleLessonCompletion(les.id, !les.is_completed);
                             }}
-                            aria-label={les.is_completed ? `Marcar lección «${les.title}» como incompleta` : `Marcar lección «${les.title}» como completada`}
+                            aria-pressed={les.is_completed}
+                            aria-label={les.is_completed ? `Lección «${les.title}» completada. Marcar como pendiente` : `Marcar lección «${les.title}» como completada`}
                             title={les.is_completed ? 'Marcar como pendiente' : 'Marcar como completada'}
                             className="p-0.5 -m-0.5 rounded text-faint hover:text-success transition-colors cursor-pointer"
                           >
@@ -438,45 +441,46 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                               <Circle size={15} className="shrink-0 text-faint hover:text-success" aria-hidden="true" />
                             )}
                           </button>
-                          <span className="truncate">{les.title}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectLesson(les.id)}
+                            className="truncate rounded text-left hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                            title={`Abrir la lección ${les.title}`}
+                          >
+                            {les.title}
+                          </button>
                         </span>
                         <span className="ml-2 flex shrink-0 items-center gap-1">
                           <span className="text-micro">{les.duration_minutes}m</span>
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => { e.stopPropagation(); handleMoveLesson(les.id, 'up'); }}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); handleMoveLesson(les.id, 'up'); } }}
-                            className="p-0.5 text-faint opacity-0 transition hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
+                          <button
+                            type="button"
+                            onClick={() => handleMoveLesson(les.id, 'up')}
+                            className="p-0.5 text-faint opacity-0 transition hover:text-accent focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                             title="Mover arriba"
                             aria-label={`Mover la lección ${les.title} hacia arriba`}
                           >
                             <ArrowUp size={11} aria-hidden="true" />
-                          </span>
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => { e.stopPropagation(); handleMoveLesson(les.id, 'down'); }}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); handleMoveLesson(les.id, 'down'); } }}
-                            className="p-0.5 text-faint opacity-0 transition hover:text-accent focus-visible:opacity-100 group-hover:opacity-100"
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveLesson(les.id, 'down')}
+                            className="p-0.5 text-faint opacity-0 transition hover:text-accent focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                             title="Mover abajo"
                             aria-label={`Mover la lección ${les.title} hacia abajo`}
                           >
                             <ArrowDown size={11} aria-hidden="true" />
-                          </span>
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => { e.stopPropagation(); handleDeleteLesson(les.id, les.title); }}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); handleDeleteLesson(les.id, les.title); } }}
-                            className="p-0.5 text-faint opacity-0 transition hover:text-error focus-visible:opacity-100 group-hover:opacity-100"
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteLesson(les.id, les.title)}
+                            className="p-0.5 text-faint opacity-0 transition hover:text-error focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                             title="Eliminar lección"
                             aria-label={`Eliminar lección ${les.title}`}
                           >
                             <Trash2 size={11} aria-hidden="true" />
-                          </span>
+                          </button>
                         </span>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>

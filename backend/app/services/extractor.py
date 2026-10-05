@@ -14,6 +14,57 @@ from pypdf import PdfReader
 from backend.app.models.resource import MediaAsset
 from backend.app.models.content import ExtractedMetadata, Transcript, TranscriptSegment, ContentIndex
 
+# Idioma indeterminado (ISO 639-2). Se usa cuando la fuente no declara idioma:
+# etiquetar transcriptos como español era una afirmación falsa.
+UNDETERMINED_LANGUAGE = "und"
+
+
+def normalize_language(raw_language: Any) -> Optional[str]:
+    """Valida y normaliza un identificador de idioma declarado por la fuente.
+
+    Acepta códigos ISO 639-1/-2 ("es", "en", "spa"...) y etiquetas BCP-47
+    simples ("en-US", "pt_BR"). Devuelve None si no es un código plausible:
+    un valor libre ("idioma del video") no debe persistirse como idioma.
+    """
+    if not isinstance(raw_language, str):
+        return None
+    candidate = raw_language.strip().lower().replace("_", "-")
+    if not candidate:
+        return None
+    parts = candidate.split("-")
+    if not (2 <= len(parts[0]) <= 3 and parts[0].isalpha()):
+        return None
+    return candidate[:10]
+
+
+def infer_transcript_language(data: Any, file_path: Path) -> str:
+    """Infiere el idioma del transcripto desde metadatos; si no, indeterminado.
+
+    Orden de preferencia: campo `language`/`languages` del JSON de la fuente;
+    pista en el nombre de archivo (video.en.srt); 'und' como último recurso.
+    Nunca se asume español.
+    """
+    if isinstance(data, dict):
+        for key in ("language", "language_code", "lang"):
+            normalized = normalize_language(data.get(key))
+            if normalized:
+                return normalized
+        languages = data.get("languages")
+        if isinstance(languages, list):
+            for item in languages:
+                normalized = normalize_language(item)
+                if normalized:
+                    return normalized
+
+    stem = file_path.stem
+    stem_match = re.search(r"\.([a-z]{2,3})$", stem.lower())
+    if stem_match:
+        normalized = normalize_language(stem_match.group(1))
+        if normalized:
+            return normalized
+
+    return UNDETERMINED_LANGUAGE
+
 class ContentExtractor(ABC):
     @abstractmethod
     def can_handle(self, mime_type: str, file_path: Path) -> bool:
@@ -297,6 +348,7 @@ class TranscriptExtractor(ContentExtractor):
             return
 
         segments_data = []
+        declared_language: Optional[str] = None
 
         # 1. Parsear archivo según su extensión
         ext = file_path.suffix.lower()
@@ -304,6 +356,8 @@ class TranscriptExtractor(ContentExtractor):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                    # Idioma declarado por la fuente (metadatos), si existe.
+                    declared_language = infer_transcript_language(data, file_path)
                     # Soportar formatos comunes
                     if "segments" in data:
                         for s in data["segments"]:
@@ -377,6 +431,10 @@ class TranscriptExtractor(ContentExtractor):
         if not segments_data:
             return
 
+        # Idioma efectivo: metadatos declarados o, en su defecto, indeterminado.
+        if declared_language is None:
+            declared_language = infer_transcript_language(None, file_path)
+
         # 2. Eliminar transcripciones anteriores asociadas y sus embeddings
         from backend.app.models.content import EmbeddingRecord
         # Obtener IDs de segmentos anteriores
@@ -415,7 +473,7 @@ class TranscriptExtractor(ContentExtractor):
         transcript = Transcript(
             id=uuid.uuid4(),
             media_asset_id=media_asset_id,
-            language="es"
+            language=declared_language or UNDETERMINED_LANGUAGE
         )
         db.add(transcript)
         if commit:

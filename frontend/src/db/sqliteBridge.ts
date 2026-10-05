@@ -6,6 +6,34 @@ import { resolveSqliteWasmUrl, deployedSqliteWasmFilename } from './sqliteWasmUr
 
 const DB_STORE_NAME = 'crossedarts_sqlite_store';
 const DB_KEY = 'current_database_bytes';
+/** Registro de metadatos de coordinación multi-pestaña (revisión persistida). */
+const DB_META_KEY = 'coordinator_meta';
+
+/**
+ * Metadatos de coordinación persistidos JUNTO al snapshot en IndexedDB.
+ *
+ * La revisión es la fuente de verdad compartida entre pestañas: al escribir,
+ * cada pestaña confirma que la revisión persistida sigue siendo la que ella
+ * conocía (comparar-y-swap). Si otra pestaña avanzó la revisión mientras tanto,
+ * la escritura local se rechaza en lugar de pisar silenciosamente su snapshot.
+ */
+interface PersistedCoordinatorMeta {
+  revision: number;
+  lastWriterTabId: string;
+  updatedAt: number;
+}  /**
+   * Error de escritura obsoleta (concurrency conflict). Lo lanza `persist()`
+   * cuando la revisión persistida ya no es la que esta pestaña conocía.
+   * `persistedRevision` es la revisión realmente persistida (la ganadora).
+   */
+export class StaleWriteError extends Error {
+  public readonly persistedRevision: number;
+  constructor(persistedRevision: number) {
+    super('Otra pestaña guardó una versión más nueva de la base de datos. Recarga para continuar.');
+    this.name = 'StaleWriteError';
+    this.persistedRevision = persistedRevision;
+  }
+}
 
 export type StorageState =
   | 'loading'
@@ -319,6 +347,14 @@ class SQLiteBridge {
       let savedBytes: Uint8Array | null = null;
       try {
         savedBytes = await this.loadFromStorage();
+        // Adopción de la revisión compartida al ARRANCAR: el CAS de cada
+        // persist() compara contra la revisión que esta pestaña conoce. Si la
+        // pestaña arrancara siempre en 0, su primera escritura tras recargar
+        // chocaría falsamente con la revisión persistida por sesiones previas.
+        const startupMeta = await this.loadPersistedMeta();
+        const startupRevision = startupMeta?.revision ?? 0;
+        this.persistedRevision = startupRevision;
+        this.lastSeenRevision = Math.max(this.lastSeenRevision, startupRevision);
       } catch (err: any) {
         // Sin IndexedDB seguimos pudiendo trabajar en memoria: no es un fallo
         // terminal, se informa del estado y se continúa.
@@ -449,8 +485,15 @@ class SQLiteBridge {
   private async reloadFromPeerRevision(): Promise<void> {
     const target = this.remoteRevision;
     let bytes: Uint8Array | null = null;
+    let effectiveTargetRevision = target;
     try {
       bytes = await this.loadFromStorage();
+      // Adoptar la revisión compartida real junto al snapshot: los mensajes del
+      // canal son una pista, el registro persistido es la fuente de verdad.
+      const meta = await this.loadPersistedMeta();
+      if (meta && meta.revision > this.persistedRevision) {
+        effectiveTargetRevision = meta.revision;
+      }
     } catch (err) {
       console.warn('[CrossedArts Storage] No se pudo releer IndexedDB tras otra pestaña:', err);
       return;
@@ -459,7 +502,7 @@ class SQLiteBridge {
     // datos posiblemente antiguos que perder la sesión por un fallo transitorio.
     if (!bytes || !bytes.length || !isValidSqliteBuffer(bytes)) return;
     // Nunca sobrescribimos con una revisión más antigua que la que ya tenemos.
-    if (this.remoteRevision !== target) return;
+    if (effectiveTargetRevision !== target && effectiveTargetRevision <= this.persistedRevision) return;
 
     const options = await this.getSqlJsOptions();
     const SQL = await initSqlJs(options);
@@ -476,7 +519,7 @@ class SQLiteBridge {
     this.db = reloaded;
     this.isInitialized = true;
     this.inMemoryBytes = bytes;
-    this.persistedRevision = this.remoteRevision;
+    this.persistedRevision = effectiveTargetRevision;
     this.remoteRevision = 0;
     this.lastSeenRevision = Math.max(this.lastSeenRevision, this.persistedRevision);
     this.setStorageState('ready');
@@ -517,13 +560,44 @@ class SQLiteBridge {
     return this.db;
   }
 
+  /**
+   * Lee los metadatos de coordinación persistidos (revisión compartida).
+   * Devuelve revisión 0 si no existen aún: coincide con el arranque de cualquier
+   * pestaña y con bases creadas por versiones anteriores sin este registro.
+   */
+  private async loadPersistedMeta(): Promise<PersistedCoordinatorMeta | null> {
+    if (!this.hasIndexedDB()) return null;
+    try {
+      const idb = await this.openIDB();
+      return await new Promise((resolve, reject) => {
+        const tx = idb.transaction(DB_STORE_NAME, 'readonly');
+        const req = tx.objectStore(DB_STORE_NAME).get(DB_META_KEY);
+        req.onsuccess = () => resolve((req.result as PersistedCoordinatorMeta) || null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Escribe snapshot + metadatos en UNA SOLA transacción IndexedDB con
+   * comparar-y-swap sobre la revisión.
+   *
+   * Invariante anti-pérdida de actualizaciones: si la revisión persistida ya no
+   * es `expectedRevision`, otra pestaña escribió después de que esta pestaña
+   * cargó su estado. La transacción se aborta SIN tocar los bytes persistidos y
+   * se lanza `StaleWriteError`: el snapshot de la otra pestaña queda intacto y
+   * el usuario recarga antes de volver a aplicar el cambio.
+   */
   private async commitPersistedBytes(bytes: Uint8Array): Promise<void> {
     const nextRevision = this.persistedRevision + 1;
-    await this.saveToStorage(bytes);
+    await this.saveToStorageWithCas(bytes, nextRevision);
     this.inMemoryBytes = bytes;
     this.databaseSizeBytes = bytes.byteLength;
     this.persistedRevision = nextRevision;
     this.lastSeenRevision = Math.max(this.lastSeenRevision, nextRevision);
+    this.remoteRevision = 0;
     this.setStorageState('persisted');
 
     if (this.broadcastChannel) {
@@ -538,6 +612,52 @@ class SQLiteBridge {
     }
   }
 
+  private async saveToStorageWithCas(bytes: Uint8Array, nextRevision: number): Promise<boolean> {
+    // Sin IndexedDB no hay compartición entre pestañas: persistir es seguro y
+    // delega en la escritura simple (mismo punto de extensión para pruebas).
+    if (!this.hasIndexedDB()) {
+      await this.saveToStorage(bytes);
+      return true;
+    }
+    const idb = await this.openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = idb.transaction(DB_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(DB_STORE_NAME);
+      let committed = false;
+      let observedPersistedRevision = 0;
+
+      const casReq = store.get(DB_META_KEY);
+      casReq.onsuccess = () => {
+        const persistedMeta = (casReq.result as PersistedCoordinatorMeta | undefined) || null;
+        const persistedRevision = persistedMeta ? persistedMeta.revision : 0;
+        if (persistedRevision !== this.persistedRevision) {
+          // Otra pestaña avanzó la revisión compartida: abortar sin escribir.
+          observedPersistedRevision = persistedRevision;
+          committed = false;
+          try { tx.abort(); } catch { /* transacción ya abortada */ }
+          return;
+        }
+        committed = true;
+        store.put(bytes, DB_KEY);
+        store.put(
+          { revision: nextRevision, lastWriterTabId: TAB_ID, updatedAt: Date.now() } as PersistedCoordinatorMeta,
+          DB_META_KEY
+        );
+      };
+
+      tx.oncomplete = () => resolve(true);
+      tx.onabort = () => {
+        if (committed) {
+          reject(new Error('La transacción de persistencia se abortó tras comprometerse.'));
+        } else {
+          // Conflicto CAS: la revisión persistida avanzó bajo nuestros pies.
+          reject(new StaleWriteError(observedPersistedRevision));
+        }
+      };
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   public async persist(): Promise<void> {
     if (!this.db) return;
     this.setStorageState('persisting');
@@ -547,7 +667,15 @@ class SQLiteBridge {
       this.db.run('PRAGMA foreign_keys = ON;');
       await this.commitPersistedBytes(bytes);
     } catch (err: any) {
-      this.setStorageState('persistence-error', err?.message || 'Error guardando en almacenamiento persistente');
+      if (err instanceof StaleWriteError) {
+        // Conflicto real multi-pestaña: marcar obsoleto con la revisión REAL
+        // observada en el almacén para que `ensureFresh()` recargue el snapshot
+        // ganador antes de la siguiente operación.
+        this.remoteRevision = Math.max(this.remoteRevision, err.persistedRevision);
+        this.setStorageState('stale-other-tab', err.message);
+      } else {
+        this.setStorageState('persistence-error', err?.message || 'Error guardando en almacenamiento persistente');
+      }
       throw err;
     }
   }
@@ -851,6 +979,8 @@ class SQLiteBridge {
   }
 
   private async saveToStorage(bytes: Uint8Array): Promise<void> {
+    // Escritura simple sin CAS: solo para migraciones de arranque e importación,
+    // donde el snapshot local ya es la base sobre la que se trabaja.
     if (!this.hasIndexedDB()) {
       this.inMemoryBytes = bytes;
       return;

@@ -40,5 +40,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for index_name, _, _ in INDEXES:
-        op.drop_index(index_name)
+    conn = op.get_bind()
+    dialect = conn.dialect.name
+    for index_name, table_name, _ in INDEXES:
+        if dialect == 'sqlite':
+            op.execute(f"DROP INDEX IF EXISTS {index_name}")
+        else:
+            op.drop_index(index_name, table_name=table_name)

@@ -13,6 +13,12 @@ from backend.app.models.activity import Note
 from backend.app.services.llm import LLMService
 from backend.app.services.context import ContextRetrievalService
 from backend.app.services.insights import LearningInsightsService
+from backend.app.services.ai_validation import (
+    StudyMaterialValidationError,
+    strip_code_fences,
+    validate_flashcards,
+    validate_quiz_questions,
+)
 
 router = APIRouter(prefix="/ai", tags=["Learning AI"])
 
@@ -72,21 +78,18 @@ async def generate_quiz(payload: QuizGenerationRequest, db: Session = Depends(ge
     context = "\n\n".join(text_chunks) if text_chunks else "No hay material físico indexado para este recurso."
     
     quiz_json_str = await LLMService.generate_response("generate_quiz", context=context)
-    
-    # Intentar parsear el JSON
+
+    # Validación estructural estricta: JSON válido NO es suficiente. Material
+    # malformado, vacío o con tipos de pregunta inválidos devuelve un error
+    # controlado; nunca se persiste ni se fabrica contenido genérico disfrazado
+    # de generación exitosa.
     try:
-        questions = json.loads(quiz_json_str)
-    except Exception:
-        # Fallback si el LLM no retorna JSON estricto
-        questions = [
-            {
-                "id": "fallback-1",
-                "question": "¿Qué concepto clave se resalta en este material?",
-                "options": [],
-                "answer": "Respuesta abierta para autoevaluación.",
-                "type": "short_answer"
-            }
-        ]
+        questions = validate_quiz_questions(json.loads(strip_code_fences(quiz_json_str)))
+    except (json.JSONDecodeError, StudyMaterialValidationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"El material generado por el modelo no superó la validación: {exc}"
+        )
 
     # Guardar en BD
     quiz = Quiz(
@@ -156,13 +159,16 @@ async def generate_flashcards(payload: NotesOperationRequest, db: Session = Depe
 
     context = "\n---\n".join(contents)
     flashcard_json_str = await LLMService.generate_response("generate_flashcards", context=context)
-    
+
+    # Misma validación estricta que el quiz: sin fallback fabricado. Un fallo de
+    # generación o de validación se comunica como tal (HTTP 502).
     try:
-        flashcards = json.loads(flashcard_json_str)
-    except Exception:
-        flashcards = [
-            {"front": "Concepto Clave en Notas", "back": "Revisar las notas completas creadas para este recurso."}
-        ]
+        flashcards = validate_flashcards(json.loads(strip_code_fences(flashcard_json_str)))
+    except (json.JSONDecodeError, StudyMaterialValidationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"El material generado por el modelo no superó la validación: {exc}"
+        )
 
     return {"flashcards": flashcards}
 

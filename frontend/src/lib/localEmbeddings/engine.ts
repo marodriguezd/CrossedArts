@@ -1,6 +1,6 @@
 import { DEFAULT_EMBEDDING_MODEL_ID, getEmbeddingModelById } from './registry.ts';
 import { detectEmbeddingCapabilities, type EmbeddingRuntimeBackend } from './capabilities.ts';
-import { embeddingCache, EMBEDDING_PIPELINE_VERSION, type CachedVectorEntry } from './cache.ts';
+import { embeddingCache, EMBEDDING_PIPELINE_VERSION, expectedDimensionsForModel, type CachedVectorEntry } from './cache.ts';
 import type { SemanticChunk } from './chunking.ts';
 
 export type EmbeddingEngineStatus =
@@ -293,7 +293,9 @@ class LocalEmbeddingEngine {
       }
 
       const chunk = chunks[i];
-      const cached = await embeddingCache.getEntry(chunk.chunkId);
+      // La identidad de caché es el trío (chunk, modelo, versión de pipeline):
+      // dos modelos nunca se pisan el vector del mismo fragmento.
+      const cached = await embeddingCache.getEntry(chunk.chunkId, modelId);
 
       // Si existe, el hash SHA-256 no ha cambiado y la versión de pipeline coincide, reutilizar
       if (
@@ -302,7 +304,7 @@ class LocalEmbeddingEngine {
         cached.pipelineVersion === EMBEDDING_PIPELINE_VERSION &&
         cached.contentHash === chunk.contentHash &&
         Array.isArray(cached.vector) &&
-        cached.vector.length === 384
+        cached.vector.length === (expectedDimensionsForModel(modelId) ?? 384)
       ) {
         if (onProgress) onProgress(i + 1, chunks.length);
         continue;
@@ -324,7 +326,7 @@ class LocalEmbeddingEngine {
         contentHash: chunk.contentHash,
         modelId,
         pipelineVersion: EMBEDDING_PIPELINE_VERSION,
-        dimensions: 384,
+        dimensions: vector.length,
         vector,
         updatedAt: Date.now()
       });

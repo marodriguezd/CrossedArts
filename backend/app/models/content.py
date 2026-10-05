@@ -38,7 +38,9 @@ class Transcript(Base):
         nullable=False,
         unique=True
     )
-    language: Mapped[str] = mapped_column(String(10), default="es", nullable=False)
+    # Idioma declarado por la fuente (metadatos) o 'und' (indeterminado, ISO 639-2)
+    # cuando no puede inferirse. Nunca se etiqueta falsamente un idioma conocido.
+    language: Mapped[str] = mapped_column(String(10), default="und", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     # Relaciones

@@ -1,4 +1,5 @@
 import type { SemanticChunk } from './chunking.ts';
+import { getEmbeddingModelById } from './registry.ts';
 
 export const EMBEDDING_PIPELINE_VERSION = 'v1.1-e5-sha256';
 
@@ -17,31 +18,106 @@ export interface CachedVectorEntry {
 }
 
 const IDB_NAME = 'CrossedArts_Embeddings';
-const STORE_NAME = 'vector_cache';
+/** Versión 3: esquema con clave lógica compuesta (modelo::pipeline::chunk). */
+const IDB_VERSION = 3;
+/** Almacén legacy (v1/v2) con keyPath `chunkId`: una sola entrada por chunk. */
+const LEGACY_STORE_NAME: string = 'vector_cache';
+/** Almacén v3 con keyPath `cacheKey`: coexisten modelo y versiones de pipeline. */
+const STORE_NAME: string = 'vector_cache_v3';
+
+/**
+ * Clave lógica de caché. El almacén antiguo usaba `chunkId` como clave primaria,
+ * de modo que el vector de un modelo PISABA al del otro para el mismo chunk.
+ * La identidad real de una entrada es (chunkId, modelId, pipelineVersion).
+ */
+export function buildCacheKey(modelId: string, pipelineVersion: string, chunkId: string): string {
+  return `${modelId}::${pipelineVersion}::${chunkId}`;
+}
+
+/**
+ * Dimensiones esperadas para un modelo según el registro local. Devuelve
+ * `undefined` para modelos desconocidos: la validación se apoya entonces en el
+ * campo `dimensions` declarado por la propia entrada, nunca en una constante
+ * repetida a mano en distintos módulos.
+ */
+export function expectedDimensionsForModel(modelId: string): number | undefined {
+  const def = getEmbeddingModelById(modelId);
+  return def?.dimension ?? def?.dimensions;
+}
+
+/**
+ * Normaliza un registro legacy (sin `pipelineVersion`) a la identidad actual.
+ * Idempotente: un registro ya migrado pasa por aquí sin cambios.
+ */
+export function migrateLegacyCacheRecord(record: CachedVectorEntry): CachedVectorEntry {
+  const pipelineVersion = record.pipelineVersion || EMBEDDING_PIPELINE_VERSION;
+  return { ...record, pipelineVersion };
+}
 
 class LocalEmbeddingCache {
+  /** Caché en memoria indexada por la misma clave lógica que IndexedDB. */
   private inMemoryCache: Map<string, CachedVectorEntry> = new Map();
+  /**
+   * Handle de IndexedDB reutilizado entre operaciones.
+   *
+   * Abrir una conexión por operación y nunca cerrarla crece sin límite (cada
+   * conexión retiene memoria y bloquea `deleteDatabase` de otras pestañas).
+   * El handle se memoiza tras el primer uso y se reabre solo si algo lo cerró.
+   */
+  private idbPromise: Promise<IDBDatabase> | null = null;
 
   private hasIndexedDB(): boolean {
     return typeof indexedDB !== 'undefined';
   }
 
+  private resolveStore(db: IDBDatabase): string {
+    return db.objectStoreNames.contains(STORE_NAME) ? STORE_NAME : LEGACY_STORE_NAME;
+  }
+
   private openIDB(): Promise<IDBDatabase> {
+    if (this.idbPromise) return this.idbPromise;
+    this.idbPromise = this.openIDBConnection().catch((err) => {
+      // Un fallo transitorio no debe memoizarse: el siguiente reintento reabre.
+      this.idbPromise = null;
+      throw err;
+    });
+    return this.idbPromise;
+  }
+
+  private openIDBConnection(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      // La versión 2 asegura el índice `modelId` incluso en bases creadas por una
-      // versión anterior de la aplicación que no lo declaraba. No cambia el
-      // esquema de datos: solo añade el índice que ya se usaba para filtrar.
-      const req = indexedDB.open(IDB_NAME, 2);
+      const req = indexedDB.open(IDB_NAME, IDB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
+        const tx = req.transaction!;
+
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: 'chunkId' });
+          const store = db.createObjectStore(STORE_NAME, { keyPath: 'cacheKey' });
           store.createIndex('modelId', 'modelId', { unique: false });
-          return;
+          store.createIndex('modelPipeline', ['modelId', 'pipelineVersion'], { unique: false });
         }
-        const store = req.transaction!.objectStore(STORE_NAME);
-        if (!store.indexNames.contains('modelId')) {
-          store.createIndex('modelId', 'modelId', { unique: false });
+
+        // Migración desde el almacén legacy (keyPath `chunkId`): se copia cada
+        // registro al nuevo almacén con su clave lógica y se elimina el viejo.
+        // Se ejecuta dentro de `onupgradeneeded` (transacción de versión), es
+        // idempotente y conserva los vectores todavía representables.
+        if (db.objectStoreNames.contains(LEGACY_STORE_NAME) && STORE_NAME !== LEGACY_STORE_NAME) {
+          const legacy = tx.objectStore(LEGACY_STORE_NAME);
+          const target = tx.objectStore(STORE_NAME);
+          const cursorReq = legacy.openCursor();
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (!cursor) {
+              tx.objectStore(LEGACY_STORE_NAME).clear();
+              return;
+            }
+            const migrated = migrateLegacyCacheRecord(cursor.value as CachedVectorEntry);
+            target.put({
+              ...migrated,
+              cacheKey: buildCacheKey(migrated.modelId, migrated.pipelineVersion!, migrated.chunkId)
+            });
+            cursor.continue();
+          };
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -49,9 +125,35 @@ class LocalEmbeddingCache {
     });
   }
 
-  public async getEntry(chunkId: string): Promise<CachedVectorEntry | null> {
-    if (this.inMemoryCache.has(chunkId)) {
-      return this.inMemoryCache.get(chunkId)!;
+  private entryKey(entry: Pick<CachedVectorEntry, 'chunkId' | 'modelId' | 'pipelineVersion'>): string {
+    return buildCacheKey(entry.modelId, entry.pipelineVersion || EMBEDDING_PIPELINE_VERSION, entry.chunkId);
+  }
+
+  private isEntryValid(
+    e: CachedVectorEntry,
+    modelId: string,
+    pipelineVersion: string
+  ): boolean {
+    if (!e || e.modelId !== modelId || (e.pipelineVersion || EMBEDDING_PIPELINE_VERSION) !== pipelineVersion) {
+      return false;
+    }
+    if (!Array.isArray(e.vector) || e.vector.length === 0) return false;
+    const expected = expectedDimensionsForModel(modelId);
+    const declared = typeof e.dimensions === 'number' && Number.isFinite(e.dimensions) && e.dimensions > 0
+      ? e.dimensions
+      : undefined;
+    const dims = expected ?? declared;
+    return dims === undefined ? true : e.vector.length === dims;
+  }
+
+  public async getEntry(
+    chunkId: string,
+    modelId: string,
+    pipelineVersion: string = EMBEDDING_PIPELINE_VERSION
+  ): Promise<CachedVectorEntry | null> {
+    const cacheKey = buildCacheKey(modelId, pipelineVersion, chunkId);
+    if (this.inMemoryCache.has(cacheKey)) {
+      return this.inMemoryCache.get(cacheKey)!;
     }
 
     if (!this.hasIndexedDB()) return null;
@@ -59,12 +161,16 @@ class LocalEmbeddingCache {
     try {
       const db = await this.openIDB();
       return new Promise((resolve) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const req = tx.objectStore(STORE_NAME).get(chunkId);
+        const tx = db.transaction(this.resolveStore(db), 'readonly');
+        const req = tx.objectStore(this.resolveStore(db)).get(cacheKey);
         req.onsuccess = () => {
-          const res = req.result as CachedVectorEntry || null;
-          if (res) this.inMemoryCache.set(chunkId, res);
-          resolve(res);
+          const res = (req.result as CachedVectorEntry) || null;
+          if (res && this.isEntryValid(res, modelId, pipelineVersion)) {
+            this.inMemoryCache.set(cacheKey, res);
+            resolve(res);
+          } else {
+            resolve(null);
+          }
         };
         req.onerror = () => resolve(null);
       });
@@ -74,15 +180,19 @@ class LocalEmbeddingCache {
   }
 
   public async setEntry(entry: CachedVectorEntry): Promise<void> {
-    this.inMemoryCache.set(entry.chunkId, entry);
+    const pipelineVersion = entry.pipelineVersion || EMBEDDING_PIPELINE_VERSION;
+    const normalized: CachedVectorEntry = { ...entry, pipelineVersion };
+    const cacheKey = this.entryKey(normalized);
+    this.inMemoryCache.set(cacheKey, normalized);
 
     if (!this.hasIndexedDB()) return;
 
     try {
       const db = await this.openIDB();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).put(entry);
+        const storeName = this.resolveStore(db);
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).put({ ...normalized, cacheKey });
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
@@ -92,26 +202,18 @@ class LocalEmbeddingCache {
   }
 
   /**
-   * Devuelve los vectores cacheados de un modelo concreto.
+   * Devuelve los vectores cacheados de EXACTAMENTE un modelo y versión de pipeline.
    *
-   * Usa el índice `modelId` que ya existe en el object store en lugar de traer
-   * TODOS los registros y filtrar en memoria: con varios modelos y versiones de
-   * pipeline, `getAll()` descargaba la caché entera para descartar la mayoría.
-   *
-   * La semántica NO cambia: se siguen validando modelId, versión de pipeline y
-   * dimensión del vector (384) antes de devolver nada. Si el índice no estuviera
-   * disponible (base creada por una versión anterior sin `onupgradeneeded`), se
-   * recurre a la lectura completa como degradación segura.
+   * Usa el índice compuesto `modelPipeline` cuando existe; si no está disponible
+   * (base creada por una versión anterior), degrada al índice `modelId` y en
+   * último término a una lectura completa. En todos los caminos la validación
+   * final es la misma: modelo, versión de pipeline y dimensiones coherentes.
    */
   public async getAllEntriesForModel(
     modelId: string,
     pipelineVersion: string = EMBEDDING_PIPELINE_VERSION
   ): Promise<CachedVectorEntry[]> {
-    const isEntryValid = (e: CachedVectorEntry) =>
-      e.modelId === modelId &&
-      e.pipelineVersion === pipelineVersion &&
-      Array.isArray(e.vector) &&
-      e.vector.length === 384;
+    const isEntryValid = (e: CachedVectorEntry) => this.isEntryValid(e, modelId, pipelineVersion);
 
     if (!this.hasIndexedDB()) {
       return Array.from(this.inMemoryCache.values()).filter(isEntryValid);
@@ -120,25 +222,22 @@ class LocalEmbeddingCache {
     try {
       const db = await this.openIDB();
       return new Promise((resolve) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
+        const storeName = this.resolveStore(db);
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
 
         const settle = (rawList: CachedVectorEntry[]) => {
           const list = (rawList || []).filter(isEntryValid);
-          // Actualizar in-memory
           for (const item of list) {
-            this.inMemoryCache.set(item.chunkId, item);
+            this.inMemoryCache.set(this.entryKey(item), item);
           }
           resolve(list);
         };
 
-        // El índice filtra por modelId en SQLite; el resto de criterios se
-        // validan igual que antes.
-        if (store.indexNames.contains('modelId')) {
-          const indexReq = store.index('modelId').getAll(IDBKeyRange.only(modelId));
+        if (store.indexNames.contains('modelPipeline')) {
+          const indexReq = store.index('modelPipeline').getAll(IDBKeyRange.only([modelId, pipelineVersion]));
           indexReq.onsuccess = () => settle((indexReq.result as CachedVectorEntry[]) || []);
           indexReq.onerror = () => {
-            // Índice inutilizable: se degrada a la lectura completa.
             const fallback = store.getAll();
             fallback.onsuccess = () => settle((fallback.result as CachedVectorEntry[]) || []);
             fallback.onerror = () => resolve([]);
@@ -155,15 +254,48 @@ class LocalEmbeddingCache {
     }
   }
 
-  public async deleteEntry(chunkId: string): Promise<void> {
-    this.inMemoryCache.delete(chunkId);
+  /**
+   * Elimina una entrada lógica de la caché.
+   *
+   * Con `modelId` borra EXACTAMENTE esa entrada (chunk + modelo + pipeline) y
+   * deja intactas las del mismo chunk bajo otros modelos o versiones. Sin
+   * `modelId` borra todas las versiones del chunk (el material desapareció del
+   * corpus, ninguna versión sigue siendo válida).
+   */
+  public async deleteEntry(chunkId: string, modelId?: string, pipelineVersion: string = EMBEDDING_PIPELINE_VERSION): Promise<void> {
+    if (modelId) {
+      this.inMemoryCache.delete(buildCacheKey(modelId, pipelineVersion, chunkId));
+    } else {
+      for (const key of Array.from(this.inMemoryCache.keys())) {
+        if (key.endsWith(`::${chunkId}`)) this.inMemoryCache.delete(key);
+      }
+    }
+
     if (!this.hasIndexedDB()) return;
 
     try {
       const db = await this.openIDB();
-      return new Promise((resolve) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).delete(chunkId);
+      await new Promise<void>((resolve) => {
+        const storeName = this.resolveStore(db);
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+
+        if (modelId) {
+          store.delete(buildCacheKey(modelId, pipelineVersion, chunkId));
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+          return;
+        }
+
+        // Sin modelo: recorrer y borrar cada versión del chunk.
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (!cursor) return;
+          const value = cursor.value as CachedVectorEntry;
+          if (value?.chunkId === chunkId) cursor.delete();
+          cursor.continue();
+        };
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();
       });
@@ -177,12 +309,29 @@ class LocalEmbeddingCache {
     try {
       const db = await this.openIDB();
       return new Promise((resolve) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).clear();
+        const storeName = this.resolveStore(db);
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).clear();
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();
       });
     } catch {}
+  }
+
+  /**
+   * Cierra la conexión IndexedDB reutilizada.
+   *
+   * La conexión se reabre perezosamente en la siguiente operación, así que
+   * cerrar es siempre seguro. Sirve para liberar el handle al descargar la
+   * página y para que pruebas y otras pestañas no queden bloqueadas por
+   * conexiones abiertas.
+   */
+  public close(): void {
+    if (this.idbPromise) {
+      this.idbPromise.then(db => { try { db.close(); } catch { /* ya cerrada */ } })
+        .catch(() => { /* nunca se abrió */ });
+      this.idbPromise = null;
+    }
   }
 }
 

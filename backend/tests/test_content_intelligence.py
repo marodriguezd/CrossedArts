@@ -92,10 +92,11 @@ Hoy aprenderemos sobre la exposicion y la apertura.
     extractor = TranscriptExtractor()
     extractor.extract(db, asset.id, srt_path)
 
-    # Validar
+    # Validar. La fuente SRT no declara idioma: no se etiqueta falsamente como
+    # español, se registra como indeterminado ('und').
     transcript = db.scalars(select(Transcript).where(Transcript.media_asset_id == asset.id)).first()
     assert transcript is not None
-    assert transcript.language == "es"
+    assert transcript.language == "und"
     
     segments = db.scalars(select(TranscriptSegment).where(TranscriptSegment.transcript_id == transcript.id)).all()
     assert len(segments) == 2

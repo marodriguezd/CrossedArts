@@ -404,10 +404,15 @@ test('8.17 Local Embedding Cache & Invalidation: Storage, retrieval, and model s
   };
 
   await embeddingCache.setEntry(testEntry);
-  const retrieved = await embeddingCache.getEntry('chunk_test_1');
+  // La identidad de caché es (chunk, modelo, versión de pipeline): la lectura
+  // sin el modelo correcto no devuelve el vector de otro modelo.
+  const retrieved = await embeddingCache.getEntry('chunk_test_1', 'Xenova/multilingual-e5-small');
   assert.ok(retrieved);
   assert.strictEqual(retrieved?.title, 'Nota de Test');
   assert.strictEqual(retrieved?.vector.length, 384);
+
+  const otherModel = await embeddingCache.getEntry('chunk_test_1', 'Xenova/all-MiniLM-L6-v2');
+  assert.strictEqual(otherModel, null, 'Un chunk cacheado para un modelo no es visible para otro');
 
   // Verificación de aislamiento por modelo
   const entriesOtherModel = await embeddingCache.getAllEntriesForModel('other-model');

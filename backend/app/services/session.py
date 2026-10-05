@@ -1,24 +1,45 @@
 import uuid
 from datetime import datetime, date
 from backend.app.core.utils import utc_now_naive
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from backend.app.models.activity import LearningSession
 from backend.app.models.resource import LearningResource
+from backend.app.models.course_structure import Lesson
 
 class SessionService:
     @staticmethod
-    def start_session(db: Session, resource_id: uuid.UUID) -> LearningSession:
+    def start_session(
+        db: Session,
+        resource_id: Optional[uuid.UUID] = None,
+        lesson_id: Optional[uuid.UUID] = None,
+        mode: str = "flashcards"
+    ) -> LearningSession:
         """
-        Crea e inicializa una nueva sesión de aprendizaje para un recurso.
+        Crea e inicializa una nueva sesión de estudio.
+
+        Contrato de dominio: la sesión queda acotada a un recurso, a una lección
+        o a ambos (nunca sin ámbito). Las referencias se verifican para no
+        crear sesiones fantasma apuntando a IDs inexistentes.
         """
-        resource = db.get(LearningResource, resource_id)
-        if not resource:
-            raise ValueError(f"Recurso de aprendizaje con ID {resource_id} no encontrado.")
+        if resource_id is None and lesson_id is None:
+            raise ValueError("La sesión de estudio debe estar acotada a un recurso o a una lección.")
+
+        if resource_id is not None:
+            resource = db.get(LearningResource, resource_id)
+            if not resource:
+                raise ValueError(f"Recurso de aprendizaje con ID {resource_id} no encontrado.")
+
+        if lesson_id is not None:
+            lesson = db.get(Lesson, lesson_id)
+            if not lesson:
+                raise ValueError(f"Lección con ID {lesson_id} no encontrada.")
 
         session = LearningSession(
             resource_id=resource_id,
+            lesson_id=lesson_id,
+            mode=mode,
             started_at=utc_now_naive(),
             ended_at=None,
             duration_minutes=0

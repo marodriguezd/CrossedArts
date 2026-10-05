@@ -80,10 +80,42 @@ export const THRESHOLDS = {
   SCOPE_BOOST: 0.15
 };
 
-/** Ámbito determinista de recuperación: recurso o lección seleccionados. */
+/**
+ * Ámbito determinista de recuperación: recurso o lección seleccionados.
+ *
+ * Contrato de ámbito: cuando el llamante pide una explicación o generación
+ * acotada, el material FUERA del ámbito no puede convertirse en contexto
+ * autoritativo por puntuación. El ámbito filtra (hard boundary) y, además,
+ * impulsa a los candidatos del ámbito; sin ámbito, la búsqueda es global y
+ * no se debilita.
+ */
 export interface RetrievalScope {
   resourceId?: string;
   lessonId?: string;
+}
+
+/**
+ * Resuelve el conjunto de IDs que pertenecen al ámbito solicitado.
+ *
+ * Lección -> la propia lección, su curso y sus nodos conectados.
+ * Recurso -> el recurso y sus nodos conectados (módulos, lecciones, notas).
+ * La conexión explícita del grafo permite contexto relacionado DENTRO del
+ * perímetro declarado por el usuario; nunca material arbitrario externo.
+ */
+async function resolveScopeIds(scope: RetrievalScope): Promise<Set<string>> {
+  const anchor = scope.lessonId || scope.resourceId;
+  if (!anchor) return new Set();
+  const scopeIds = new Set<string>([anchor]);
+  if (scope.resourceId) scopeIds.add(scope.resourceId);
+  if (scope.lessonId) scopeIds.add(scope.lessonId);
+  try {
+    for (const relatedId of await dao.getRelatedNodeIds(anchor)) {
+      scopeIds.add(relatedId);
+    }
+  } catch {
+    /* Si el grafo no está disponible, el ámbito se reduce a los anclas. */
+  }
+  return scopeIds;
 }
 
 /**
@@ -447,27 +479,23 @@ export async function retrieveLocalContext(
 
   const allMerged = Array.from(mergedMap.values());
 
-  // Umbral de aceptación final
-  const filtered = allMerged.filter(c => c.score >= THRESHOLDS.MIN_FINAL_ACCEPTANCE);
-
-  // Impulso determinista de ámbito: recurso seleccionado -> recursos relacionados.
-  // Solo se aplica a candidatos relevantes ya aceptados, nunca sobre ruido.
+  // CONTRATO DE ÁMBITO (frontera dura): con ámbito solicitado, solo el material
+  // dentro del perímetro resuelto (anclas + nodos conectados del grafo) puede
+  // convertirse en contexto. Un documento ajeno con puntuación alta JAMÁS entra
+  // por puntuación; sin ámbito la búsqueda sigue siendo global e intacta.
+  let scopeIds: Set<string> | null = null;
   if (scope && (scope.resourceId || scope.lessonId)) {
-    const anchor = scope.lessonId || scope.resourceId!;
-    const scopeIds = new Set<string>([anchor]);
-    if (scope.resourceId) scopeIds.add(scope.resourceId);
-    if (scope.lessonId) scopeIds.add(scope.lessonId);
-    try {
-      for (const relatedId of await dao.getRelatedNodeIds(anchor)) {
-        scopeIds.add(relatedId);
-      }
-    } catch {
-      /* Si el grafo no está disponible, se conserva la recuperación base. */
-    }
+    scopeIds = await resolveScopeIds(scope);
+  }
+
+  // Umbral de aceptación final
+  let filtered = allMerged.filter(c => c.score >= THRESHOLDS.MIN_FINAL_ACCEPTANCE);
+
+  if (scopeIds) {
+    filtered = filtered.filter(c => scopeIds!.has(c.id));
     for (const cand of filtered) {
-      if (scopeIds.has(cand.id)) {
-        cand.score = Math.min(1, cand.score + THRESHOLDS.SCOPE_BOOST);
-      }
+      // Impulso determinista de ámbito, solo a candidatos ya dentro del perímetro.
+      cand.score = Math.min(1, cand.score + THRESHOLDS.SCOPE_BOOST);
     }
   }
 

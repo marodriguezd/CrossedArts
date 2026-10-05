@@ -25,6 +25,7 @@
 - `useAppData()` exposes `initError`; `App.tsx` stops mounting on failure
 - Lazy views must call `dbBridge.ensureInitialized()` before reading
 - All data modifications must call `await dbBridge.persist()`
+- Persistence uses CAS: `saveToStorageWithCas()` compares the persisted coordinator revision and rejects `StaleWriteError` when another tab wrote first; `persist()` surfaces this as state `stale-other-tab`
 
 ### 3. Schema Migrations
 - New tables/columns require updates to: `schema.ts`, `exportImport.ts` (`getDatabaseTables()`), and `seedDemo.ts`
@@ -62,7 +63,7 @@
 cd frontend
 npm install          # Install dependencies
 npm run dev          # Start dev server (Vite)
-npm test             # Run test suite (340 tests, 23 files)
+npm test             # Run test suite (368 tests, 26 files)
 npm run typecheck    # TypeScript type checking
 npm run build        # Production build (outputs to dist/)
 ```
@@ -89,7 +90,7 @@ PYTHONPATH=. pytest backend/tests -q
 
 ## Testing Expectations
 
-The frontend test suite (340 tests, 23 files) validates:
+The frontend test suite (368 tests, 26 files) validates:
 - SQLite WASM initialization without network access
 - SM-2 algorithm accuracy
 - Study session lifecycle and persistence
@@ -170,7 +171,7 @@ CrossedArts/
 │   │   │   ├── commandPalette.ts     # Ctrl+K palette logic
 │   │   │   └── localMediaService.ts  # File System Access API
 │   │   └── hooks/                    # useTheme, useCommandPaletteHotkey
-│   └── tests/                        # 23 test files, 340 tests
+│   └── tests/                        # 26 test files, 368 tests
 ├── backend/
 │   ├── alembic/                      # Database migrations
 │   ├── app/

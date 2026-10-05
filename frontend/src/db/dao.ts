@@ -9,22 +9,64 @@ const SESSION_LIVE_DURATION_SQL = `duration_minutes = CASE
   THEN MAX(1, CAST(ROUND((strftime('%s','now') - strftime('%s', started_at)) / 60.0) AS INTEGER))
   ELSE 0 END`;
 
+/**
+ * Fila SQL cruda de `learning_session` (frontera de datos no confiables).
+ *
+ * sql.js devuelve `unknown[][]`; esta tupla documenta la posición de cada
+ * columna y fuerza la validación explícita de tipos en el mapeador. Toda
+ * conversión pasa por `asSqlType`, que rechaza null/undefined para campos no
+ * anulables en lugar de propagar `null` silenciosamente.
+ */
+type SqlValue = unknown;
+
+class SqlRow {
+  private readonly row: readonly SqlValue[];
+
+  constructor(row: readonly SqlValue[]) {
+    this.row = row;
+  }
+
+  str(index: number): string {
+    const v = this.row[index];
+    if (typeof v !== 'string' && typeof v !== 'number') {
+      throw new Error(`Fila SQL inválida: se esperaba texto en la posición ${index}`);
+    }
+    return String(v);
+  }
+
+  optionalStr(index: number): string | undefined {
+    const v = this.row[index];
+    return v === null || v === undefined ? undefined : this.str(index);
+  }
+
+  num(index: number, fallback = 0): number {
+    const v = this.row[index];
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  bool(index: number): boolean {
+    return this.num(index) === 1;
+  }
+}
+
 function mapLearningSessionRow(row: any[]): LearningSession {
+  const r = new SqlRow(row);
   return {
-    id: String(row[0]),
-    resource_id: row[1] ? String(row[1]) : undefined,
-    started_at: String(row[2]),
-    ended_at: row[3] ? String(row[3]) : undefined,
-    duration_minutes: Number(row[4]) || 0,
-    inactive_seconds: Number(row[5]) || 0,
-    mode: (row[6] as StudySessionMode) || 'flashcards',
-    cards_reviewed: Number(row[7]) || 0,
-    questions_answered: Number(row[8]) || 0,
-    correct_answers: Number(row[9]) || 0,
-    status: (row[10] as StudySessionStatus) || 'completed',
-    resource_title: row[11] ? String(row[11]) : undefined,
-    lesson_id: row[12] ? String(row[12]) : undefined,
-    lesson_title: row[13] ? String(row[13]) : undefined
+    id: r.str(0),
+    resource_id: r.optionalStr(1),
+    started_at: r.str(2),
+    ended_at: r.optionalStr(3),
+    duration_minutes: r.num(4),
+    inactive_seconds: r.num(5),
+    mode: (r.str(6) as StudySessionMode) || 'flashcards',
+    cards_reviewed: r.num(7),
+    questions_answered: r.num(8),
+    correct_answers: r.num(9),
+    status: (r.str(10) as StudySessionStatus) || 'completed',
+    resource_title: r.optionalStr(11),
+    lesson_id: r.optionalStr(12),
+    lesson_title: r.optionalStr(13)
   };
 }
 

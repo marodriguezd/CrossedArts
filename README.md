@@ -95,7 +95,7 @@ cd frontend
 npm test
 ```
 
-The test suite includes 340 tests across 23 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph, RAG, document ingestion, and AI providers.
+The test suite includes 368 tests across 26 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph, RAG, document ingestion, and AI providers.
 
 ### Build
 

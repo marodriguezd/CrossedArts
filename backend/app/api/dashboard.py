@@ -52,7 +52,9 @@ def get_recent_activity(db: Session = Depends(get_db)):
     """
     recent_activity: List[RecentActivityItem] = []
 
-    # 1. Obtener las últimas 5 sesiones de estudio cerradas
+    # 1. Obtener las últimas 5 sesiones de estudio cerradas.
+    # Una sesión puede estar acotada a lección (resource_id nulo): el título
+    # visible se resuelve entonces desde la lección en lugar del recurso.
     stmt_sessions = (
         select(LearningSession)
         .where(LearningSession.ended_at != None)
@@ -61,16 +63,29 @@ def get_recent_activity(db: Session = Depends(get_db)):
     )
     sessions = db.scalars(stmt_sessions).all()
     for s in sessions:
+        if s.resource is not None:
+            resource_id = s.resource.id
+            resource_title = s.resource.title
+            resource_type = s.resource.type
+            description = f"Sesión de estudio finalizada ({s.duration_minutes} min)."
+        else:
+            resource_id = s.id  # El propio identificador de la sesión como clave estable
+            resource_title = s.lesson.title if s.lesson else "Estudio por lección"
+            resource_type = "lesson"
+            description = (
+                f"Sesión de lección finalizada ({s.duration_minutes} min)."
+                if s.lesson else "Sesión de estudio finalizada."
+            )
         recent_activity.append(
             RecentActivityItem(
                 id=s.id,
-                resource_id=s.resource_id,
-                resource_title=s.resource.title,
-                resource_type=s.resource.type,
+                resource_id=resource_id,
+                resource_title=resource_title,
+                resource_type=resource_type,
                 activity_type="session",
                 timestamp=s.ended_at,
                 duration_minutes=s.duration_minutes,
-                description=f"Sesión de estudio finalizada ({s.duration_minutes} min)."
+                description=description
             )
         )
 

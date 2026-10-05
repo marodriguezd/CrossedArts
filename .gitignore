@@ -135,6 +135,7 @@ scratch/
 .claude/
 .gemini/
 .freebuff/
+freebuff-chat-*.md
 
 # --- General Logs & Temp ---
 *.log

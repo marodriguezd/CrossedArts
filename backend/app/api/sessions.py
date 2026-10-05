@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
@@ -12,10 +13,17 @@ router = APIRouter(prefix="/sessions", tags=["Sessions"])
 @router.post("/start", response_model=LearningSessionResponse, status_code=status.HTTP_201_CREATED)
 def start_session(payload: StartSessionRequest, db: Session = Depends(get_db)):
     """
-    Inicializa una sesión de estudio vinculada a un recurso de aprendizaje.
+    Inicializa una sesión de estudio acotada a un recurso, a una lección o a ambos.
+    Nunca existe una sesión sin ámbito: la restricción vive en el esquema
+    (StartSessionRequest) y en el servicio, y una petición sin ámbito produce
+    un error 422 de validación.
     """
     try:
-        session = SessionService.start_session(db, payload.resource_id)
+        session = SessionService.start_session(
+            db,
+            resource_id=payload.resource_id,
+            lesson_id=payload.lesson_id
+        )
         return session
     except ValueError as e:
         raise get_http_exception("RESOURCE_NOT_FOUND", str(e), status_code=status.HTTP_400_BAD_REQUEST)

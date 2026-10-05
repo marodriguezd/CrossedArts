@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import ForeignKey, String, Integer, DateTime, Boolean, Float
+from sqlalchemy import CheckConstraint, ForeignKey, String, Integer, DateTime, Boolean, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
@@ -11,12 +11,31 @@ from backend.app.models.base import TimestampMixin
 class LearningSession(Base):
     __tablename__ = "learning_session"
 
-    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    resource_id: Mapped[uuid.UUID] = mapped_column(
-        GUID, 
-        ForeignKey("learning_resource.id", ondelete="CASCADE"), 
-        nullable=False
+    # Contrato de dominio: una sesión puede estar acotada a un RECURSO, a una
+    # LECCIÓN o a ambos (nunca a ninguna de las dos). El frontend (SQLite WASM)
+    # ya modela así el estudio por lección: su migración legada reconstruye esta
+    # tabla con `resource_id` nullable y exige al menos un ancla de ámbito.
+    __table_args__ = (
+        CheckConstraint(
+            "resource_id IS NOT NULL OR lesson_id IS NOT NULL",
+            name="ck_learning_session_scope",
+        ),
     )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    resource_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID,
+        ForeignKey("learning_resource.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True
+    )
+    lesson_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID,
+        ForeignKey("lesson.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True
+    )
+    mode: Mapped[str] = mapped_column(String(20), default="flashcards", nullable=False)
     started_at: Mapped[datetime] = mapped_column(
         DateTime, 
         default=utc_now_naive, 
@@ -27,7 +46,8 @@ class LearningSession(Base):
     inactive_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relaciones
-    resource: Mapped["LearningResource"] = relationship("LearningResource", back_populates="sessions")
+    resource: Mapped[Optional["LearningResource"]] = relationship("LearningResource", back_populates="sessions")
+    lesson: Mapped[Optional["Lesson"]] = relationship("Lesson")
 
 
 class Note(Base, TimestampMixin):
