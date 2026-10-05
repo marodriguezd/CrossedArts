@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { dao } from './db/dao.ts';
 import { dbBridge } from './db/sqliteBridge.ts';
 import { Shell } from './components/layout/Shell.tsx';
@@ -10,10 +10,24 @@ import { NotesView } from './pages/NotesView.tsx';
 import { ResourceDetail } from './pages/ResourceDetail.tsx';
 import { SettingsView } from './pages/SettingsView.tsx';
 import { AIAssistantDrawer } from './components/ai/AIAssistantDrawer.tsx';
+import { CommandPalette } from './components/common/CommandPalette.ts';
 import { localMediaService } from './services/localMediaService.ts';
 import { localAiRuntime } from './services/localAiRuntime.ts';
 import { aiService } from './ai/aiService.ts';
 import { useAppData } from './hooks/useAppData.ts';
+import { useTheme } from './hooks/useTheme.ts';
+import { useCommandPaletteHotkey } from './hooks/useCommandPaletteHotkey.ts';
+import {
+  buildPaletteCatalog,
+  navigateToDestination,
+  resolveActionTab,
+  type ConceptIndexRow,
+  type LessonIndexRow,
+  type ResourceIndexRow,
+  type PaletteItem,
+  type PaletteNavigation,
+} from './services/commandPalette.ts';
+import { exportSqliteFile } from './db/exportImport.ts';
 import { Loader2, AlertTriangle, X, RotateCcw } from 'lucide-react';
 import { Button } from './components/ui/index.tsx';
 
@@ -34,21 +48,10 @@ export const App: React.FC = () => {
   const [graphVersion, setGraphVersion] = useState(0);
   const [appNotice, setAppNotice] = useState<string | null>(null);
   const [globalQuery, setGlobalQuery] = useState('');
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
-  const {
-    loading,
-    initError,
-    kpis,
-    courses,
-    books,
-    flashcards,
-    notes,
-    recentSessions,
-    selectedCourse,
-    refreshData,
-    selectCourse,
-    retryInit
-  } = useAppData(selectedCourseId);
+  const { loading, initError, kpis, courses, books, flashcards, notes, recentSessions, selectedCourse, refreshData, selectCourse, retryInit } =
+    useAppData(selectedCourseId);
 
   const handleSelectCourse = async (id: string) => {
     setSelectedCourseId(id);
@@ -179,9 +182,194 @@ export const App: React.FC = () => {
 
   const handleGraphMutated = () => {
     setGraphVersion(v => v + 1);
+    // El índice plano de la paleta puede quedar obsoleto: se invalida para que la
+    // próxima apertura lo vuelva a leer.
+    paletteLoadRef.current = null;
     // Tras importar/cambiar contenido, el índice semántico se regenera en segundo
     // plano de forma automática y deduplicada (sin bloquear la interfaz).
     localAiRuntime.scheduleIndexing(aiService.getSettings().provider);
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* Paleta de comandos global (Ctrl+K / Cmd+K)                          */
+  /* ------------------------------------------------------------------ */
+
+  const [theme, toggleTheme] = useTheme();
+  const [lessonIndex, setLessonIndex] = useState<LessonIndexRow[]>([]);
+  const [conceptIndex, setConceptIndex] = useState<ConceptIndexRow[]>([]);
+  const [resourceIndex, setResourceIndex] = useState<ResourceIndexRow[]>([]);
+  const [continueTarget, setContinueTarget] = useState<{
+    courseId: string;
+    lessonId: string;
+    courseTitle: string;
+    lessonTitle: string;
+  } | null>(null);
+
+  const paletteOpenRef = useRef(false);
+  const paletteLoadRef = useRef<Promise<void> | null>(null);
+
+  /**
+   * Prepara el índice plano de lecciones, conceptos y recursos importados para que
+   * la paleta pueda filtrar en memoria. Se dispara al abrirla y se DEDUPLICA:
+   * varias aperturas seguidas comparten la misma promesa, igual que `dbBridge.init`.
+   *
+   * Vive aquí y no en `useAppData` a propósito: son índices de pantalla, no datos
+   * de arranque, y cargar un PDF por cada documento importado al iniciar la
+   * aplicación sería un coste que el usuario paga siempre para usar Ctrl+K una vez.
+   */
+  const ensurePaletteIndex = useCallback(async () => {
+    if (paletteLoadRef.current) return paletteLoadRef.current;
+    const job = (async () => {
+      try {
+        const [lessons, concepts, resources] = await Promise.all([
+          dao.getLessonIndex(),
+          dao.getConceptIndex(),
+          dao.getResourceIndex()
+        ]);
+        setLessonIndex(lessons);
+        setConceptIndex(concepts);
+        setResourceIndex(resources);
+      } catch (e) {
+        console.warn('No se pudo preparar el índice de la paleta de comandos:', e);
+      }
+    })();
+    paletteLoadRef.current = job;
+    return job;
+  }, []);
+
+  const openPalette = useCallback(() => {
+    paletteOpenRef.current = true;
+    // La paleta vive por encima del cajón del Tutor IA: ambos overlays son
+    // excluyentes para que Escape y el foco no se solapen.
+    setIsAIOpen(false);
+    setAiResource(null);
+    setIsPaletteOpen(true);
+    void ensurePaletteIndex();
+  }, [ensurePaletteIndex]);
+
+  const closePalette = useCallback(() => {
+    paletteOpenRef.current = false;
+    setIsPaletteOpen(false);
+  }, []);
+
+  const togglePalette = useCallback(() => {
+    if (paletteOpenRef.current) closePalette();
+    else openPalette();
+  }, [openPalette, closePalette]);
+
+  /**
+   * El atajo es inerte mientras la aplicación no está lista.
+   *
+   * El listener está montado antes de los guardas de `loading` e `initError`, así
+   * que sin esto, pulsar Ctrl+K durante el arranque dejaba `isPaletteOpen` en
+   * true y la paleta aparecía sola al terminar de cargar, sin que nadie la hubiera
+   * pedido.
+   */
+  useCommandPaletteHotkey(loading || initError ? () => undefined : togglePalette);
+
+  /**
+   * "Continuar aprendiendo" apunta a la siguiente lección pendiente. Se elige un
+   * único curso candidato (primero el que ya está en progreso) y solo se resuelve
+   * UNA lección: el resto de lecciones ya están en el índice de la paleta.
+   */
+  useEffect(() => {
+    if (!isPaletteOpen) return;
+    let cancelled = false;
+
+    const candidate =
+      courses.find(course => course.status === 'IN_PROGRESS') ??
+      courses.find(course => course.status === 'NOT_STARTED');
+    if (!candidate) {
+      setContinueTarget(null);
+      return;
+    }
+
+    dao
+      .getNextLessonForCourse(candidate.id)
+      .then(result => {
+        if (cancelled || !result) return;
+        setContinueTarget({
+          courseId: candidate.id,
+          lessonId: result.lesson.id,
+          courseTitle: candidate.title,
+          lessonTitle: result.lesson.title
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setContinueTarget(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPaletteOpen, courses]);
+
+  const paletteItems = useMemo(
+    () =>
+      buildPaletteCatalog({
+        courses,
+        books,
+        notes,
+        lessons: lessonIndex,
+        concepts: conceptIndex,
+        resources: resourceIndex,
+        pendingReviews: kpis?.pending_reviews ?? 0,
+        continueTarget,
+        isDarkTheme: theme === 'dark'
+      }),
+    [courses, books, notes, lessonIndex, conceptIndex, resourceIndex, kpis, continueTarget, theme]
+  );
+
+  /** Despacha el elemento elegido: destino de entidad o acción por identificador. */
+  const handlePaletteExecute = (item: PaletteItem) => {
+    if (item.destination) {
+      navigateToDestination(item.destination, {
+        openCourse: id => {
+          if (id) void handleSelectCourse(id);
+        },
+        openLesson: id => {
+          void handleOpenLesson(id);
+        },
+        openNote: handleOpenNote,
+        openConcept: handleOpenConcept,
+        openResource: id => {
+          void handleOpenResource(id);
+        },
+        openLibrary: () => handleNavigateTab('library')
+      });
+      return;
+    }
+
+    const tab = resolveActionTab(item.id);
+    if (tab) {
+      handleNavigateTab(tab);
+      return;
+    }
+
+    switch (item.id) {
+      case 'accion:review':
+        // Sesión de repaso global: sin recurso ni lección concretos.
+        setStudyResourceId(null);
+        setStudyLessonId(null);
+        setStudyMode(undefined);
+        setCurrentTab('review');
+        return;
+      case 'accion:ai':
+        setAiResource(null);
+        setIsAIOpen(true);
+        return;
+      case 'accion:mount-folder':
+        void handleMountLocalFolder();
+        return;
+      case 'accion:backup':
+        void exportSqliteFile();
+        return;
+      case 'accion:theme':
+        toggleTheme();
+        return;
+      default:
+        return;
+    }
   };
 
   if (loading) {
@@ -255,10 +443,8 @@ export const App: React.FC = () => {
       currentTab={currentTab}
       onNavigate={handleNavigateTab}
       onOpenAI={() => { setAiResource(null); setIsAIOpen(true); }}
-      onGlobalSearch={(q) => {
-        handleNavigateTab('library');
-        setGlobalQuery(q);
-      }}
+      onOpenCommandPalette={openPalette}
+      paletteOpen={isPaletteOpen}
     >
       <>
         {appNotice && (
@@ -384,6 +570,19 @@ export const App: React.FC = () => {
         activeContext={aiResource?.label || (selectedCourse ? selectedCourse.title : currentTab)}
         activeResourceId={aiResource?.id || selectedCourse?.id}
         activeLessonId={aiResource?.lessonId}
+      />
+
+      {/* La paleta se monta como hermana del Shell para que su overlay no dependa
+          del layout de la vista activa. */}
+      <CommandPalette
+        isOpen={isPaletteOpen}
+        onClose={closePalette}
+        items={paletteItems}
+        onExecute={handlePaletteExecute}
+        onSearchAll={(q) => {
+          handleNavigateTab('library');
+          setGlobalQuery(q);
+        }}
       />
     </>
   );

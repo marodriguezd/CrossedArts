@@ -343,6 +343,12 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
     if (state.phase !== 'active' || isPreparing || isFlashcardModalOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Las combinaciones con modificador NO pertenecen a este atajo: son de la
+      // aplicación o del sistema (por ejemplo Ctrl+K / Cmd+K abren la paleta de
+      // comandos global). Sin esta guarda, Cmd+K calificaría la tarjeta en curso
+      // mientras abría la paleta.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       // Ignorar si el foco está en un campo de texto interactivo
       const target = e.target as HTMLElement | null;
       if (target) {

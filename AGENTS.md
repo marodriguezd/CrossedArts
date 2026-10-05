@@ -39,20 +39,26 @@ CrossedArts/
 │   │   ├── components/
 │   │   │   ├── common/
 │   │   │   │   ├── ConfirmDialog.tsx  # Diálogo de confirmación accesible para acciones destructivas
+│   │   │   │   ├── CommandPalette.ts  # Paleta global (Ctrl+K) en .ts/createElement: es lo que
+│   │   │   │   │                       # permite importarla desde el runner de pruebas y testear su HTML
 │   │   │   │   └── ThemeToggle.tsx    # Selector de tema claro (crema) / oscuro (carbón)
 │   │   │   ├── lesson/
 │   │   │   │   └── LessonWorkspace.tsx  # Espacio de trabajo de la lección (contenido, notas, recursos, conceptos, estudio)
 │   │   │   ├── ai/
-│   │   │   │   └── AIAssistantDrawer.tsx  # Cajón lateral del tutor pedagógico con citas RAG
+│   │   │   │   ├── AIAssistantDrawer.tsx  # Cajón lateral del tutor pedagógico con citas RAG
+│   │   │   │   └── MarkdownMessage.ts     # Render del Markdown del tutor, en createElement para testearlo
 │   │   │   ├── ui/
-│   │   │   │   └── index.tsx           # Primitivas visuales compartidas (Button, Badge, Panel, SearchInput, etc.)
+│   │   │   │   ├── index.tsx           # Primitivas visuales compartidas (Button, Badge, Panel, SearchInput, etc.)
+│   │   │   │   └── primitives.ts       # cn + Kbd en createElement, importables desde las pruebas;
+│   │   │   │                           # reexportados desde index.tsx para no tocar a sus 17 consumidores
 │   │   ├── hooks/
-│   │   │   └── useTheme.ts             # Tema claro/oscuro persistente (localStorage + data-theme)
+│   │   │   ├── useTheme.ts             # Tema claro/oscuro persistente y compartido (localStorage + data-theme)
+│   │   │   └── useCommandPaletteHotkey.ts  # Atajo global Ctrl+K / Cmd+K, siempre montado
 │   │   │   ├── study/
 │   │   │   │   ├── FlashcardGenerationModal.tsx  # Generación y previsualización de flashcards
 │   │   │   │   └── PracticeQuestion.tsx  # Pregunta de práctica accesible (grupo de radios)
 │   │   │   └── layout/
-│   │   │       └── Shell.tsx        # Shell de la aplicación: lateral fijo, barra superior, buscador global y cajón móvil
+│   │   │       └── Shell.tsx        # Shell de la aplicación: lateral fijo, barra superior, disparador de la paleta y cajón móvil
 │   │   ├── db/
 │   │   │   ├── dao.ts              # Data Access Object con consultas SQL y algoritmo SM-2
 │   │   │   ├── exportImport.ts     # Exportación/importación binaria .sqlite y backup JSON
@@ -74,6 +80,7 @@ CrossedArts/
 │   │   │   └── SettingsView.tsx    # Gestión de BD (backup/restore), IA on-device e índice semántico
 │   │   ├── services/
 │   │   │   ├── studySession.ts        # Máquina de estados pura del ciclo de vida de sesión
+│   │   │   ├── commandPalette.ts      # Lógica pura de la paleta: normalización, ranking, catálogo y navegación
 │   │   │   └── localMediaService.ts   # Registro local de medios y matching determinista
 │   │   ├── types/
 │   │   │   └── models.ts           # Interfaces y tipos de datos TypeScript
@@ -154,6 +161,27 @@ npx vite build
 17. Endurecimiento de integridad local y aislamiento por ámbito: notas del espacio de trabajo acotadas estrictamente a su lección (`dao.getNotesForLesson`; `dao.getNotesForResource` con ámbito de lección filtra solo por `lesson_id`) para que el progreso de una lección no se contamine con notas de lecciones hermanas ni con la nota general del curso; historial de estudio con ámbito de lección preservado y mostrado en el Dashboard (`learning_session.lesson_id` + `lesson_title` en `getRecentStudySessions`, sin inventar lección en sesiones de curso); refuerzo verificado de `PRAGMA foreign_keys` mediante prueba de efecto tras `init`, `persist` y roundtrip export/import binario, con `ON DELETE SET NULL` real en `note` y `learning_session` al borrar una lección; índices deterministas y tripleta única en `knowledge_connection` con migración de deduplicación idempotente (`migrateKnowledgeConnectionIndex`, conservando la fila de id menor); invalidación perezosa de vectores cacheados en la recuperación por SHA-256 + versión de pipeline (`isCachedVectorFresh`); cero diálogos nativos del navegador (`alert`/`confirm` sustituidos por `ConfirmDialog` y avisos `aria-live` en `SettingsView`/`App`/`CourseDetail`); y `.gitignore` con las reglas heredadas de plantilla Python `lib/` ancladas a la raíz (`/lib/`) para que `frontend/src/lib/` (22 ficheros del motor local RAG/LLM/embeddings/ingestión) permanezca versionado (`schema_and_ddl.test.ts`, `lesson_workspace.test.ts`, `study_session.test.ts`, `.gitignore`).
 
 18. IA local de configuración cero y preparación automática: coordinador mínimo `services/localAiRuntime.ts` que orquesta los motores existentes sin reemplazarlos ni introducir un store global. Detecta capacidades WebGPU de forma conservadora (features explícitas y pista tosca de gama; nunca VRAM exacta), selecciona el modelo compatible más seguro de forma determinista (`lib/localLlm/selection.ts`), comparte una única promesa de preparación entre llamantes concurrentes (una sola descarga/carga), solicita un consentimiento único y persistente antes de la primera descarga grande, reutiliza modelos ya cacheados y funciona offline si ya se preparó. La búsqueda semántica (embeddings) se prepara e indexa automáticamente cuando la recuperación la necesita o al importar contenido, con deduplicación de trabajos, cancelación y degradación honesta a recuperación léxica si falla. Límites de proveedor explícitos: `demo`, `ollama` y `openai` nunca cargan WebLLM ni cambian de proveedor en silencio (`localAiRuntime.ts`, `localLlm/capabilities.ts`, `localLlm/selection.ts`, `localRag/retrieval.ts`, `ai/aiService.ts`, `components/ai/AIAssistantDrawer.tsx`, `pages/SettingsView.tsx`).
+
+19. Buscador global como paleta de comandos (Ctrl+K / Cmd+K): `Ctrl+K`/`Cmd+K` alterna una paleta que busca y salta a cursos, libros, lecciones, notas, conceptos y acciones. Toda la inteligencia es **pura y sin dependencias** en `services/commandPalette.ts`. **Cero consultas por pulsación**: el catálogo se construye en memoria con los cursos, libros y notas que `useAppData` ya tiene, más tres índices planos y de una sola consulta (`dao.getLessonIndex()`, `dao.getConceptIndex()` y `dao.getResourceIndex()`), preparados con una única promesa deduplicada al abrir y cacheados hasta la siguiente mutación del grafo; por eso la paleta coincide desde el PRIMER carácter y no hereda el mínimo de 2 caracteres de `searchKnowledge`. Los tres índices viven en `App.tsx` y **no** en `useAppData`: son datos de pantalla, no de arranque, y cargar un PDF por documento importado al iniciar la app sería un coste que el usuario paga siempre para usar Ctrl+K una vez.
+
+    **Los recursos importados también son de primera clase.** `getResourceIndex()` devuelve las filas de `learning_resource` cuyo `type` NO es `course` ni `book`, porque esas dos ya llegan por `getCourses()` y `getBooks()`: incluirlas otra vez mostraría el mismo documento dos veces con dos iconos. Antes, un PDF importado era alcanzable por la búsqueda de la Biblioteca, era nodo del grafo y tenía `ResourceDetail`, pero **no se encontraba desde Ctrl+K**. Un punto de entrada global que no llega al contenido del usuario no es global.
+
+    **Escalera de puntuación** (`PALETTE_SCORE`, excluyentes de arriba abajo): `exact` > `prefix` > `wordStart` > `substring` > `subtitle` > `keyword` > `body` > `fuzzy`. Cada nivel se evalúa sobre el campo que le corresponde y en ese orden, así que una coincidencia real en el título siempre gana a una difusa en el subtítulo. El título manda sobre todo lo demás, y `wordStart` gana a `substring` aunque la primera ocurrencia sea interna. El desempate es explícito (título y luego id) para que la misma entrada produzca siempre la misma lista.
+
+    **Tres niveles de coincidencia**, y por qué existen:
+    - `body` (120): busca en el **cuerpo** de notas y lecciones, no solo en títulos. Sin él la paleta sería PEOR que la búsqueda anterior del header, porque `dao.searchKnowledge` sí buscaba en `note.content`. El cuerpo se indexa en `body` y se pre-normaliza en `bodyNormalized` al construir el catálogo, acotado a `PALETTE_BODY_MAX_CHARS`: renormalizarlo en cada pulsación sería el cuello de botella. El subtítulo de una nota es un resumen de 80 caracteres, NUNCA el cuerpo entero (una nota de 4000 caracteres sigue siendo 4000 nodos de texto en el DOM y además taparía el nivel `body`).
+    - `fuzzy` (100/90/80): subsecuencia puntuada por **densidad**, para que la red de seguridad ordene lo relevante por delante de lo meramente posible. Exige `PALETTE_FUZZY_MIN_LENGTH = 3`: sin ese mínimo cualquier trigrama casaría con media biblioteca. Solo se resaltan coincidencias **contiguas**; una subsecuencia no forma un tramo que se pueda marcar sin inventar caracteres intermedios, y por eso se distingue por aparecer al final de la lista.
+    - `matchPaletteItems` es lo que consume el componente y devuelve, además del elemento, los rangos a resaltar y un `matchedBody`, para que la fila pueda mostrar el **fragmento que casó** y contestar "¿por qué aparece esto?". `filterPaletteItems` es un envoltorio para quien solo necesite la lista.
+
+    **Accesibilidad**: nivel `combobox` completo (`aria-expanded`, `aria-controls`, `aria-autocomplete`, `aria-activedescendant`, `listbox`/`option`/`group`), región `aria-live` con el recuento, foco contenido dentro del diálogo con Tab y restaurado al cerrar, overlay en `z-[70]` por encima del cajón IA y de `ConfirmDialog`, y estado activo marcado por forma y posición además de por color. El `listbox` se monta **siempre**, incluso vacío, y el mensaje de "Sin resultados" vive **fuera** de él: si no, `aria-controls` apuntaría a un id inexistente justo en el caso que más se necesita leer con lector de pantalla. El resaltado usa `<mark>` con segmentos como hijos de React, **nunca `dangerouslySetInnerHTML`**: una nota es contenido de usuario y debe MOSTRARSE, no interpretarse. El header es un disparador cuyo nombre accesible es su texto visible, "Buscar o ir a…" (WCAG 2.5.3 "Label in Name"): un `aria-label` que no lo contenga rompe el control por voz; el atajo se anuncia con `aria-keyshortcuts` (⌘K en Apple, Ctrl+K en el resto). La acción "Continuar aprendiendo" resuelve una sola lección pendiente con `getNextLessonForCourse`, y cualquier destino con `lessonId` abre la lección exacta en vez de solo el curso, algo que `Library.tsx` descartaba. Sin dependencias nuevas, sin red y sin esquema nuevo (`services/commandPalette.ts`, `components/common/CommandPalette.ts`, `hooks/useCommandPaletteHotkey.ts`, `db/dao.ts`, `App.tsx`, `components/layout/Shell.tsx`, `hooks/useTheme.ts`, `db/seedDemo.ts`, `tests/command_palette.test.ts`, `tests/command_palette_render.test.ts`).
+
+    > **Atajo global frente a atajos de una sola tecla.** Todo handler de teclado que compare teclas **sin verificadores de modificador** (`LessonWorkspace.tsx`, `ReviewCenter.tsx`) debe empezar por `if (e.ctrlKey || e.metaKey || e.altKey) return;`. Sin esa guarda, `Cmd+L` saltaba −10 s, `Cmd+M` silenciaba y `Ctrl+K` pausaba el vídeo o calificaba la tarjeta a la vez que abría la paleta. Es un requisito, no una opcionalidad.
+
+    > **Un solo `useTheme`, muchas vistas.** `hooks/useTheme.ts` es un almacén compartido con suscriptores, porque lo consumen la cabecera, Ajustes y la paleta. Con `useState` local en cada consumidor, la etiqueta de la paleta se quedaba desfasada en cuanto el usuario alternaba el tema desde el botón de la cabecera. Añade consumidores con `useTheme()` (o `setThemeMode`), nunca con un `useState` paralelo.
+
+    > **La lógica que se puede probar, se extrae.** Ni `commandPalette.ts` ni `CommandPalette.ts` acceden a `dbBridge`, al DAO ni a la red, y el primero ni siquiera depende de React. La paleta solo lee `PaletteItem[]` ya construido y devuelve el elemento elegido; `App.tsx` es el único que decide qué hacer con cada acción. La vista sí toca el DOM, pero **solo dentro de efectos y manejadores**: durante el render no lo hace nunca, y esa garantía la demuestra la prueba 19.42 del fichero de render, que falla si alguna vez se cumple.
+
+    > **Los guardas de carga también cuentan.** `useCommandPaletteHotkey` se registra antes de los guardas `loading` e `initError`, porque los hooks no pueden ir después de un `return` temprano. Pasa un manejador inerte mientras la app no esté lista, o pulsar Ctrl+K durante el arranque abrirá la paleta solo al terminar de cargar.
 
 ### 3.2. Backend Companion (Python + FastAPI)
 
@@ -240,3 +268,28 @@ Cualquier modificación o ampliación de código debe respetar estrictamente est
    - Ollama corre por defecto en `http://localhost:11434`. Los navegadores modernos imponen CORS; si el usuario usa Ollama, debe iniciarlo con la variable de entorno `OLLAMA_ORIGINS="*"`.
 5. **Nombre y URL del WASM de SQLite en el navegador:**
    - Vite resuelve `sql.js` por la condición `browser` de su `package.json`, es decir `dist/sql-wasm-browser.js`, cuya build de Emscripten pide `sql-wasm-browser.wasm`. El proyecto **solo despliega** `sql-wasm.wasm` en `public/` (binario idéntico), así que `locateFile` debe normalizar el nombre a `sql-wasm.wasm` y resolverlo contra la base real del documento (`document.baseURI`), nunca con una ruta `./` relativa al bundle. Lo contrario provoca un 404 del WASM en GitHub Pages y el error "No se pudo cargar el motor SQLite en WebAssembly". Ayudantes puros y probados en `src/db/sqliteWasmUrl.ts` (`resolveSqliteWasmUrl`, `deployedSqliteWasmFilename`).
+
+6. **Buscador por pulsación contra índice en memoria:**
+   - `dao.searchKnowledge` está pensado para la vista de Biblioteca y golpea SQL en cada consulta, con un mínimo de **2 caracteres** y orden alfabético plano. La paleta global (`Ctrl+K` / `Cmd+K`) **no debe** reutilizarlo por pulsación: filtra un catálogo en memoria (`services/commandPalette.ts`), por lo que coincide desde el primer carácter, ordena por relevancia y no toca la base de datos. Las lecciones y los conceptos llegan al catálogo mediante los índices planos de una sola consulta `dao.getLessonIndex()` y `dao.getConceptIndex()`, cacheados con una promesa deduplicada; no añadas un DAO por tipo ni un `LIKE` por pulsación.
+
+7. **Conflicto entre el atajo global y los atajos de una sola tecla:**
+   - Los handlers de `LessonWorkspace.tsx` (espacio, `k`, `j`, `l`, `m`, `[`, `]`) y de `ReviewCenter.tsx` (espacio, `0`-`5`, `A`-`Z`) comparan `e.key` **sin mirar los modificadores**. Cualquier atajo global con Ctrl/Cmd debe añadir `if (e.ctrlKey || e.metaKey || e.altKey) return;` a esos handlers, o se ejecutarán los dos a la vez. Además, `isPaletteHotkey` es quien **exige** un modificador exacto: no lo rebajes a `Ctrl+K` sin comprobar `e.key`, ni admite Shift/Alt.
+
+8. **Apariencia de un overlay nuevo:**
+   - Los overlays del proyecto no usan `createPortal`: se montan en línea con `fixed inset-0` y su limpieza reproduce el ciclo de `ConfirmDialog.tsx` (`previouslyFocused` + `autoFocus` con `setTimeout`, Escape en un `window.addEventListener` registrado solo mientras está abierto y foco restaurado en el `cleanup` del efecto). La paleta vive en `z-[70]`, por encima del cajón IA (`z-50`) y de `ConfirmDialog` (`z-[60]`), y ambos overlays son excluyentes: abrir una cierra la otra. Reutiliza `Kbd`, `cn` y las primitivas de `components/ui/index.tsx`, y solo tokens semánticos de `index.css`.
+
+9. **Auditar colores literales por subcadena es falso positivo:**
+   - Las utilidades `translate-y-` y `-translate-x-` **contienen** la subcadena `slate-`. Al comprobar la Regla 5, exige el número de tono (`/\bslate-\d/`) o repetirás falsos positivos en cualquier componente que centra o traduce algo. La prueba `19.28` resuelve esto con `findLiteralPaletteColors`.
+
+10. **Resaltar texto normalizado parte palabras por la mitad:**
+    - `"Introducción"` mide **12** caracteres en NFC y **13** en NFD: la tilde se descompone en `o` + acento combinante. Cualquier `indexOf` sobre la forma normalizada devuelve offsets que **no** corresponden al texto original, y el `<mark>` cae en el sitio equivocado. El colapso de espacios también desplaza.
+    - Por eso existe `normalizeWithMap(text)`, que devuelve `{ normalized, origin }` con el índice de origen de cada carácter normalizado, y **`normalizePaletteQuery` delega en ella**: si la aguja y el pajar usaran transformaciones distintas, los rangos quedarían desplazados sin que nada lo delatara.
+    - Property test que hay que reejecutar si tocas esto: `segmentForHighlight(...).map(s => s.text).join('') === textoOriginal` (prueba `19.39`). Si el `join()` no devuelve el original, hay un desfase.
+    - La contraparte es genérica: se normaliza **carácter a carácter**, porque un carácter original puede producir varios normalizados (ligaduras). Confiar en que NFD+strip es 1:1 funciona con el español y se rompe con cualquier otro texto.
+
+11. **Auditar ARIA por texto de fuente no es probar el ARIA:**
+    - Una prueba que hace `readFileSync(...).includes('aria-controls')` comprueba que **la cadena esté en el archivo**, no que el ARIA sea válido. Fue exactamente así como se colaron seis defectos en la paleta: la cadena estaba, el árbol no.
+    - El runner `node --experimental-strip-types` **no puede importar `.tsx`** (elimina tipos, no JSX). Pero ese NO es un muro: el proyecto ya tiene la salida. `components/ai/MarkdownMessage.ts` está escrito en `.ts` con `createElement` **precisamente para poder testearlo**, y `tests/assistant_markdown.test.ts` lo renderiza con `renderToStaticMarkup` bajo el comando documentado.
+    - Regla: **un componente que necesite pruebas de render se escribe en `.ts` con `createElement`**, como `MarkdownMessage.ts`. Es más verboso que JSX y ese es el precio, el mismo que ya pagó ese archivo. Escribirlo en `.tsx` no está prohibido, pero entonces sabe que su JSX queda sin verificar por la suite.
+    - Obstáculo real si aún así importas un `.tsx`: `CommandPalette` necesita `cn` y `Kbd` de `components/ui/index.tsx`, que es `.tsx` e **no** se puede importar. Por eso existen `components/ui/primitives.ts` (los dos, ya en `createElement`) y se reexportan desde `ui/index.tsx` para no tocar a sus 17 consumidores.
+    - No añadas jsdom, vitest ni esbuild para resolverlo: cambiaría el comando de pruebas documentado. Si aun así necesitas inspección visual del HTML, renderiza con `vite` en modo SSR **fuera de la suite** y borra el scratch después.

@@ -1,12 +1,14 @@
 import React from 'react';
-import clsx, { type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 import { Search, X } from 'lucide-react';
+import { cn } from './primitives.ts';
 
-/** Combina clases condicionales sin perder los overrides de tailwind-merge. */
-export function cn(...inputs: ClassValue[]): string {
-  return twMerge(clsx(inputs));
-}
+/**
+ * `cn` y `Kbd` viven en `primitives.ts` (no aquí) porque un `.tsx` no puede
+ * importarse desde el runner de pruebas. Se reexportan para no romper a los
+ * consumidores que ya los importaban desde este módulo. Ver `primitives.ts`.
+ */
+export { cn, Kbd } from './primitives.ts';
+export type { KbdProps } from './primitives.ts';
 
 /* -------------------------------------------------------------------------- */
 /* Button / IconButton                                                         */
@@ -337,22 +339,3 @@ export const MetadataRow: React.FC<MetadataRowProps> = ({ label, children, class
 );
 
 /* -------------------------------------------------------------------------- */
-/* Kbd (Atajo de teclado visual)                                              */
-/* -------------------------------------------------------------------------- */
-
-interface KbdProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-export const Kbd: React.FC<KbdProps> = ({ children, className }) => (
-  <kbd
-    className={cn(
-      'inline-flex items-center justify-center rounded border border-line-strong bg-canvas px-1.5 py-0.5 font-mono text-micro font-semibold text-muted shadow-sm',
-      className
-    )}
-  >
-    {children}
-  </kbd>
-);
-

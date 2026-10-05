@@ -408,6 +408,60 @@ export const dao = {
     }));
   },
 
+  /**
+   * Indice plano de TODOS los conceptos en una sola consulta, para que la paleta
+   * de comandos (Ctrl+K) pueda filtrar en memoria sin golpear SQL en cada
+   * pulsacion. Espejo de `getLessonIndex()`: consulta unica, orden determinista
+   * y sin `N+1`. No modifica datos ni requiere esquema nuevo.
+   */
+  async getConceptIndex(): Promise<Array<{ conceptId: string; conceptName: string; conceptDescription?: string }>> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec('SELECT id, name, description FROM concept ORDER BY name ASC, id ASC');
+    if (!res.length) return [];
+    return res[0].values.map((row: any[]) => ({
+      conceptId: String(row[0]),
+      conceptName: String(row[1]),
+      conceptDescription: row[2] ? String(row[2]) : undefined
+    }));
+  },
+
+  /**
+   * Indice plano de los RECURSOS IMPORTADOS en una sola consulta para la paleta.
+   *
+   * `getCourses()` y `getBooks()` ya cubren los recursos de tipo `course` y `book`,
+   * asi que aqui solo interesan los demás: PDF, EPUB, Markdown o texto que el
+   * usuario importados. Antes eran inalcanzables desde Ctrl+K, aunque si se
+   * encuentras en la busqueda de la Biblioteca, son nodos de primera clase del
+   * grafo y tienen vista propia en `ResourceDetail`. Un punto de entrada global
+   * que no llega al contenido del usuario no es global.
+   *
+   * Mismo contrato que sus hermanos: consulta unica, orden determinista, sin
+   * `N+1`, sin tocar datos y sin esquema nuevo.
+   */
+  async getResourceIndex(): Promise<Array<{
+    resourceId: string;
+    resourceTitle: string;
+    resourceDescription?: string;
+    resourceCategory?: string;
+    resourceType: string;
+  }>> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(`
+      SELECT id, title, description, category, type
+      FROM learning_resource
+      WHERE type NOT IN ('course', 'book')
+      ORDER BY title ASC, id ASC
+    `);
+    if (!res.length) return [];
+    return res[0].values.map((row: any[]) => ({
+      resourceId: String(row[0]),
+      resourceTitle: String(row[1]),
+      resourceDescription: row[2] ? String(row[2]) : undefined,
+      resourceCategory: row[3] ? String(row[3]) : undefined,
+      resourceType: String(row[4])
+    }));
+  },
+
   async toggleLessonCompleted(lessonId: string, completed: boolean): Promise<void> {
     const db = dbBridge.getDatabase();
     db.run(

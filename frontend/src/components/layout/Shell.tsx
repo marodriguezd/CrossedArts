@@ -10,20 +10,26 @@ import {
   Bot,
   Landmark,
   Menu,
+  Search,
   X,
 } from 'lucide-react';
 import { exportSqliteFile } from '../../db/exportImport.ts';
 import { ThemeToggle } from '../common/ThemeToggle.tsx';
 import { PomodoroTimer } from '../common/PomodoroTimer.tsx';
-import { SearchInput } from '../ui/index.tsx';
-import { cn } from '../ui/index.tsx';
+import { Kbd, cn } from '../ui/index.tsx';
 
 interface ShellProps {
   currentTab: string;
   onNavigate: (tab: string) => void;
   onOpenAI: () => void;
-  /** Búsqueda global real: navega a la Biblioteca con la consulta aplicada. */
-  onGlobalSearch: (query: string) => void;
+  /** Abre la paleta de comandos global (Ctrl+K / Cmd+K). */
+  onOpenCommandPalette: () => void;
+  /**
+   * Estado de la paleta. El Shell no la monta, pero lo necesita: al abrirla hay
+   * que cerrar el cajón de navegación móvil, porque los dos overlays se solaparían
+   * y dos manejadores de Escape actuarían a la vez.
+   */
+  paletteOpen: boolean;
   children: React.ReactNode;
 }
 
@@ -44,24 +50,29 @@ const NAV_ITEMS: NavItem[] = [
 
 /**
  * Lenguaje visual compartido de la aplicación:
- * identidad, navegación primaria, búsqueda global, respaldo, IA y cambio de
- * tema, con jerarquía persistente. Sin router: la navegación sigue siendo
- * controlada por estado (`currentTab` / `onNavigate`).
+ * identidad, navegación primaria, disparador de la paleta de comandos, respaldo,
+ * IA y cambio de tema, con jerarquía persistente. Sin router: la navegación sigue
+ * siendo controlada por estado (`currentTab` / `onNavigate`).
  */
 export const Shell: React.FC<ShellProps> = ({
   currentTab,
   onNavigate,
   onOpenAI,
-  onGlobalSearch,
+  onOpenCommandPalette,
+  paletteOpen,
   children,
 }) => {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [draft, setDraft] = useState('');
 
-  // La caja de búsqueda refleja la consulta activa solo en la Biblioteca.
+  /** Rótulo del atajo acorde a la plataforma: ⌘K en Apple, Ctrl+K en el resto. */
+  const isAppleLike =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '');
+
+  // Abrir la paleta cierra el cajón móvil, venga el atajo o el clic. Antes solo lo
+  // cerraba el clic, y con Ctrl+K en un móvil se quedaban los dos overlays vivos.
   useEffect(() => {
-    if (currentTab !== 'library') setDraft('');
-  }, [currentTab]);
+    if (paletteOpen) setIsMobileNavOpen(false);
+  }, [paletteOpen]);
 
   // Escape cierra el navegador móvil.
   useEffect(() => {
@@ -72,13 +83,6 @@ export const Shell: React.FC<ShellProps> = ({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isMobileNavOpen]);
-
-  const submitSearch = () => {
-    const q = draft.trim();
-    if (!q) return;
-    onGlobalSearch(q);
-    setIsMobileNavOpen(false);
-  };
 
   const isActive = (id: string) =>
     currentTab === id ||
@@ -158,6 +162,35 @@ export const Shell: React.FC<ShellProps> = ({
     </button>
   );
 
+  /**
+   * Disparador de la paleta de comandos.
+   *
+   * Sustituye a la antigua caja de búsqueda de la barra superior: el atajo es la
+   * vía principal y el rótulo del atajo se muestra en la propia pastilla para que
+   * la función sea descubrible sin documentación. En Apple se rotula ⌘K y en el
+   * resto Ctrl+K, que es lo que el usuario puede pulsar de verdad.
+   */
+  const paletteTrigger = (
+    <button
+      type="button"
+      onClick={() => {
+        onOpenCommandPalette();
+        setIsMobileNavOpen(false);
+      }}
+      aria-keyshortcuts={isAppleLike ? 'Meta+K' : 'Control+K'}
+      // SIN aria-label a propósito (WCAG 2.5.3 "Label in Name"): el nombre
+      // accesible debe contener el texto visible. Un `aria-label` como "Abrir la
+      // paleta de comandos" lo reemplazaría y rompería el control por voz de
+      // quien dijera "clic en Buscar o ir a". El atajo ya se anuncia con
+      // `aria-keyshortcuts`.
+      className="flex h-9 w-full items-center gap-2 rounded-lg border border-line bg-surface px-3 text-meta text-faint transition-colors duration-fast hover:border-accent/50 hover:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+    >
+      <Search size={15} aria-hidden="true" className="shrink-0" />
+      <span className="min-w-0 flex-1 truncate text-left">Buscar o ir a…</span>
+      <Kbd className="shrink-0">{isAppleLike ? '⌘K' : 'Ctrl K'}</Kbd>
+    </button>
+  );
+
   return (
     <div className="min-h-screen bg-canvas text-ink">
       {/* --- Barra lateral fija (escritorio) --- */}
@@ -220,22 +253,7 @@ export const Shell: React.FC<ShellProps> = ({
 
             <div className="hidden shrink-0 lg:block">{null}</div>
 
-            <form
-              role="search"
-              onSubmit={(e) => {
-                e.preventDefault();
-                submitSearch();
-              }}
-              className="min-w-0 flex-1"
-            >
-              <SearchInput
-                label="Buscar en la biblioteca"
-                placeholder="Buscar recursos, cursos, notas…"
-                value={draft}
-                onChange={setDraft}
-                onSubmit={submitSearch}
-              />
-            </form>
+            <div className="min-w-0 flex-1">{paletteTrigger}</div>
 
             <div className="flex shrink-0 items-center gap-2">
               <PomodoroTimer />

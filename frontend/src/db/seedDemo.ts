@@ -19,6 +19,13 @@ VALUES
   ('b2-pragmatic', 'The Pragmatic Programmer: 20th Edition', 'El manual clásico del artesano del software, refactorización y mentalidad profesional.', NULL, 'Ingeniería de Software', 'IN_PROGRESS', 'book'),
   ('b3-atomic', 'Atomic Habits', 'Cómo pequeños cambios diarios generan resultados transformadores a largo plazo.', NULL, 'Desarrollo Personal', 'COMPLETED', 'book');
 
+-- Recursos importados que no son curso ni libro. Existen para ejercitar la ruta de
+-- ingestion local y, sobre todo, para que Ctrl+K tenga algo que encontrar: antes un
+-- PDF importado solo era alcanzable por la busqueda de la Biblioteca.
+INSERT INTO learning_resource (id, title, description, cover_path, category, status, type)
+VALUES
+  ('r1-srs', 'Spaced Repetition Systems: Teoría y práctica', 'Notas sobre el algoritmo SuperMemo-2, la programación de revisiones y la retención a largo plazo.', NULL, 'Aprendizaje', 'IN_PROGRESS', 'pdf'),
+  ('r2-sql', 'Consultas SQL para SQLite', 'Referencia de SELECT, índices y preparación de sentencias sobre bases de datos en el navegador.', NULL, 'Programación', 'NOT_STARTED', 'md');
 INSERT INTO book (id, author, isbn, page_count, current_page, reading_percentage)
 VALUES
   ('b1-deepwork', 'Cal Newport', '978-1455586691', 304, 106, 34.8),

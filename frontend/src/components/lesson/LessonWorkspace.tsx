@@ -265,6 +265,12 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
     if (!playbackUrl) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Las combinaciones con modificador NO pertenecen a este atajo: son de la
+      // aplicación o del sistema (por ejemplo Ctrl+K / Cmd+K abren la paleta de
+      // comandos global). Sin esta guarda, Cmd+L saltaba -10 s, Cmd+M silenciaba
+      // y Cmd+K pausaba el vídeo mientras abría la paleta.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       // Evitar captura si el usuario está escribiendo en notas, inputs o selects
       const activeEl = document.activeElement;
       const isInput =
