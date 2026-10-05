@@ -1,303 +1,156 @@
-# 🏛️ CrossedArts — Learning Operating System
+# CrossedArts — Learning Operating System
 
-<p align="center">
-  <a href="https://marodriguezd.github.io/CrossedArts/">
-    <img src="https://img.shields.io/badge/🚀%20Web%20App-Try%20on%20GitHub%20Pages-7c3aed?style=for-the-badge&logo=githubpages&logoColor=white" alt="Try on GitHub Pages" />
-  </a>
-</p>
+**Live application:** [https://marodriguezd.github.io/CrossedArts/](https://marodriguezd.github.io/CrossedArts/)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Frontend-Vite%20%2B%20React%2019%20%2B%20TS-61dafb?style=flat&logo=react" alt="React 19" />
-  <img src="https://img.shields.io/badge/Database-SQLite%20WASM%20%2B%20IndexedDB-003B57?style=flat&logo=sqlite&logoColor=white" alt="SQLite WASM" />
-  <img src="https://img.shields.io/badge/Active%20Recall-SuperMemo--2%20(SM--2)-10b981" alt="SM-2 Algorithm" />
-  <img src="https://img.shields.io/badge/Knowledge%20Graph-Vis.js%202D-818cf8" alt="Vis.js" />
-  <img src="https://img.shields.io/badge/Backend%20Companion-FastAPI%20%2B%20SQLAlchemy-059669?style=flat&logo=fastapi" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/License-GPL--3.0--only-blue.svg" alt="License: GPL-3.0-only" />
-</p>
-
-<p align="center">
-  <b>🇬🇧 English</b> • <a href="README.es.md">🇪🇸 Versión en Español</a>
-</p>
+[English](README.md) · [Español](README.es.md)
 
 ---
 
-🌐 **Live Application:** [https://marodriguezd.github.io/CrossedArts/](https://marodriguezd.github.io/CrossedArts/)
+## What It Is
 
-**CrossedArts** is a personal, modular, local-first **Learning Operating System (LMS)** designed with a **GitHub Pages First** architecture.
+CrossedArts is a personal, local-first Learning Management System that runs entirely in the browser. It centralizes courses, books, notes, flashcards, and a knowledge graph — all stored in a local SQLite database with no required backend server.
 
-It centralizes structured multimedia courses, technical books, Markdown study notes, spaced repetition flashcards powered by the **SuperMemo-2 (SM-2)** algorithm, and an interactive 2D knowledge graph—running an entire relational SQLite database directly inside your web browser with zero mandatory backend servers or cloud subscriptions.
+The application is designed for learners who want full ownership of their study data without depending on cloud services or subscriptions.
 
-For an in-depth dive into the system's philosophy, cognitive science foundations, and architecture, explore [ABOUT.md](ABOUT.md).
+## Capabilities
 
----
+- **Courses & Lessons:** Hierarchical course structure with modules, lessons, and editable Markdown content
+- **Books & Resources:** Library catalog with reading progress, imported documents (PDF, EPUB, TXT, MD), and resource organization
+- **Study Sessions:** Unified flashcard review (SM-2), practice questions, and mixed modes with local progress tracking
+- **Knowledge Graph:** Interactive 2D visualization of courses, books, lessons, notes, concepts, and their relationships
+- **Local Media:** Video and audio playback from local folders via the File System Access API
+- **Local Search:** Deterministic SQL-based search across all content, plus a global command palette (Ctrl+K)
+- **Document Ingestion:** In-browser parsing of PDF, EPUB, TXT, and MD files with SHA-256 deduplication
+- **AI Providers:** Local on-device inference (WebLLM/WebGPU), heuristic demo mode, Ollama, or OpenAI API
+- **Backup & Export:** Binary SQLite export/import and JSON backup with schema validation
+- **PWA:** Offline-capable app shell with service worker caching
 
-## ✨ Key Features
+## Local-First Model
 
-### 1. 100% Client-Side Static Deployment & Offline PWA
-- Runs entirely as a lightning-fast Single Page Application (SPA) without requiring containers or servers.
-- **Offline PWA Shell:** Includes a Web App Manifest and Service Worker (`sw.js`) that caches application shell assets and SQLite WASM, enabling CrossedArts to launch offline after initial visit. The shell cache is explicitly versioned: on a new deploy the Service Worker purges the stale shell caches on activation and serves the updated shell without a manual reload.
-- Automated CI/CD deployment via GitHub Actions in `.github/workflows/deploy.yml`.
-- Try it instantly without installing anything: [marodriguezd.github.io/CrossedArts](https://marodriguezd.github.io/CrossedArts/).
+CrossedArts uses a dual-storage architecture:
 
-### 2. In-Browser SQLite Engine & User-Owned Storage
-- Full SQLite engine compiled to WebAssembly (`sql.js`) executing in the browser.
-- Transparent synchronization with `IndexedDB` (`CrossedArts_IDB`) with explicit storage states (`ready`, `persisting`, `persisted`, `corrupt-storage`, `storage-unavailable`).
-- Full relational schema (`learning_resource`, `course`, `book`, `module`, `lesson`, `note`, `flashcard`, `concept`, `knowledge_connection`, `learning_session`).
-- **Data Portability & Backup Boundaries:**
-  - Export/Import portable `.crossedarts.sqlite` binary files with SQLite format 3 and schema validation.
-  - Backup includes all courses, progress, books, notes, flashcards, and concepts.
-  - Video and audio files remain user-owned files on local storage outside the SQLite database; restore preserves relative lesson mappings for effortless folder re-association.
+- **SQLite WASM** (`sql.js`): The canonical relational database running in the browser. Stores all learning data — courses, lessons, notes, flashcards, concepts, sessions, and resources.
+- **IndexedDB**: Persistence layer that survives browser restarts. The SQLite database is serialized to IndexedDB on every mutation.
 
-### 3. Local Media Folder Integration (File System Access API)
-- Implemented via the standard **File System Access API** (`window.showDirectoryPicker`) for Chromium-based browsers (Chrome, Edge, Brave).
-- Scans selected local course folders recursively and deterministically matches video files to course lessons.
-- Files remain strictly on your local disk; ephemeral `URL.createObjectURL()` streams are generated in-memory per lesson session and revoked on navigation without persisting temporary `blob:` URLs or raw handles into SQLite.
-- Core seeded experience operates 100% offline without remote media dependencies.
+**What works without a backend:**
+- All learning activities (courses, lessons, notes, flashcards, study sessions)
+- Local media playback
+- Document ingestion and search
+- Knowledge graph visualization
+- Backup and restore
 
-### 4. Unified Local Study Sessions (Active Recall, Practice & Progress)
-- **One coherent workflow:** Start a study session, review due flashcards, answer grounded practice questions, and finish with a local progress summary.
-- **Study modes:** `flashcards` (SM-2 due cards), `practice` (session-local generated questions) and `mixed` (deterministic: due flashcards first, then practice).
-- **Mathematical SuperMemo-2 (SM-2):** Reused as the single scheduling authority, calculating the Ease Factor (minimum 1.30), repetition streaks, and optimal review intervals based on the Hermann Ebbinghaus forgetting curve. The full 0–5 grade scale is exposed with the real calculated next interval.
-- **Session lifecycle:** `idle → starting → active → paused → completed`, plus safe `cancelled`/`failed` behavior. Reviews are persisted per card, so an unexpected reload never loses them; a session is only reported as completed when persistence succeeds.
-- **Local history:** Session facts (start/end, mode, cards reviewed, questions answered, correct answers, associated resource) are stored in the existing `learning_session` table. No second history or scheduling system is introduced.
-- **Practice stays ephemeral:** Generated questions and prompts are never permanently stored; only aggregate counters become part of the local history.
-- **Honest summary:** Flashcard grades are not reduced to right/wrong, questions report correctness normally, and no universal "knowledge score" is invented.
+**What requires network access:**
+- Initial download of local AI models (WebLLM weights, embedding model)
+- OpenAI API calls (opt-in)
+- Ollama connection (opt-in, local server)
 
-```text
-Study Session
-   ↓
-Flashcards → existing SM-2 → learning history
-   ↓
-Practice Questions → session-local feedback
-   ↓
-Session Summary → local progress
-```
+## AI & Search
 
-### 5. Lesson Workspace (First-Class Learning Unit)
-Each lesson is a complete local workspace where learning actually happens, built entirely on the existing relational model (no parallel content store).
-- **Content:** Lessons have an editable plain-text / Markdown `content` field stored in the existing `lesson` table (migrated idempotently). It is rendered as data, never as arbitrary HTML.
-- **Workspace panel:** Title, module/course context, completion state, duration, content, notes, related resources, local media, concepts and progress in one place (`components/lesson/LessonWorkspace.tsx`).
-- **Ordering:** Deterministic `Move up` / `Move down` reorders lessons within a module, normalising positions to `1..N` with no duplicates and keeping course totals consistent.
-- **Progress:** Deterministic `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` based on own content, associated notes and explicit relations (plus the existing completion flag) — never an invented percentage.
-- **Continue learning:** A deterministic continuation action selects the first incomplete lesson by module/lesson order (or the last lesson when the course is complete). No recommendation scores or adaptive learning.
-- **Local study & AI:** Study, review, practice, explain and flashcard generation reuse the existing scoped retrieval and SM-2 flow, all scoped to the lesson.
+CrossedArts supports four AI provider modes:
 
-### 6. Knowledge Graph 2.0 & First-Class Resource Organization
-- **Canonical local graph:** The lazy-loaded `KnowledgeGraph.tsx` (powered by `vis-network`) renders typed nodes for `course`, `book`, `module`, `lesson`, `note`, `concept` and imported `resource` entities. Structural edges (`contains`, `about`, `references`) are derived deterministically from SQLite foreign keys; flashcards and study sessions are deliberately **not** turned into graph nodes.
-- **Explicit, user-controlled relationships:** Manual connections are validated (supported relation type, existing endpoints, no self-links, no duplicates) and persisted in the existing `knowledge_connection` table. Dangling relationships are pruned without leaving orphans.
-- **Filters, detail panel & navigation:** Filter nodes by category, select a node to inspect its type, metadata and relationships, and jump straight back to the underlying course, lesson, note or resource. A textual relationship list keeps the graph usable without relying on the canvas.
-- **Resource organization:** Create courses/modules/lessons, edit book metadata, associate notes with resources/lessons, and detect "unorganized" imported documents to link them to a course later. Every orphan resource offers **Open / Organize / Study** actions.
-- **Unified resource detail views:** Courses, books, lessons, notes, imported resources and concepts each open in a dedicated destination. `ResourceDetail.tsx` shows metadata, extracted content (rendered as data, never as arbitrary HTML), indexing status and a **Related** section built from canonical graph + relational data. Books keep their reading progress and metadata editing; imported resources expose filename, SHA-256 fingerprint and fragments.
-- **Deterministic local search:** Find courses, books, lessons, notes, concepts and imported resources with plain SQL matching — no embeddings, WebGPU or LLM required — and open any result directly.
-- **Lesson-level study scope:** Start a study session from a lesson to prioritise that lesson, its associated notes/resources and its direct neighbours. The scope is stored on the existing `learning_session` (`lesson_id`) so history identifies what was studied, and it flows through the same retrieval layer to grounded AI actions (explain, flashcards, practice).
-- **Canonical relationships only:** Valid relationship types are centralised (`GRAPH_RELATION_TYPES`), connections are validated before persistence, dangling connections are excluded from rendering and pruned only by an explicit cleanup path. Relationships are local canonical data — no automatic semantic relationship discovery.
-- **Accessible confirmations:** Destructive actions (course/module/lesson/relationship) use a reusable `ConfirmDialog` with explicit consequence text, Escape-to-cancel, focus management and screen-reader semantics.
+| Mode | Description | Network Required |
+|------|-------------|-----------------|
+| **Local (WebLLM)** | On-device inference via WebGPU. Models: Qwen3 1.7B (default), Llama 3.2 1B, SmolLM2 1.7B, Qwen3 0.6B | First download only |
+| **Demo** | Heuristic responses based on local content. No AI model loaded | No |
+| **Ollama** | Connects to a local Ollama server at `http://localhost:11434` | Local network |
+| **OpenAI** | Uses OpenAI API with in-memory key storage | Yes |
 
-```text
-Course
-   ↓
-Module
-   ↓
-Lesson Workspace
-   ├── Content
-   ├── Notes
-   ├── Resources
-   ├── Media
-   ├── Concepts
-   ├── Progress
-   └── Local Study
-   ↓
-SQLite canonical graph relationships
-   ↓
-Knowledge Graph UI
-   ↓
-Resource / Detail View
-   ├── Related knowledge
-   ├── Study (SM-2 + practice)
-   ├── Local RAG
-   └── Local AI
-   ↓
-study workflow
-```
+**Embeddings & RAG:**
+- Local embeddings via Transformers.js with `Xenova/multilingual-e5-small` (384 dimensions, ~135 MB)
+- Hybrid retrieval combining lexical search and semantic embeddings
+- Vectors cached in IndexedDB with SHA-256 content hashing and pipeline versioning (`v1.1-e5-sha256`)
+- All embedding computation happens on-device
 
-### 7. Local-Native AI & Pedagogical Tutor (WebLLM + Hybrid Local RAG)
-- **Zero-Configuration Local AI:** You never manage models, WebGPU, VRAM, embeddings, runtimes or caches. When local AI is selected or used, CrossedArts detects device capabilities, automatically selects the safest compatible model, asks once before the first large download, prepares everything in the background and then completes your original action (ask, explain, generate flashcards or practice). A small coordinator (`src/services/localAiRuntime.ts`) reuses in-flight preparation between concurrent callers and never sends work to a remote provider. Advanced controls (choose/reload/unload model, rebuild index, clear caches, diagnostics) remain available in Settings for power users.
-- **Local-Native On-Device Inference (WebLLM / WebGPU):** Run open-source LLMs (default `Qwen3 1.7B`, or `Llama 3.2 1B`, `SmolLM2 1.7B`) 100% on-device directly inside the browser using WebGPU. No API keys or remote servers required.
-- **Initial Download & IndexedDB Caching:** The initial model download requires network access (~1 GB). Once downloaded, model weights are persistently cached in the browser's IndexedDB and execute completely offline without network calls.
-- **Hybrid Semantic Local RAG (Zero Remote Vector DB):**
-  - **In-Browser Embeddings:** Generates on-device text vectors using Transformers.js with `Xenova/multilingual-e5-small` (based on `intfloat/multilingual-e5-small`, MIT license, ONNX quantized q8, 384 dimensions, 94 languages, ~135 MB).
-  - **E5 Semantic Prefixes:** Explicitly applies `query: ` to search inputs and `passage: ` to indexed materials for optimal retrieval quality.
-  - **Vector Isolation & Cryptographic Hashing:** Embeddings are cached in a dedicated IndexedDB store (`CrossedArts_Embeddings`) completely decoupled from the canonical SQLite database. Only modified learning materials are recomputed using authoritative SHA-256 content hashing (`crypto.subtle`) and pipeline versioning (`v1.1-e5-sha256`).
-  - **Calibrated Scoring & Source Deduplication:** Employs calibrated candidate thresholds, Reciprocal Rank Fusion (RRF), and diversity-preserving source deduplication with instant fallback to pure lexical retrieval.
-- **Hybrid Multi-Mode Options:** Choose between On-Device WebGPU (`local`), Offline Heuristic (`demo`), Local Ollama server (`http://localhost:11434`), or direct OpenAI API. The OpenAI key is held **in memory only** by default and is lost on reload; optionally you can ask the app to remember it, with an explicit warning that browser storage is not a secure secret store and client-side encryption does not protect against XSS.
+## Limitations
 
-### 8. Local Document Ingestion & End-to-End RAG
-- **Zero-Cloud Document Parsing:** Import `.txt`, `.md`, `.pdf`, and `.epub` documents directly in the browser with 0 external network requests or remote OCR.
-- **First-Class Learning Resources:** Extracted content integrates into canonical SQLite `learning_resource` and `note` records with title, author, and exact page/chapter metadata.
-- **Resource Destination & Association:** Choose to import as standalone knowledge, new library books, or link to existing courses/lessons.
-- **Grounded Pedagogical Actions:** Use the on-device assistant to explain resources with verifiable citations, strictly refusing to fabricate answers when local context is insufficient.
+- **Browser support:** Chrome, Edge, or Brave required for local media features (File System Access API). Other browsers can use all non-media features.
+- **Local AI hardware:** WebGPU-capable GPU recommended for local LLM inference. CPU fallback is available but slower.
+- **First download:** Initial use of local AI requires downloading model weights (~135 MB for embeddings).
+- **Media backup:** Local media files are not included in SQLite backups. Only the database is backed up; media must be re-linked after restore.
+- **No automatic sync:** Multi-device synchronization is not built-in. Export/import is the manual transfer mechanism.
+- **Single-user:** No multi-user support or authentication.
 
-```text
-Local file (.txt, .md, .pdf, .epub)
-   ↓
-Browser parser (Web Cryptography SHA-256)
-   ↓
-CrossedArts learning resource (SQLite WASM)
-   ↓
-Deterministic chunks (with page & chapter)
-   ↓
-Hybrid RAG (lexical + local embeddings)
-   ↓
-Local WebLLM grounded response
-```
-
-### 9. Editorial Interface & Persistent Dual Theme
-- Every surface is built from semantic CSS design tokens (`--c-canvas`, `--c-ink`, `--c-accent`, ...) declared in `frontend/src/index.css`; no hard-coded palettes in JSX.
-- Two hand-tuned themes: **light, warm and cream by default**, plus a **soft dark / charcoal** alternative. The choice persists in `localStorage` and is applied before first paint (no flash of the wrong theme).
-- Reading-first layout: lesson content is the primary object, metadata is quiet, and metrics are computed from real local activity only (no invented numbers).
-- Fully responsive down to small screens, with an accessible mobile drawer, visible focus rings, and `prefers-reduced-motion` support.
-
-### 10. Global Command Palette (Ctrl+K / Cmd+K)
-- `Ctrl+K` (`Cmd+K` on Apple) opens a palette that searches and jumps to **courses, books, lessons, notes, concepts and actions**. The shortcut is announced with `aria-keyshortcuts`, and its accessible name is its own visible text, "Search or go to…".
-- **Zero queries per keystroke.** All filtering happens over an in-memory catalog, which is why it matches from the **very first character** instead of the two-character minimum the classic Library search requires.
-- It searches **inside the content**, not only titles: note, lesson, book and imported-resource bodies are indexed and capped, and each row shows **the snippet that matched** so the UI can answer "why is this here?".
-- A tiered ranking ladder (exact > prefix > word start > substring > subtitle > keyword > body > fuzzy) with a deterministic tie-break: the same input always yields the same list.
-- `<mark>` highlighting driven by an offset map that respects the original Unicode form, and **never** `dangerouslySetInnerHTML`: a note is user content and must be displayed, not interpreted.
-- Genuinely accessible: full `combobox`/`listbox` pattern, focus contained in the dialog and restored on close, and the `listbox` always mounted — even when empty — so `aria-controls` never dangles.
-
-### 11. Optional Python Backend Companion
-- Auxiliary REST API server in `backend/` built with **FastAPI**, **SQLAlchemy 2.0**, and **Alembic**.
-- Ideal for heavy batch ingestion (bulk PDF/EPUB extraction, video transcript processing) and semantic search with vector embeddings.
-
----
-
-## 📁 Repository Map
-
-```text
-CrossedArts/
-├── frontend/                     # Client-Side Web Application (React 19 + Vite)
-│   ├── public/                   # WASM binary (sql-wasm.wasm) & favicon
-│   ├── src/
-│   │   ├── ai/                   # Hybrid AI tutor engine (aiService.ts)
-│   │   ├── components/           # UI components (Shell, shared primitives, AIAssistantDrawer, etc.)
-│   │   ├── db/                   # SQLite WASM bridge, schema, DAO & backups
-│   │   ├── hooks/                # Persistent light/cream vs. dark/charcoal theme (useTheme.ts)
-│   │   ├── lib/                  # Local LLM, embeddings, hybrid RAG & ingestion
-│   │   ├── pages/                # Views: Dashboard, Library, ReviewCenter, Graph, etc.
-│   │   └── types/                # TypeScript domain models (models.ts)
-│   └── tests/                    # Zero-Web-Access test fleet (337 integrity tests)
-├── backend/                      # Optional Python Backend Companion (FastAPI)
-│   ├── alembic/                  # Relational database migration scripts
-│   ├── app/
-│   │   ├── api/                  # REST endpoints (/api/v1)
-│   │   ├── core/                 # Config, settings, database, utilities
-│   │   ├── models/               # SQLAlchemy ORM models
-│   │   ├── schemas/              # Pydantic schemas
-│   │   └── services/             # Ingestion, embeddings, LLM, scanner services
-│   └── tests/                    # Backend unit & integration tests
-├── static/                       # Covers & shared media assets
-├── .github/workflows/deploy.yml  # Automated GitHub Pages CI/CD pipeline
-├── ABOUT.md                      # Philosophy, architecture & manifesto
-├── AGENTS.md                     # Technical reference guide for agents and devs
-├── README.md                     # This English documentation
-└── README.es.md                  # Spanish documentation
-```
-
----
-
-## 🚀 Quick Start: Web Application
+## Quick Start
 
 ### Prerequisites
-- **Node.js:** v20 or higher
-- **Modern Browser:** Chrome, Edge, Brave, or Firefox with WebAssembly support
 
-### Local Development
+- Node.js v20 or higher
+- Chrome, Edge, or Brave browser
+
+### Installation & Development
+
 ```bash
-# 1. Clone the repository
 git clone https://github.com/marodriguezd/CrossedArts.git
 cd CrossedArts/frontend
-
-# 2. Install dependencies
 npm install
-
-# 3. Start Vite development server
 npm run dev
 ```
 
 Open `http://localhost:5173` in your browser.
 
-### Run Integrity Tests (Zero-Web-Access Test Fleet)
-The project includes 185 tests verifying offline SQLite initialization, SM-2 math, unified study sessions, the lesson workspace (content editing, ordering, progress, continuation), knowledge graph integrity and migrations, resource organization and detail views, lesson-scoped study with note isolation and study-history lesson scope, relational integrity (foreign key enforcement, ON DELETE behaviour, graph index migration), accessible confirmations, binary/JSON exports, local AI, hybrid RAG, document ingestion, grounded study generation, concurrency-safe database initialization, local-calendar-day streak logic, multi-tab coordination, and JSON backup validation:
+### Testing
 
 ```bash
 cd frontend
 npm test
-# Or execute directly via Node test runner:
-node --test --experimental-strip-types tests/*.test.ts
 ```
 
-### Build & Local Production Preview
+The test suite includes 337 tests across 23 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph, RAG, document ingestion, and AI providers.
+
+### Build
+
 ```bash
 cd frontend
 npm run build
-npm run preview
 ```
+
 Production assets are generated in `frontend/dist/`.
 
----
+## Architecture
 
-## 🌐 GitHub Pages Deployment
+CrossedArts is a monorepo with two independent components:
 
-1. Fork or push this repository to your GitHub account.
-2. Navigate to **Settings** > **Pages** in your GitHub repository.
-3. Under **Build and deployment** > **Source**, select **GitHub Actions**.
-4. Every push to the `main` branch will automatically build and publish the application to `https://<your-username>.github.io/<your-repo>/`.
+- **`frontend/`**: React 19 + TypeScript + Vite single-page application. Deploys to GitHub Pages.
+- **`backend/`**: Optional Python FastAPI server for batch ingestion and advanced analysis.
 
----
+The frontend is fully functional without the backend. The backend provides additional services for heavy processing workflows.
 
-## 🐍 Optional Backend Companion
+## Backend Companion
 
-To run the optional Python FastAPI server for batch ingestion and semantic embeddings:
+The optional Python backend provides:
+
+- Batch document ingestion (PDF, EPUB)
+- Metadata extraction and thumbnail generation
+- Sentence Transformers embeddings
+- LangChain LLM workflows
+
+Setup:
 
 ```bash
-# 1. Create and activate virtual environment at project root
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# 2. Install dependencies
+source .venv/bin/activate
 pip install -r backend/requirements.txt
-
-# 3. Run database migrations
 PYTHONPATH=. alembic -c backend/alembic.ini upgrade head
-
-# 4. Start the FastAPI server (serves the API and mounts frontend/dist if built)
 python -m backend.app.main
 ```
-The API server starts at `http://127.0.0.1:8080` (interactive documentation available at `/docs`).
 
----
+The API server runs at `http://127.0.0.1:8080` with interactive documentation at `/docs`.
 
-## 💾 Data Backups & Digital Sovereignty
+## Data Backup
 
-Inside the **Settings** view in CrossedArts, you retain total ownership of your data:
-* **Export SQLite (.sqlite):** Download a standard SQLite database file openable in any tool like DB Browser for SQLite.
-* **Import SQLite (.sqlite):** Instantly restore previous databases.
-* **Export JSON Backup:** Generate an open structured dump of all relational tables.
-* **Restore JSON Backup:** Wipe and restore relational records from any JSON dump.
+Inside the Settings view:
 
----
+- **Export SQLite:** Download a standard `.sqlite` database file
+- **Import SQLite:** Restore from a previous `.sqlite` backup
+- **Export JSON:** Generate a structured dump of all tables
+- **Import JSON:** Restore from a JSON backup (validated before any changes)
 
-## 📄 License
+## License
 
-License: GNU General Public License v3.0 only (GPL-3.0-only)
+CrossedArts is licensed under [GPL-3.0-only](LICENSE).
 
-See [LICENSE](LICENSE) for the full license text.
-
-### Third-Party Licenses & Assets
-
-Third-party dependencies and model weights retain their respective licenses:
-- `Xenova/multilingual-e5-small`: MIT License
-- WebLLM (`@mlc-ai/web-llm`): Apache-2.0 License
-- Transformers.js (`@huggingface/transformers`): Apache-2.0 License
-- SQLite WASM (`sql.js`): MIT License
-
+Third-party dependencies retain their respective licenses:
+- `Xenova/multilingual-e5-small`: Apache-2.0
+- WebLLM (`@mlc-ai/web-llm`): Apache-2.0
+- Transformers.js (`@huggingface/transformers`): Apache-2.0
+- SQLite WASM (`sql.js`): MIT
