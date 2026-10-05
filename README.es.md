@@ -74,7 +74,7 @@ CrossedArts admite cuatro modos de proveedor de IA:
 
 ### Requisitos
 
-- Node.js v20 o superior
+- Node.js v22 o superior (la suite de pruebas usa `--experimental-strip-types`)
 - Navegador Chrome, Edge o Brave
 
 ### Instalación y Desarrollo
@@ -95,7 +95,7 @@ cd frontend
 npm test
 ```
 
-La suite de pruebas incluye 337 pruebas en 23 archivos de prueba que cubren inicialización de SQLite, algoritmo SM-2, sesiones de estudio, grafo de conocimiento, RAG, ingestión de documentos y proveedores de IA.
+La suite de pruebas incluye 340 pruebas en 23 archivos de prueba que cubren inicialización de SQLite, algoritmo SM-2, sesiones de estudio, grafo de conocimiento, RAG, ingestión de documentos y proveedores de IA.
 
 ### Compilación
 

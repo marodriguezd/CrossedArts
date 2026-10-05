@@ -74,7 +74,7 @@ CrossedArts supports four AI provider modes:
 
 ### Prerequisites
 
-- Node.js v20 or higher
+- Node.js v22 or higher (the test suite uses `--experimental-strip-types`)
 - Chrome, Edge, or Brave browser
 
 ### Installation & Development
@@ -95,7 +95,7 @@ cd frontend
 npm test
 ```
 
-The test suite includes 337 tests across 23 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph, RAG, document ingestion, and AI providers.
+The test suite includes 340 tests across 23 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph, RAG, document ingestion, and AI providers.
 
 ### Build
 
