@@ -258,7 +258,7 @@ class LocalLlmEngine {
         this.currentModelId = null;
         this.engineInstance = null;
         this.notify();
-        throw new Error(this.lastError);
+        throw new Error(this.lastError ?? 'Error desconocido al inicializar el modelo local.');
       }
     })();
 

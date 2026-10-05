@@ -134,6 +134,7 @@ scratch/
 .agent/
 .claude/
 .gemini/
+.freebuff/
 
 # --- General Logs & Temp ---
 *.log

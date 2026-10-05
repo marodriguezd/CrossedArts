@@ -604,7 +604,7 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
       subtitle: course.description || course.category || 'Curso',
       icon: 'course',
       destination: { tab: 'course', resourceId: course.id },
-      keywords: [course.category, course.instructor, 'curso'],
+      keywords: [course.category, course.instructor ?? '', 'curso'],
       ...buildBody(course.description)
     });
   }
@@ -617,7 +617,7 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
       subtitle: book.author || book.description || 'Libro',
       icon: 'book',
       destination: { tab: 'resource', resourceId: book.id },
-      keywords: [book.author, book.category, 'libro', 'leer'],
+      keywords: [book.author ?? '', book.category, 'libro', 'leer'],
       // El mismo cuerpo que indexaban los cursos. Un libro con una sinopsis
       // relevante era invisible para el usuario que la buscaba con sus palabras.
       ...buildBody(book.description)
@@ -671,7 +671,7 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
       subtitle: resource.resourceCategory || 'Recurso importado',
       icon: 'resource',
       destination: { tab: 'resource', resourceId: resource.resourceId },
-      keywords: [resource.resourceType, resource.resourceCategory, 'recurso', 'documento', 'importado'],
+      keywords: [resource.resourceType, resource.resourceCategory ?? '', 'recurso', 'documento', 'importado'],
       ...buildBody(resource.resourceDescription)
     });
   }

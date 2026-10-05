@@ -8,6 +8,7 @@ import {
   Settings,
   Download,
   Bot,
+  type LucideIcon,
   Landmark,
   Menu,
   Search,
@@ -36,7 +37,7 @@ interface ShellProps {
 interface NavItem {
   id: string;
   label: string;
-  icon: React.ComponentType<{ size?: number | string; 'aria-hidden'?: boolean | string }>;
+  icon: LucideIcon;
 }
 
 const NAV_ITEMS: NavItem[] = [

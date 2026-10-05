@@ -115,12 +115,28 @@ export function buildMixedStudyPlan(flashcardCount: number, questionCount: numbe
 }
 
 /**
+ * Interpreta una marca temporal almacenada por SQLite (`YYYY-MM-DD HH:MM:SS`, UTC)
+ * como un instante UTC y no como hora local del navegador.
+ *
+ * Devuelve `NaN` si la cadena no es parseable, para que el llamador decida cómo
+ * degradar el comportamiento sin inventar una fecha válida.
+ */
+export function parseUtcTimestamp(value: string | null | undefined): number {
+  if (typeof value !== 'string' || value.trim() === '') return NaN;
+  // El formato canónico de SQLite (`CURRENT_TIMESTAMP`) no incluye zona horaria;
+  // añadir `Z` garantiza una interpretación UTC independiente del navegador.
+  const normalized = value.trim().replace(' ', 'T');
+  const withZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : `${normalized}Z`;
+  return Date.parse(withZone);
+}
+
+/**
  * Calcula la duración en minutos entre dos marcas temporales almacenadas por SQLite
  * (formato `YYYY-MM-DD HH:MM:SS`, interpretado como UTC de forma consistente).
  */
 export function computeStudyDurationMinutes(startedAt: string, endedAt: string): number {
-  const start = Date.parse(`${startedAt.replace(' ', 'T')}Z`);
-  const end = Date.parse(`${endedAt.replace(' ', 'T')}Z`);
+  const start = parseUtcTimestamp(startedAt);
+  const end = parseUtcTimestamp(endedAt);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
   return Math.max(1, Math.round((end - start) / 60000));
 }

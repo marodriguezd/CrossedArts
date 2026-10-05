@@ -14,7 +14,7 @@ export interface EmbeddingModelDefinition {
 
 /**
  * Catálogo de modelos de embeddings verificados para ejecución directa en el navegador con Transformers.js.
- * Modelo por defecto: Xenova/multilingual-e5-small (ONNX quantizado, 384 dimensiones, ~94 idiomas, Apache-2.0).
+ * Modelo por defecto: Xenova/multilingual-e5-small (ONNX quantizado, 384 dimensiones, ~94 idiomas, MIT).
  */
 export const LOCAL_EMBEDDING_MODELS: EmbeddingModelDefinition[] = [
   {

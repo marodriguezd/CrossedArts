@@ -14,6 +14,7 @@ import {
   filterCourseLessons,
   calculatePlaybackJump,
   resolveNextPlaybackSpeed,
+  parseUtcTimestamp,
   SUPPORTED_PLAYBACK_SPEEDS
 } from '../src/services/domainLogic.ts';
 
@@ -671,4 +672,54 @@ test('15.15 getLessonWorkspace includes lesson flashcards and tracks progress ac
   assert.equal(ws.progress, 'IN_PROGRESS');
 
   await cleanupCourse(courseId);
+});
+
+test('15.16 parseUtcTimestamp interprets SQLite due dates as UTC across timezone boundaries (regression)', async () => {
+  await dbBridge.init();
+  // Marca canónica de SQLite CURRENT_TIMESTAMP (UTC, sin sufijo de zona).
+  // En una zona horaria con desfase positivo (p. ej. Europe/Madrid, UTC+2),
+  // `new Date('2026-10-05 23:59:00')` la habría interpretado como 23:59 local
+  // (= 21:59 UTC), adelantando indebidamente el vencimiento.
+  const dueSoonUtc = parseUtcTimestamp('2026-10-05 23:59:00');
+  assert.equal(dueSoonUtc, Date.UTC(2026, 9, 5, 23, 59, 0));
+
+  // Un instante apenas posterior en la misma fecha civil UTC no debe vencer
+  // aunque en la mayoría de zonas horarias locales ya sería "pasado".
+  const nowBoundary = Date.UTC(2026, 9, 5, 23, 59, 30) as unknown as number;
+  assert.equal(parseUtcTimestamp('2026-10-05 23:59:30') <= nowBoundary, true);
+
+  // Ya vencida de forma inequívoca.
+  assert.ok(parseUtcTimestamp('2026-10-01 00:00:00') < Date.UTC(2026, 9, 5));
+
+  // Cadena inválida o vacía: NaN, nunca una fecha inventada.
+  assert.ok(Number.isNaN(parseUtcTimestamp('')));
+  assert.ok(Number.isNaN(parseUtcTimestamp('not-a-date')));
+
+  // Fecha ISO con zona explícita se respeta tal cual (sin doble sufijo).
+  assert.equal(parseUtcTimestamp('2026-10-05T23:59:00Z'), Date.UTC(2026, 9, 5, 23, 59, 0));
+  assert.equal(parseUtcTimestamp('2026-10-05T23:59:00+02:00'), Date.UTC(2026, 9, 5, 21, 59, 0));
+
+  // Integración: una tarjeta con due_date UTC futuro (~1 h por delante) no debe
+  // aparecer como vencida en la consulta UTC del DAO (datetime('now')).
+  const futureIso = new Date(Date.now() + 3_600_000).toISOString();
+  const futureSqlite = futureIso.slice(0, 10) + ' ' + futureIso.slice(11, 19);
+  const created = await dao.createCourse({ title: 'Curso TZ 15', category: 'Test' });
+  const courseIdTz = created.id!;
+  try {
+    const db = dbBridge.getDatabase();
+    db.run(
+      `INSERT INTO flashcard (id, resource_id, lesson_id, front, back, repetition_count, interval_days, ease_factor, due_date)
+       VALUES (?, ?, NULL, ?, ?, 0, 1, 2.5, ?)`,
+      ['fc_tz_boundary', courseIdTz, 'Frente TZ', 'Reverso TZ', futureSqlite]
+    );
+    const cards = db.exec(
+      `SELECT COUNT(*) FROM flashcard WHERE datetime(due_date) <= datetime('now') AND id = 'fc_tz_boundary'`
+    )[0]?.values[0][0] as number;
+    assert.equal(cards, 0, 'La tarjeta futura aún no debe estar vencida (comparación UTC consistente)');
+
+    const parsed = parseUtcTimestamp(futureSqlite);
+    assert.ok(Number.isFinite(parsed) && parsed > Date.now(), 'El parser UTC debe situar la due_date en el futuro');
+  } finally {
+    await cleanupCourse(courseIdTz);
+  }
 });

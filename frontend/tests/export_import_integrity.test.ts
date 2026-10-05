@@ -215,3 +215,44 @@ test('4.11 Markdown Note Export: Converts single note and batch notes to portabl
   assert.ok(mdBatch.includes('Persistencia en navegador mediante WASM.'));
 });
 
+
+test('4.12 Foreign keys are re-enabled outside the restore transaction after import or rollback', async () => {
+  await dbBridge.init();
+  const originalBytes = dbBridge.exportDatabase();
+  const dump = generateJsonBackup();
+
+  try {
+    // Caso 1: importación exitosa deja la integridad referencial activada.
+    await importJsonBackup(dump);
+    const db = dbBridge.getDatabase();
+    const fkState = db.exec('PRAGMA foreign_keys')[0].values[0][0];
+    assert.equal(Number(fkState), 1, 'PRAGMA foreign_keys debe quedar ON tras una restauración exitosa');
+
+    // Comprobación de integridad real: una violación debe ser rechazada.
+    let threw = false;
+    try {
+      db.run("INSERT INTO module (id, course_id, title) VALUES ('fk-probe-mod', 'curso-inexistente-fk', 'X')");
+    } catch {
+      threw = true;
+    }
+    assert.ok(threw, 'INSERT con clave foránea inválida debe fallar con FK activada');
+    db.run("DELETE FROM module WHERE id = 'fk-probe-mod'");
+
+    // Caso 2: tras un fallo y ROLLBACK, la conexión también queda con FK ON.
+    let rollbackThrew = false;
+    try {
+      const badDump = generateJsonBackup();
+      (badDump as Record<string, any[]>).module = [
+        { id: 'mod-huerfano', course_id: 'curso-inexistente-fk', title: 'Huérfano', order_index: 1 }
+      ];
+      await importJsonBackup(badDump);
+    } catch {
+      rollbackThrew = true;
+    }
+    assert.ok(rollbackThrew, 'Un INSERT huérfano debe abortar la restauración');
+    const fkAfterRollback = dbBridge.getDatabase().exec('PRAGMA foreign_keys')[0].values[0][0];
+    assert.equal(Number(fkAfterRollback), 1, 'PRAGMA foreign_keys debe quedar ON incluso tras rollback');
+  } finally {
+    await dbBridge.importDatabase(originalBytes);
+  }
+});

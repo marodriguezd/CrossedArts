@@ -421,3 +421,69 @@ test('13.16 Study session keyboard shortcut resolution: numbers, letters and bou
   assert.equal(resolveShortcutOptionIndex('', 4), null);
 });
 
+
+test('13.17 Rebuild migration preserves persisted session mode, counters and status (never fabricates completion)', async () => {
+  await dbBridge.init();
+  const originalBytes = dbBridge.exportDatabase();
+
+  const initSqlJs = (await import('sql.js')).default;
+  const SQL = await initSqlJs();
+  const legacy = new SQL.Database();
+  // Esquema parcialmente migrado: ya tiene mode/status con datos reales
+  // (incluida una sesión CANCELADA), pero resource_id aún NOT NULL,
+  // lo que fuerza la ruta de reconstrucción completa de la tabla.
+  legacy.run(`CREATE TABLE learning_resource (
+    id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT, cover_path TEXT, category TEXT DEFAULT 'General',
+    status TEXT DEFAULT 'NOT_STARTED', source_path TEXT, type TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);`);
+  legacy.run(`CREATE TABLE learning_session (
+    id TEXT PRIMARY KEY, resource_id TEXT NOT NULL REFERENCES learning_resource(id) ON DELETE CASCADE,
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP, ended_at DATETIME, duration_minutes INTEGER DEFAULT 0,
+    inactive_seconds INTEGER DEFAULT 0, mode TEXT DEFAULT 'flashcards',
+    cards_reviewed INTEGER DEFAULT 0, questions_answered INTEGER DEFAULT 0, correct_answers INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active');`);
+  legacy.run("INSERT INTO learning_resource (id, title, type) VALUES ('r-pres', 'Recurso Preservado', 'course')");
+  // Sesión cancelada con contadores reales
+  legacy.run(`INSERT INTO learning_session (id, resource_id, started_at, ended_at, duration_minutes, inactive_seconds, mode, cards_reviewed, questions_answered, correct_answers, status)
+    VALUES ('legacy-cancelled', 'r-pres', datetime('now', '-1 day'), datetime('now', '-1 day', '+10 minutes'), 10, 30, 'mixed', 7, 4, 3, 'cancelled')`);
+  // Sesión activa con contadores parciales
+  legacy.run(`INSERT INTO learning_session (id, resource_id, started_at, duration_minutes, inactive_seconds, mode, cards_reviewed, questions_answered, correct_answers, status)
+    VALUES ('legacy-active', 'r-pres', datetime('now', '-2 hours'), 0, 5, 'practice', 0, 2, 1, 'active')`);
+  const legacyBytes = legacy.export();
+  legacy.close();
+
+  try {
+    await dbBridge.importDatabase(legacyBytes);
+    const db = dbBridge.getDatabase();
+    const cols = db.exec('PRAGMA table_info(learning_session)')[0].values.map(r => String(r[1]));
+    assert.ok(cols.includes('lesson_id'), 'La migración debe reconstruir la tabla con lesson_id');
+
+    const rows = db.exec(`SELECT id, mode, cards_reviewed, questions_answered, correct_answers, status FROM learning_session WHERE id IN ('legacy-cancelled', 'legacy-active') ORDER BY id`);
+    const byId = new Map<string, unknown[]>();
+    for (const row of rows[0].values) byId.set(String(row[0]), row as unknown[]);
+
+    const cancelled = byId.get('legacy-cancelled');
+    assert.ok(cancelled, 'La sesión cancelada debe sobrevivir a la migración');
+    assert.equal(cancelled![1], 'mixed', 'El modo persistido debe conservarse');
+    assert.equal(cancelled![2], 7, 'cards_reviewed persistido debe conservarse');
+    assert.equal(cancelled![3], 4, 'questions_answered persistido debe conservarse');
+    assert.equal(cancelled![4], 3, 'correct_answers persistido debe conservarse');
+    assert.equal(cancelled![5], 'cancelled', 'Una sesión cancelada jamás debe fabricarse como completed');
+
+    const active = byId.get('legacy-active');
+    assert.ok(active, 'La sesión activa debe sobrevivir a la migración');
+    assert.equal(active![1], 'practice', 'El modo practice debe conservarse');
+    assert.equal(active![5], 'active', 'Una sesión activa debe seguir activa tras migrar');
+
+    // Idempotencia: reaplicar la migración no altera los datos
+    const snapshotBefore = db.exec('SELECT * FROM learning_session ORDER BY id')[0].values;
+    const reloaded = new SQL.Database(dbBridge.exportDatabase());
+    reloaded.run('PRAGMA foreign_keys = ON;');
+    (dbBridge as unknown as { migrateLearningSession: (db: unknown) => boolean }).migrateLearningSession(reloaded);
+    const snapshotAfter = reloaded.exec('SELECT * FROM learning_session ORDER BY id')[0].values;
+    assert.deepEqual(snapshotAfter, snapshotBefore, 'La migración debe ser idempotente');
+    reloaded.close();
+  } finally {
+    await dbBridge.importDatabase(originalBytes);
+  }
+});

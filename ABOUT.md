@@ -89,7 +89,7 @@ The Python backend was preserved as an optional companion for batch processing w
 CrossedArts is licensed under [GPL-3.0-only](LICENSE). The software is free to use, modify, and distribute under the terms of the GNU General Public License v3.0.
 
 Third-party dependencies retain their original licenses:
-- `Xenova/multilingual-e5-small`: Apache-2.0
+- `Xenova/multilingual-e5-small`: MIT
 - WebLLM (`@mlc-ai/web-llm`): Apache-2.0
 - Transformers.js (`@huggingface/transformers`): Apache-2.0
 - SQLite WASM (`sql.js`): MIT

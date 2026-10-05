@@ -263,7 +263,8 @@ class LocalEmbeddingEngine {
       this.notify();
       return vector;
     } catch (err: any) {
-      this.status = 'ready';
+      this.status = 'error';
+      this.lastError = err?.message || 'Error generando embedding.';
       this.notify();
       throw err;
     }

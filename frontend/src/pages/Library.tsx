@@ -447,10 +447,11 @@ export const Library: React.FC<LibraryProps> = ({
       return;
     }
 
-    const res = await dao.updateBookProgress(book.id, pageNum, book.page_count);
+    const totalPages = book.page_count ?? 0;
+    const res = await dao.updateBookProgress(book.id, pageNum, totalPages);
     if (res.success) {
-      const clamped = Math.max(0, Math.min(pageNum, book.page_count));
-      const pct = Math.round((clamped / book.page_count) * 100);
+      const clamped = Math.max(0, Math.min(pageNum, totalPages));
+      const pct = totalPages > 0 ? Math.round((clamped / totalPages) * 100) : 0;
       setEditingBookId(null);
       setBookFeedback({
         id: book.id,
@@ -959,7 +960,7 @@ export const Library: React.FC<LibraryProps> = ({
                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                           <button
                             type="button"
-                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 10, book.page_count)))}
+                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 10, book.page_count ?? 0)))}
                             className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
                             title="Avanzar 10 páginas"
                           >
@@ -967,7 +968,7 @@ export const Library: React.FC<LibraryProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 25, book.page_count)))}
+                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 25, book.page_count ?? 0)))}
                             className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
                             title="Avanzar 25 páginas"
                           >
@@ -975,7 +976,7 @@ export const Library: React.FC<LibraryProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 50, book.page_count)))}
+                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 50, book.page_count ?? 0)))}
                             className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
                             title="Avanzar 50 páginas"
                           >

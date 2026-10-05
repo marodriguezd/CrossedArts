@@ -754,11 +754,26 @@ class SQLiteBridge {
         status TEXT DEFAULT 'completed'
       );
     `);
+    // Preservar el estado realmente persistido: si la base legada ya registraba
+    // modo, contadores o estado, se copian tal cual (COALESCE sólo cubre NULL).
+    // Así una sesión cancelada jamás se reconstruye como completada. Sólo cuando
+    // la columna no existía se aplica el valor por defecto histórico: 'completed'
+    // mantiene la compatibilidad con las bases antiguas, cuyas filas eran
+    // registros de estudio finalizados (sin concepto de cancelación).
+    const legacyColumns = new Set(columns.map(c => c.name));
+    const legacyExpr = (name: string, fallbackSql: string): string =>
+      legacyColumns.has(name) ? `COALESCE(${name}, ${fallbackSql})` : fallbackSql;
+    const modeExpr = legacyExpr('mode', "'flashcards'");
+    const cardsExpr = legacyExpr('cards_reviewed', '0');
+    const questionsExpr = legacyExpr('questions_answered', '0');
+    const correctExpr = legacyExpr('correct_answers', '0');
+    const statusExpr = legacyExpr('status', "'completed'");
+    const lessonExpr = legacyColumns.has('lesson_id') ? 'lesson_id' : 'NULL';
     db.run(`
       INSERT INTO learning_session_migrated
         (id, resource_id, lesson_id, started_at, ended_at, duration_minutes, inactive_seconds, mode, cards_reviewed, questions_answered, correct_answers, status)
-      SELECT id, resource_id, NULL, started_at, ended_at, duration_minutes, inactive_seconds,
-             'flashcards', 0, 0, 0, 'completed'
+      SELECT id, resource_id, ${lessonExpr}, started_at, ended_at, duration_minutes, inactive_seconds,
+             ${modeExpr}, ${cardsExpr}, ${questionsExpr}, ${correctExpr}, ${statusExpr}
       FROM learning_session;
     `);
     db.run('DROP TABLE learning_session;');

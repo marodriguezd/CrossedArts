@@ -193,12 +193,15 @@ export async function importJsonBackup(data: Record<string, any[]>): Promise<voi
     if (foreignKeyViolations.length && foreignKeyViolations[0].values.length > 0) {
       throw new Error('El respaldo contiene referencias internas incompatibles y no se puede restaurar de forma segura.');
     }
-    db.run('PRAGMA foreign_keys = ON;');
     db.run('COMMIT;');
   } catch (err) {
     try { db.run('ROLLBACK;'); } catch { /* rollback defensivo */ }
-    db.run('PRAGMA foreign_keys = ON;');
     throw err;
+  } finally {
+    // SQLite ignora `PRAGMA foreign_keys` dentro de una transacción: la
+    // reafirmación debe ejecutarse fuera, tras COMMIT o ROLLBACK, o la conexión
+    // quedaría con la integridad referencial desactivada para todo lo posterior.
+    db.run('PRAGMA foreign_keys = ON;');
   }
   await dbBridge.persist();
 }

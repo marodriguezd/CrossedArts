@@ -181,3 +181,22 @@ def test_import_book_reference_and_copy(client: TestClient, db: Session):
     asset = db.scalars(stmt_asset).first()
     assert asset is not None
     assert asset.file_path == str(pdf_file_ref.resolve())
+
+
+def test_ingestion_service_pending_asset_ids_initialized(db: Session):
+    """Regression: pending_asset_ids must be initialized in __init__ so that
+    _register_asset_for_extraction never raises AttributeError when called
+    before import_resource."""
+    from backend.app.services.ingestion import IngestionService
+    import uuid as uuid_mod
+
+    service = IngestionService(db=db)
+    test_id = uuid_mod.uuid4()
+
+    class FakeBackgroundTasks:
+        def add_task(self, *args, **kwargs):
+            pass
+
+    service._register_asset_for_extraction(test_id, background_tasks=FakeBackgroundTasks())
+
+    assert test_id in service.pending_asset_ids

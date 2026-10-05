@@ -45,6 +45,7 @@ import {
   extractTimestampParts,
   calculatePlaybackJump,
   resolveNextPlaybackSpeed,
+  parseUtcTimestamp,
   SUPPORTED_PLAYBACK_SPEEDS
 } from '../../services/domainLogic.ts';
 import { FlashcardGenerationModal } from '../study/FlashcardGenerationModal.tsx';
@@ -885,7 +886,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {flashcards.map(card => {
               const isEditingThis = editingCardId === card.id;
-              const isDueToday = new Date(card.due_date) <= new Date();
+              const isDueToday = parseUtcTimestamp(card.due_date) <= Date.now();
 
               if (isEditingThis) {
                 return (

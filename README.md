@@ -150,7 +150,7 @@ Inside the Settings view:
 CrossedArts is licensed under [GPL-3.0-only](LICENSE).
 
 Third-party dependencies retain their respective licenses:
-- `Xenova/multilingual-e5-small`: Apache-2.0
+- `Xenova/multilingual-e5-small`: MIT
 - WebLLM (`@mlc-ai/web-llm`): Apache-2.0
 - Transformers.js (`@huggingface/transformers`): Apache-2.0
 - SQLite WASM (`sql.js`): MIT

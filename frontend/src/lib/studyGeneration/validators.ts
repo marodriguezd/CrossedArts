@@ -147,7 +147,7 @@ export function validateQuestionBatch(
       return { valid: false, error: `La pregunta ${i + 1} debe tener entre 3 y 5 opciones (recibidas: ${options.length})` };
     }
     // Verificar unicidad de opciones
-    const uniqueOptions = new Set(options.map(o => o.toLowerCase()));
+    const uniqueOptions = new Set(options.map((o: string) => o.toLowerCase()));
     if (uniqueOptions.size !== options.length) {
       return { valid: false, error: `Opciones duplicadas encontradas en pregunta ${i + 1}` };
     }

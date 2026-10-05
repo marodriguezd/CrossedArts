@@ -67,6 +67,7 @@ class IngestionService:
 
     def __init__(self, db: Session):
         self.db = db
+        self.pending_asset_ids: List[uuid.UUID] = []
 
     def validate_directory(self, path_str: str) -> DirectoryValidationResponse:
         """Valida un directorio y retorna un resumen de su contenido multimedia."""
