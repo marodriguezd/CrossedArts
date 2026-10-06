@@ -38,16 +38,33 @@ def test_sync_client_lifecycle():
     assert client.is_closed
 
 
-def test_startup_migration_mode(monkeypatch):
-    """Verify that lifespan respects AUTO_CREATE_TABLES setting without throwing."""
+def test_startup_migration_mode(monkeypatch, tmp_path):
+    """Verify that lifespan respects AUTO_CREATE_TABLES setting without throwing.
+
+    A-1: AUTO_CREATE_TABLES=1 ejecuta `Base.metadata.create_all` sobre el engine
+    referenciado por el módulo. Para que esta prueba nunca toque la base real
+    del usuario, el engine del módulo `main` se sustituye por uno temporal.
+    """
     from fastapi.testclient import TestClient
-    from backend.app.main import app
+    from sqlalchemy import create_engine
+    from backend.app.core.database import Base
+    import backend.app.main as main_module
+
+    isolated_engine = create_engine(f"sqlite:///{tmp_path / 'lifespan_isolated.db'}")
+    monkeypatch.setattr(main_module, "engine", isolated_engine)
+
     monkeypatch.setenv("AUTO_CREATE_TABLES", "0")
-    with TestClient(app) as client:
+    monkeypatch.setenv("SKIP_MIGRATION_VALIDATION", "1")
+    with TestClient(main_module.app) as client:
         resp = client.get("/api/health")
         assert resp.status_code == 200
 
     monkeypatch.setenv("AUTO_CREATE_TABLES", "1")
-    with TestClient(app) as client:
+    with TestClient(main_module.app) as client:
         resp = client.get("/api/health")
         assert resp.status_code == 200
+    # Las tablas se crearon en el engine aislado, no en la base real.
+    from sqlalchemy import inspect
+    assert "learning_resource" in inspect(isolated_engine).get_table_names()
+    isolated_engine.dispose()
+    _ = Base  # mantiene la importación usada por el contexto del parche

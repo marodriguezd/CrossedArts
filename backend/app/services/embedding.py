@@ -9,7 +9,10 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from langchain_core.embeddings import Embeddings
 from backend.app.core.settings import settings
+from backend.app.core.logging import get_logger
 from backend.app.models.content import EmbeddingRecord
+
+logger = get_logger("services.embedding")
 
 
 class MockEmbeddingProvider(Embeddings):
@@ -100,7 +103,7 @@ class EmbeddingService:
             
         cls._initialized = True
         mode = provider if cls._embeddings is not None and not isinstance(cls._embeddings, MockEmbeddingProvider) else ("mock" if provider == "mock" else f"{provider}-unavailable")
-        print(f"[CrossedArts] Embedding Service initialized: {mode}")
+        logger.info("Embedding Service initialized: %s", mode)
 
     @classmethod
     def initialize_from_env(cls, client=None) -> None:
@@ -171,7 +174,7 @@ class EmbeddingService:
             vector = cls.get_embedding(clean_text)
             vector_json = json.dumps(vector)
         except Exception as e:
-            print(f"[CrossedArts] Embedding error for {entity_type}:{entity_id}: {e}")
+            logger.error("Error generando embedding para %s:%s: %s", entity_type, entity_id, e)
             return
 
         if existing:
@@ -214,7 +217,7 @@ class EmbeddingService:
                     try:
                         cls.index_entity(db, entity.id, entity_type, text_getter(entity), commit=False)
                     except Exception as e:
-                        print(f"[CrossedArts] Error indexing {entity_type}:{entity.id}: {e}")
+                        logger.warning("Error indexando %s:%s: %s", entity_type, entity.id, e)
                 db.commit()
 
         indexed_pairs = {

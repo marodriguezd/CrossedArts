@@ -7,6 +7,9 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from backend.app.core.settings import settings
+from backend.app.core.logging import get_logger
+
+logger = get_logger("services.llm")
 
 
 class PromptTemplateRegistry:
@@ -102,7 +105,7 @@ class LLMService:
 
         cls._initialized = True
         mode = provider if cls._chat_model else (provider if provider != "mock" else "mock")
-        print(f"[CrossedArts] LLM Service initialized: {mode}")
+        logger.info("LLM Service initialized: %s", mode)
 
     @classmethod
     def initialize_from_env(cls, client=None) -> None:
@@ -147,7 +150,7 @@ class LLMService:
             result = await cls._chat_model.ainvoke(messages)
             return result.content
         except Exception as e:
-            print(f"[CrossedArts] LLM error: {e}")
+            logger.error("LLM error en generación de respuesta: %s", e)
             raise
 
     @classmethod
@@ -171,7 +174,7 @@ class LLMService:
             result = await structured_model.ainvoke(messages)
             return result
         except Exception as e:
-            print(f"[CrossedArts] LLM structured output error: {e}")
+            logger.error("LLM error en salida estructurada: %s", e)
             return None
 
     @classmethod
@@ -196,7 +199,7 @@ class LLMService:
                 if chunk.content:
                     yield chunk.content
         except Exception as e:
-            print(f"[CrossedArts] LLM stream error: {e}")
+            logger.error("LLM error en streaming: %s", e)
             raise
 
     @classmethod

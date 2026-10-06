@@ -23,12 +23,20 @@ class SemanticSearchResultResponse(BaseModel):
 def semantic_search(
     q: str = Query(..., min_length=1, description="Texto de consulta semántica"),
     resource_type: Optional[str] = Query(None, description="Filtrar por tipo (course, book)"),
+    limit: int = Query(20, ge=1, le=100, description="Máximo de resultados devueltos"),
+    offset: int = Query(0, ge=0, description="Resultados a omitir del ranking"),
     db: Session = Depends(get_db)
 ):
     """
     Realiza una búsqueda semántica de conceptos sobre la biblioteca de CrossedArts.
+
+    La paginación (`limit`/`offset`) se aplica sobre el ranking de similitud: el
+    top-k se mantiene acotado en memoria y nunca se materializa la colección
+    completa de embeddings (A-4/A-8).
     """
-    return SemanticSearchService.search(db, query=q, resource_type=resource_type)
+    return SemanticSearchService.search(
+        db, query=q, limit=limit, offset=offset, resource_type=resource_type
+    )
 
 @router.post("/reindex", status_code=status.HTTP_202_ACCEPTED)
 def trigger_reindex(background_tasks: BackgroundTasks):
@@ -36,7 +44,11 @@ def trigger_reindex(background_tasks: BackgroundTasks):
     Genera embeddings en lote para todo el contenido no indexado en la base de datos en segundo plano.
     """
     def run_reindex():
-        db = SessionLocal()
+        # `SessionLocal` se importa dentro de la función: las pruebas parchean
+        # `backend.app.core.database.SessionLocal` para que el trabajo en
+        # segundo plano use SIEMPRE la base de datos de prueba (A-1).
+        from backend.app.core.database import SessionLocal as session_factory
+        db = session_factory()
         try:
             EmbeddingService.index_all_unindexed(db)
         finally:
@@ -44,4 +56,3 @@ def trigger_reindex(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(run_reindex)
     return {"status": "accepted", "message": "Reindexing started in background"}
-

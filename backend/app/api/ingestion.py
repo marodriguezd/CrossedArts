@@ -18,6 +18,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 import mimetypes
 from backend.app.core.security import is_safe_path
+from backend.app.core.logging import get_logger
+
+logger = get_logger("api.ingestion")
 
 # Límites aplican SOLO al endpoint de upload (que siempre copia archivos al servidor).
 # El endpoint /import NO necesita límites cuando usa symlink/reference (los archivos
@@ -106,7 +109,7 @@ async def import_from_upload(
             total_size += dest.stat().st_size
             uploaded_count += 1
         except Exception as e:
-            print(f"Error uploading file {upload_file.filename}: {e}")
+            logger.warning("Error subiendo el archivo %s: %s", upload_file.filename, e)
             continue
         finally:
             await upload_file.close()

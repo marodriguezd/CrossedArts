@@ -8,6 +8,9 @@ from backend.app.models.base import ResourceStatus, CourseDifficulty, LessonType
 from backend.app.models.resource import LearningResource, Course, Book
 from backend.app.models.course_structure import Module, Lesson, Task
 from backend.app.models.activity import LearningSession, Note
+from backend.app.core.logging import get_logger
+
+logger = get_logger("core.seeding")
 
 def seed_db(db: Session, force: bool = False):
     """
@@ -15,7 +18,7 @@ def seed_db(db: Session, force: bool = False):
     Si force=True, vacía las tablas de base de datos antes de sembrar.
     """
     if force:
-        print("[Seeding] Vaciando tablas para sembrado limpio...")
+        logger.info("Vaciando tablas para sembrado limpio...")
         db.query(Note).delete()
         db.query(LearningSession).delete()
         db.query(Task).delete()
@@ -30,10 +33,10 @@ def seed_db(db: Session, force: bool = False):
     stmt = select(LearningResource)
     existing_resource = db.execute(stmt).first()
     if existing_resource and not force:
-        print("[Seeding] Base de datos ya poblada. Omitiendo sembrado.")
+        logger.info("Base de datos ya poblada. Omitiendo sembrado.")
         return
 
-    print("[Seeding] Iniciando sembrado de datos semilla realistas...")
+    logger.info("Iniciando sembrado de datos semilla realistas...")
 
     # ==========================================
     # 1. SEMBRADO DE LIBROS
@@ -278,4 +281,4 @@ def seed_db(db: Session, force: bool = False):
         db.add(session)
 
     db.commit()
-    print("[Seeding] Sembrado completado exitosamente.")
+    logger.info("Sembrado completado exitosamente.")

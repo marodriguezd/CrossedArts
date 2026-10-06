@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
 
 # Resolve workspace root dynamically instead of hardcoded path
 workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -13,36 +14,84 @@ sys.path.insert(0, workspace_root)
 from backend.app.core.database import Base
 from backend.app.models import *
 
-# Ensure real database has all tables (needed for background tasks during tests)
-from backend.app.core.database import engine as real_engine
-from backend.app.core.settings import settings
-if settings.database_url.startswith("sqlite"):
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(bind=real_engine)
+# =============================================================================
+# AISLAMIENTO DE BASE DE DATOS EN PRUEBAS (A-1)
+# =============================================================================
+# Este archivo NO debe importar ni usar el engine real de la aplicación.
+#
+# El comportamiento anterior ejecutaba una creación de esquema sobre el engine
+# real de la aplicación, creando las tablas del modelo directamente en la base
+# de datos del usuario (~/.crossedarts/crossedarts.db) sin registrar ninguna
+# revisión de Alembic.
+# Consecuencia real: la base del usuario quedaba con todas las tablas mientras
+# Alembic creía que no se había aplicado ninguna migración, y el siguiente
+# `alembic upgrade head` fallaba con "table ... already exists".
+#
+# Reglas de este archivo:
+#   1. Cada prueba usa su propio engine SQLite en memoria (fixture `db`).
+#   2. Las tareas en segundo plano que hacen `from backend.app.core.database
+#      import SessionLocal` reciben una fábrica de sesiones ligada al engine de
+#      la prueba (fixture autouse `isolated_background_sessions`). El import se
+#      resuelve en tiempo de llamada, así que el parche es efectivo.
+#   3. La validación de migraciones de arranque se desactiva en pruebas para que
+#      ningún código de ciclo de vida inspeccione la base real por accidente.
+#   4. Nunca se borra ni se recrea la base real del usuario.
+# =============================================================================
 
 
-@pytest.fixture(name="db")
-def db_fixture() -> Session:
-    """
-    Creates an in-memory SQLite database before each test and drops all tables afterward.
-    """
-    from sqlalchemy.pool import StaticPool
+@pytest.fixture(name="db_engine")
+def db_engine_fixture():
+    """Engine SQLite en memoria, aislado por prueba, con pool compartido."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool
+        poolclass=StaticPool,
     )
-
     Base.metadata.create_all(bind=engine)
+    try:
+        yield engine
+    finally:
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
 
-    SessionTest = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+@pytest.fixture(name="db")
+def db_fixture(db_engine) -> Session:
+    """Sesión ligada al engine de la prueba (nunca a la base real)."""
+    SessionTest = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     session = SessionTest()
-
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def isolated_background_sessions(monkeypatch, db_engine):
+    """
+    Redirige `SessionLocal` al engine de la prueba.
+
+    Los endpoints y scanners abren sesiones propias para trabajo en segundo
+    plano (`from backend.app.core.database import SessionLocal` dentro de la
+    función). Sin este parche esas sesiones usarían el engine real de la
+    aplicación y las pruebas escribirían en la base del usuario.
+    """
+    import backend.app.core.database as database_module
+
+    test_session_factory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+    monkeypatch.setattr(database_module, "SessionLocal", test_session_factory)
+    yield test_session_factory
+
+
+@pytest.fixture(autouse=True)
+def skip_startup_migration_validation(monkeypatch):
+    """
+    Evita que cualquier arranque de la app durante las pruebas inspeccione la
+    base de datos real. La validación de Alembic tiene su propia cobertura
+    dedicada con engines temporales (tests/test_migration_validation.py).
+    """
+    monkeypatch.setenv("SKIP_MIGRATION_VALIDATION", "1")
+    yield
 
 
 @pytest.fixture(name="sample_course")
@@ -104,6 +153,6 @@ def client_fixture(db: Session):
 @pytest.fixture(name="tmp_data_dir")
 def tmp_data_dir_fixture(tmp_path: Path):
     """Provide a temporary data directory and patch settings to use it."""
-    data_dir = tmp_path / "domestik_data"
+    data_dir = tmp_path / "crossedarts_data"
     data_dir.mkdir()
     return data_dir

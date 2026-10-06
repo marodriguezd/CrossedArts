@@ -137,6 +137,10 @@ scratch/
 .freebuff/
 freebuff-chat-*.md
 
+# --- Auditorías y planes (artefactos, no fuente) ---
+AUDIT.md
+PLAN.md
+
 # --- General Logs & Temp ---
 *.log
 logs/

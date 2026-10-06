@@ -10,6 +10,9 @@ from backend.app.models.resource import LearningResource, Course, Book
 from backend.app.models.base import ResourceStatus
 from backend.app.schemas.resource import ResourceResponse, CourseBaseResponse, BookBaseResponse, UpdateResourceRequest
 from backend.app.api.dependencies import get_http_exception
+from backend.app.core.logging import get_logger
+
+logger = get_logger("api.resources")
 
 router = APIRouter(prefix="/resources", tags=["Resources"])
 
@@ -188,7 +191,7 @@ def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
         try:
             shutil.rmtree(storage_dir)
         except Exception as e:
-            print(f"[delete_resource] Warning: No se pudo eliminar la carpeta física {storage_dir}: {e}")
+            logger.warning("No se pudo eliminar la carpeta física %s: %s", storage_dir, e)
 
     db.commit()
 

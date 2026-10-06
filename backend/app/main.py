@@ -3,11 +3,15 @@ import httpx
 from fastapi import FastAPI
 from backend.app.core.database import engine, Base
 from backend.app.core.settings import settings
+from backend.app.core.logging import get_logger
 from backend.app.api.router import api_router
 # Importar modelos para que SQLAlchemy los registre en Base.metadata
 from backend.app.models import *
 
 from contextlib import asynccontextmanager
+
+logger = get_logger("main")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -16,9 +20,24 @@ async def lifespan(app: FastAPI):
     auto_create = os.getenv("AUTO_CREATE_TABLES", "0").lower() in ("1", "true", "yes")
     if auto_create:
         Base.metadata.create_all(bind=engine)
-        print("[CrossedArts] Base de datos SQLite inicializada (modo AUTO_CREATE_TABLES).")
+        logger.info("Base de datos SQLite inicializada (modo AUTO_CREATE_TABLES).")
+    elif not os.getenv("SKIP_MIGRATION_VALIDATION", "0").lower() in ("1", "true", "yes"):
+        # Validación del estado de migraciones (A-2): detectar de forma temprana
+        # una base sin aplicar o con un esquema que no corresponde al historial.
+        # Es de solo lectura y NO repara nada por su cuenta.
+        from backend.app.core.migrations import validate_migration_state
+
+        report = validate_migration_state(engine)
+        if report.is_valid:
+            logger.info(report.message)
+        else:
+            logger.error("Estado de migraciones inválido (%s): %s", report.status, report.message)
+            raise RuntimeError(
+                "CrossedArts no puede arrancar: el estado de migraciones de la base de "
+                f"datos no es válido ({report.status}). {report.message}"
+            )
     else:
-        print("[CrossedArts] Inicio en modo migración Alembic (gestión de esquema externa).")
+        logger.info("Inicio en modo migración Alembic (validación desactivada por entorno).")
 
     # Initialize shared HTTP client pool (async for LLM calls)
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
@@ -33,8 +52,8 @@ async def lifespan(app: FastAPI):
     from backend.app.services.embedding import EmbeddingService
     LLMService.initialize_from_env(client=app.state.http_client)
     EmbeddingService.initialize_from_env(client=app.state.http_client_sync)
-    print(f"[CrossedArts] Proveedor de LLM inicializado: {LLMService.get_provider_name()}")
-    print(f"[CrossedArts] Proveedor de Embedding inicializado: {EmbeddingService.get_model_name()}")
+    logger.info("Proveedor de LLM inicializado: %s", LLMService.get_provider_name())
+    logger.info("Proveedor de Embedding inicializado: %s", EmbeddingService.get_model_name())
 
     yield
 
@@ -51,13 +70,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configuración de CORS para permitir consumo seguro desde el frontend web y clientes locales
+# Configuración de CORS (A-3).
+#
+# Antes se usaba allow_origins=["*"] junto a allow_credentials=True, una
+# combinación innecesariamente amplia que los navegadores rechazan para
+# peticiones con credenciales. CrossedArts es local-first: solo se permiten los
+# orígenes locales reales desde los que corre el frontend (Vite en 5173 y el
+# propio backend en el puerto configurado). La lista es configurable mediante
+# CORS_ORIGINS (separada por comas) para despliegues concretos.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
 
 # Registrar el router global de la API con versión /api/v1
@@ -93,4 +119,3 @@ else:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("backend.app.main:app", host=settings.host, port=settings.port, reload=True)
-

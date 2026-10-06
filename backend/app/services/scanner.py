@@ -3,15 +3,61 @@ import json
 import yaml
 import uuid
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Iterator, Tuple
 from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
+from backend.app.core.logging import get_logger
 from backend.app.models.resource import LearningResource, Course, Book, MediaAsset
 from backend.app.models.activity import MediaProgress
 from backend.app.models.base import ResourceStatus, CourseDifficulty
+
+logger = get_logger("services.scanner")
+
+# Extensiones reconocidas por el scanner.
+VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".mkv", ".avi"]
+BOOK_EXTENSIONS = [".pdf", ".epub"]
+
+# Profundidad de recorrido por defecto y máxima (evita crawls sin límite).
+DEFAULT_MAX_DEPTH = 3
+MAX_SCAN_DEPTH = 8
+# Profundidad con la que un scanner busca archivos dentro de su carpeta de recurso.
+RESOURCE_FILE_DEPTH = 3
+
+# Pistas de carpetas organizadoras históricas (compatibilidad). Se usan como
+# respaldo SOLO cuando no hay metadata, nunca como única señal: la detección
+# principal es contenido directo (vídeos / pdf / epub) o metadata explícita.
+COURSE_FOLDER_HINTS = {"courses", "cursos"}
+BOOK_FOLDER_HINTS = {"books", "libros"}
+
+
+def iter_files_bounded(
+    path: Path, extensions: List[str], max_depth: int
+) -> Iterator[Path]:
+    """
+    Recorre `path` de forma acotada y ordenada, devolviendo archivos con las
+    extensiones indicadas. `max_depth` limita los niveles de subcarpetas para
+    que el escaneo nunca se convierta en un crawl sin límite.
+    """
+    path = Path(path)
+    if not path.is_dir():
+        return
+    root_depth = len(path.parts)
+    for root_dir, dirnames, filenames in os.walk(path):
+        current_depth = len(Path(root_dir).parts) - root_depth
+        # No descender más allá del límite y no seguir enlaces simbólicos.
+        dirnames[:] = sorted(
+            d for d in dirnames if not (Path(root_dir) / d).is_symlink()
+        )
+        if current_depth >= max_depth:
+            dirnames[:] = []
+        for filename in sorted(filenames):
+            candidate = Path(root_dir) / filename
+            if candidate.suffix.lower() in extensions:
+                yield candidate
+
 
 class ScanResult(BaseModel):
     discovered: int = 0
@@ -19,6 +65,7 @@ class ScanResult(BaseModel):
     updated: int = 0
     errors: List[str] = []
     warnings: List[str] = []
+
 
 class BaseScanner(ABC):
     def __init__(self, resource_type: str):
@@ -60,20 +107,37 @@ class BaseScanner(ABC):
 
         return None
 
+    @staticmethod
+    def _has_parent_hint(path: Path, hints: set) -> bool:
+        """¿Alguna carpeta contenedora tiene un nombre organizador histórico?"""
+        return any(part.lower() in hints for part in path.parts[:-1])
+
 
 class CourseScanner(BaseScanner):
     def __init__(self):
         super().__init__("course")
 
     def can_handle(self, path: Path, metadata: Optional[Dict[str, Any]]) -> bool:
+        # 1. Metadata explícita: máxima prioridad.
         if metadata and metadata.get("resource_type") == "course":
             return True
-        # Heurística: Si está en la carpeta de Courses
-        return "courses" in path.parts[-3:].__str__().lower()
+        if metadata and metadata.get("resource_type") not in (None, "course"):
+            return False
+        if not path.is_dir():
+            return False
+        # 2. Contenido directo: una carpeta con vídeos es un curso.
+        if any(p.suffix.lower() in VIDEO_EXTENSIONS for p in path.iterdir() if p.is_file()):
+            return True
+        # 3. Compatibilidad: carpeta bajo un contenedor histórico (Courses/…).
+        #    No clasifica la carpeta contenedora en sí (sus archivos directos
+        #    ya se habrían detectado en el paso 2).
+        if self._has_parent_hint(path, COURSE_FOLDER_HINTS):
+            return True
+        return False
 
     def scan(self, db: Session, path: Path, metadata: Optional[Dict[str, Any]], background_tasks: Optional[Any] = None) -> tuple[bool, bool]:
         source_path = str(path.resolve())
-        
+
         # Buscar recurso existente por source_path
         stmt = select(Course).where(Course.source_path == source_path)
         course = db.scalars(stmt).first()
@@ -84,7 +148,7 @@ class CourseScanner(BaseScanner):
         # Datos por defecto (Heurística)
         title = path.name
         description = None
-        category = "Fotografía" if "photo" in title.lower() else "General"
+        category = "General"
         difficulty = CourseDifficulty.BEGINNER
 
         # Sobrescribir con metadata si existe
@@ -110,8 +174,8 @@ class CourseScanner(BaseScanner):
             created = True
         else:
             # Validar si hay cambios para actualizar
-            if (course.title != title or 
-                course.description != description or                 course.category != category or 
+            if (course.title != title or
+                course.description != description or                 course.category != category or
                  course.difficulty != difficulty):
                 course.title = title
                 course.description = description
@@ -125,37 +189,28 @@ class CourseScanner(BaseScanner):
         # ==========================================
         # INDEXACIÓN DE VÍDEOS (MEDIA ASSETS) DEL CURSO
         # ==========================================
-        # Buscar todos los archivos de video en el directorio del curso de forma recursiva
-        video_extensions = [".mp4", ".webm", ".mov", ".mkv"]
+        # Recorrido acotado: nunca se camina el sistema de archivos sin límite.
+        video_files = list(iter_files_bounded(path, VIDEO_EXTENSIONS, RESOURCE_FILE_DEPTH))
 
         # Cache all existing media assets for this course to avoid N+1 queries in loops
         existing_assets_list = db.scalars(
             select(MediaAsset).where(MediaAsset.resource_id == course.id)
         ).all()
         existing_assets_by_path = {a.file_path: a for a in existing_assets_list}
-        
+
         # Primero, asegurar que tenemos lecciones para asociar.
         # Si el curso no tiene módulos/lecciones en la base de datos, creamos una estructura heurística básica
         from backend.app.models.course_structure import Module, Lesson
-        
+
         stmt_modules = select(Module).where(Module.course_id == course.id)
         existing_modules = db.scalars(stmt_modules).all()
-        
+
         if not existing_modules and path.is_dir():
             # Crear un módulo por defecto
             default_mod = Module(id=uuid.uuid4(), course_id=course.id, title="Contenido Principal", order_index=1)
             db.add(default_mod)
             db.commit()
-            
-            # Buscar videos y crear lecciones heurísticas
-            video_files = []
-            for root_dir, _, files in os.walk(path):
-                for f in files:
-                    file_path = Path(root_dir) / f
-                    if file_path.suffix.lower() in video_extensions:
-                        video_files.append(file_path)
-            
-            video_files.sort() # Orden alfabético
+
             for idx, vf in enumerate(video_files, start=1):
                 lesson_title = vf.stem
                 lesson = Lesson(
@@ -167,7 +222,7 @@ class CourseScanner(BaseScanner):
                 )
                 db.add(lesson)
                 db.flush()
-                
+
                 # Crear MediaAsset
                 asset = MediaAsset(
                     id=uuid.uuid4(),
@@ -181,96 +236,102 @@ class CourseScanner(BaseScanner):
                 )
                 db.add(asset)
                 db.flush()
-                if background_tasks is not None:
-                    def run_background_extraction(asset_id):
-                        from backend.app.core.database import SessionLocal
-                        from backend.app.services.extractor import ContentIntelligenceManager
-                        db_local = SessionLocal()
-                        try:
-                            manager = ContentIntelligenceManager(db_local)
-                            manager.extract_and_index(asset_id, commit=True)
-                        finally:
-                            db_local.close()
-                    background_tasks.add_task(run_background_extraction, asset.id)
-                else:
-                    from backend.app.services.extractor import ContentIntelligenceManager
-                    ContentIntelligenceManager(db).extract_and_index(asset.id, commit=True)
+                self._schedule_extraction(db, asset.id, background_tasks)
 
         else:
             # Si ya existen módulos y lecciones en BD, mapeamos los archivos físicos a las lecciones existentes
-            # buscando coincidencia por índice u orden
-            for root_dir, _, files in os.walk(path):
-                for f in files:
-                    file_path = Path(root_dir) / f
-                    if file_path.suffix.lower() in video_extensions:
-                        # Buscar si existe un MediaAsset con este path para evitar duplicar
-                        existing_asset = existing_assets_by_path.get(str(file_path.resolve()))
-                        if existing_asset:
-                            if not existing_asset.extracted_metadata:
-                                if background_tasks is not None:
-                                    def run_background_extraction(asset_id):
-                                        from backend.app.core.database import SessionLocal
-                                        from backend.app.services.extractor import ContentIntelligenceManager
-                                        db_local = SessionLocal()
-                                        try:
-                                            manager = ContentIntelligenceManager(db_local)
-                                            manager.extract_and_index(asset_id, commit=True)
-                                        finally:
-                                            db_local.close()
-                                    background_tasks.add_task(run_background_extraction, existing_asset.id)
-                                else:
-                                    from backend.app.services.extractor import ContentIntelligenceManager
-                                    ContentIntelligenceManager(db).extract_and_index(existing_asset.id, commit=True)
-                            continue
-                            
-                        # Intentar emparejar con lección
-                        # Heurística: buscar lección cuya order_index coincida con los primeros números del nombre del archivo
-                        lesson_match = None
-                        import re
-                        match = re.search(r"^\d+", file_path.name)
-                        if match:
-                            order_num = int(match.group())
-                            # Buscar lección en la BD
-                            stmt_les = (
-                                select(Lesson)
-                                .join(Lesson.module)
-                                .where(Lesson.module.has(course_id=course.id))
-                                .where(Lesson.order_index == order_num)
-                            )
-                            lesson_match = db.scalars(stmt_les).first()
-                            
-                        # Crear el MediaAsset
-                        asset = MediaAsset(
-                            id=uuid.uuid4(),
-                            resource_id=course.id,
-                            lesson_id=lesson_match.id if lesson_match else None,
-                            media_type="video",
-                            file_path=str(file_path.resolve()),
-                            file_name=file_path.name,
-                            file_size=file_path.stat().st_size if file_path.exists() else 0,
-                            mime_type="video/mp4"
-                        )
-                        db.add(asset)
-                        db.flush()
-                        existing_assets_by_path[asset.file_path] = asset
+            for file_path in video_files:
+                # Evitar duplicados por ruta resuelta.
+                existing_asset = existing_assets_by_path.get(str(file_path.resolve()))
+                if existing_asset:
+                    if not existing_asset.extracted_metadata:
+                        self._schedule_extraction(db, existing_asset.id, background_tasks)
+                    continue
 
-                        if background_tasks is not None:
-                            def run_background_extraction(asset_id):
-                                from backend.app.core.database import SessionLocal
-                                from backend.app.services.extractor import ContentIntelligenceManager
-                                db_local = SessionLocal()
-                                try:
-                                    manager = ContentIntelligenceManager(db_local)
-                                    manager.extract_and_index(asset_id, commit=True)
-                                finally:
-                                    db_local.close()
-                            background_tasks.add_task(run_background_extraction, asset.id)
-                        else:
-                            from backend.app.services.extractor import ContentIntelligenceManager
-                            ContentIntelligenceManager(db).extract_and_index(asset.id, commit=True)
+                # Emparejar con lección: por número inicial del nombre (orden) o
+                # por título de lección normalizado (mapa explícito de archivo).
+                lesson_match = self._match_lesson(db, course.id, file_path)
+
+                asset = MediaAsset(
+                    id=uuid.uuid4(),
+                    resource_id=course.id,
+                    lesson_id=lesson_match.id if lesson_match else None,
+                    media_type="video",
+                    file_path=str(file_path.resolve()),
+                    file_name=file_path.name,
+                    file_size=file_path.stat().st_size if file_path.exists() else 0,
+                    mime_type="video/mp4"
+                )
+                db.add(asset)
+                db.flush()
+                existing_assets_by_path[asset.file_path] = asset
+                self._schedule_extraction(db, asset.id, background_tasks)
 
         db.commit()
         return created, updated
+
+    @staticmethod
+    def _normalize_title(value: str) -> str:
+        import re
+        import unicodedata
+
+        text = unicodedata.normalize("NFD", str(value))
+        text = "".join(c for c in text if unicodedata.category(c) != "Mn").lower()
+        text = re.sub(r"^[\d\s._-]+", "", text)
+        return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+    def _match_lesson(self, db: Session, course_id, file_path: Path):
+        """
+        Empareja un archivo de vídeo con una lección existente del curso.
+
+        Estrategia (sin inventar relaciones):
+        1. Número inicial del archivo -> `order_index` de una lección.
+        2. Título del archivo normalizado -> título de lección normalizado.
+        """
+        from backend.app.models.course_structure import Lesson
+
+        import re
+
+        stmt_les = (
+            select(Lesson)
+            .join(Lesson.module)
+            .where(Lesson.module.has(course_id=course_id))
+        )
+        lessons = db.scalars(stmt_les).all()
+
+        match = re.search(r"^\d+", file_path.name)
+        if match:
+            order_num = int(match.group())
+            for lesson in lessons:
+                if lesson.order_index == order_num:
+                    return lesson
+
+        normalized_stem = self._normalize_title(file_path.stem)
+        if normalized_stem:
+            for lesson in lessons:
+                if self._normalize_title(lesson.title) == normalized_stem:
+                    return lesson
+        return None
+
+    @staticmethod
+    def _schedule_extraction(db: Session, asset_id, background_tasks: Optional[Any]) -> None:
+        """Programa (o ejecuta) la extracción de contenido de un asset."""
+        if background_tasks is not None:
+            def run_background_extraction(asset_id=asset_id):
+                # `SessionLocal` se importa en tiempo de llamada: las pruebas
+                # parchean la fábrica para usar su propia base (A-1).
+                from backend.app.core.database import SessionLocal
+                from backend.app.services.extractor import ContentIntelligenceManager
+                db_local = SessionLocal()
+                try:
+                    manager = ContentIntelligenceManager(db_local)
+                    manager.extract_and_index(asset_id, commit=True)
+                finally:
+                    db_local.close()
+            background_tasks.add_task(run_background_extraction)
+        else:
+            from backend.app.services.extractor import ContentIntelligenceManager
+            ContentIntelligenceManager(db).extract_and_index(asset_id, commit=True)
 
 
 class BookScanner(BaseScanner):
@@ -278,18 +339,20 @@ class BookScanner(BaseScanner):
         super().__init__("book")
 
     def can_handle(self, path: Path, metadata: Optional[Dict[str, Any]]) -> bool:
+        # 1. Metadata explícita: máxima prioridad.
         if metadata and metadata.get("resource_type") == "book":
             return True
-        # Heurística: Si está en la carpeta de Books y contiene PDF/EPUB
-        if "books" in path.parts[-3:].__str__().lower() or "books" in path.name.lower():
-            # Buscar si hay un archivo .pdf o .epub en esta carpeta
-            if path.is_dir():
-                return any(p.suffix.lower() in [".pdf", ".epub"] for p in path.iterdir())
-        return False
+        if metadata and metadata.get("resource_type") not in (None, "book"):
+            return False
+        if not path.is_dir():
+            return False
+        # 2. Contenido directo: una carpeta con PDF/EPUB es un libro, esté
+        #    donde esté (ya no depende de llamarse Books/).
+        return any(p.suffix.lower() in BOOK_EXTENSIONS for p in path.iterdir() if p.is_file())
 
     def scan(self, db: Session, path: Path, metadata: Optional[Dict[str, Any]], background_tasks: Optional[Any] = None) -> tuple[bool, bool]:
         source_path = str(path.resolve())
-        
+
         # Buscar recurso existente por source_path
         stmt = select(Book).where(Book.source_path == source_path)
         book = db.scalars(stmt).first()
@@ -303,13 +366,9 @@ class BookScanner(BaseScanner):
         category = "General"
         author = "Desconocido"
 
-        # Buscar archivos de libros físicos
-        book_files = []
-        if path.is_dir():
-            for p in path.iterdir():
-                if p.suffix.lower() in [".pdf", ".epub"]:
-                    book_files.append(p)
-        
+        # Buscar archivos de libros físicos (profundidad acotada).
+        book_files = list(iter_files_bounded(path, BOOK_EXTENSIONS, RESOURCE_FILE_DEPTH))
+
         # Si la carpeta tiene metadata
         if metadata:
             title = metadata.get("title", title)
@@ -331,9 +390,9 @@ class BookScanner(BaseScanner):
             db.add(book)
             created = True
         else:
-            if (book.title != title or 
-                book.description != description or 
-                book.category != category or 
+            if (book.title != title or
+                book.description != description or
+                book.category != category or
                  book.author != author):
                 book.title = title
                 book.category = category
@@ -355,59 +414,31 @@ class BookScanner(BaseScanner):
         # INDEXACIÓN DE ARCHIVOS DE LIBROS (MEDIA ASSETS)
         # ==========================================
         for p in book_files:
-            # Evitar duplicados
+            # Evitar duplicados por ruta resuelta.
             existing_asset = existing_assets_by_path.get(str(p.resolve()))
-            
+
             if existing_asset:
                 if not existing_asset.extracted_metadata:
-                    if background_tasks is not None:
-                        def run_background_extraction(asset_id):
-                            from backend.app.core.database import SessionLocal
-                            from backend.app.services.extractor import ContentIntelligenceManager
-                            db_local = SessionLocal()
-                            try:
-                                manager = ContentIntelligenceManager(db_local)
-                                manager.extract_and_index(asset_id, commit=True)
-                            finally:
-                                db_local.close()
-                        background_tasks.add_task(run_background_extraction, existing_asset.id)
-                    else:
-                        from backend.app.services.extractor import ContentIntelligenceManager
-                        ContentIntelligenceManager(db).extract_and_index(existing_asset.id, commit=True)
+                    CourseScanner._schedule_extraction(db, existing_asset.id, background_tasks)
                 continue
-            
-            if not existing_asset:
-                mtype = "pdf" if p.suffix.lower() == ".pdf" else "epub"
-                mime = "application/pdf" if mtype == "pdf" else "application/epub+zip"
-                
-                asset = MediaAsset(
-                    id=uuid.uuid4(),
-                    resource_id=book.id,
-                    lesson_id=None,
-                    media_type=mtype,
-                    file_path=str(p.resolve()),
-                    file_name=p.name,
-                    file_size=p.stat().st_size if p.exists() else 0,
-                    mime_type=mime
-                )
-                db.add(asset)
-                db.flush()
-                existing_assets_by_path[asset.file_path] = asset
 
-                if background_tasks is not None:
-                    def run_background_extraction(asset_id):
-                        from backend.app.core.database import SessionLocal
-                        from backend.app.services.extractor import ContentIntelligenceManager
-                        db_local = SessionLocal()
-                        try:
-                            manager = ContentIntelligenceManager(db_local)
-                            manager.extract_and_index(asset_id, commit=True)
-                        finally:
-                            db_local.close()
-                    background_tasks.add_task(run_background_extraction, asset.id)
-                else:
-                    from backend.app.services.extractor import ContentIntelligenceManager
-                    ContentIntelligenceManager(db).extract_and_index(asset.id, commit=True)
+            mtype = "pdf" if p.suffix.lower() == ".pdf" else "epub"
+            mime = "application/pdf" if mtype == "pdf" else "application/epub+zip"
+
+            asset = MediaAsset(
+                id=uuid.uuid4(),
+                resource_id=book.id,
+                lesson_id=None,
+                media_type=mtype,
+                file_path=str(p.resolve()),
+                file_name=p.name,
+                file_size=p.stat().st_size if p.exists() else 0,
+                mime_type=mime
+            )
+            db.add(asset)
+            db.flush()
+            existing_assets_by_path[asset.file_path] = asset
+            CourseScanner._schedule_extraction(db, asset.id, background_tasks)
 
         db.commit()
         return created, updated
@@ -421,9 +452,24 @@ class ScannerManager:
             BookScanner()
         ]
 
-    def scan_directory(self, library_path: str, background_tasks: Optional[Any] = None) -> ScanResult:
+    def scan_directory(
+        self,
+        library_path: str,
+        background_tasks: Optional[Any] = None,
+        max_depth: int = DEFAULT_MAX_DEPTH,
+    ) -> ScanResult:
         """
-        Escanea el directorio raíz configurado y delega la detección a los scanners registrados.
+        Escanea el directorio raíz y delega la detección a los scanners.
+
+        - La profundidad de recursión es configurable y acotada
+          (`max_depth`, por defecto 3, máximo 8): nunca se hace un crawl
+          ilimitado del sistema de archivos.
+        - La clasificación prioriza metadata explícita; sin metadata, se
+          detecta por contenido (vídeos / pdf / epub) directamente en la
+          carpeta. Las carpetas organizadoras históricas no se procesan como
+          recurso, pero sí se recorren.
+        - Al procesar una carpeta como recurso no se desciende más dentro de
+          ella: sus archivos pertenecen a ese recurso.
         """
         result = ScanResult()
         root = Path(library_path)
@@ -432,27 +478,52 @@ class ScannerManager:
             result.errors.append(f"El directorio raíz {library_path} no es un directorio válido.")
             return result
 
-        # Caminar directorios (máximo 2 niveles de profundidad para evitar loops infinitos)
         try:
-            for item in root.iterdir():
-                if not item.is_dir():
-                    continue
+            bounded_depth = max(1, min(int(max_depth), MAX_SCAN_DEPTH))
+        except (TypeError, ValueError):
+            bounded_depth = DEFAULT_MAX_DEPTH
 
-                # Si es un directorio organizador (ej: Courses/ o Books/), caminar un nivel más y no procesarlo a él mismo
-                if item.name.lower() in ["courses", "books"]:
-                    for sub_item in item.iterdir():
-                        if sub_item.is_dir():
-                            self._process_directory(sub_item, result, background_tasks)
-                else:
-                    # Procesar subdirectorios de primer nivel como recursos potenciales
-                    self._process_directory(item, result, background_tasks)
+        try:
+            self._walk_directory(root, depth=0, max_depth=bounded_depth, result=result, background_tasks=background_tasks)
         except Exception as e:
+            logger.error("Error durante el escaneo de %s: %s", library_path, e)
             result.errors.append(f"Error durante el escaneo de directorios: {str(e)}")
 
         return result
 
-    def _process_directory(self, path: Path, result: ScanResult, background_tasks: Optional[Any] = None):
-        """Intenta procesar un directorio con los scanners disponibles."""
+    def _walk_directory(
+        self,
+        path: Path,
+        depth: int,
+        max_depth: int,
+        result: ScanResult,
+        background_tasks: Optional[Any] = None,
+    ) -> None:
+        """Recorre `path`; si un scanner lo reclama, no desciende más."""
+        handled = self._process_directory(path, result, background_tasks)
+        if handled:
+            return
+
+        if depth >= max_depth:
+            return
+
+        try:
+            children = sorted(
+                (child for child in path.iterdir() if child.is_dir() and not child.is_symlink()),
+                key=lambda p: p.name.lower(),
+            )
+        except OSError as e:
+            result.warnings.append(f"No se pudo leer {path}: {str(e)}")
+            return
+
+        for child in children:
+            self._walk_directory(child, depth + 1, max_depth, result, background_tasks)
+
+    def _process_directory(self, path: Path, result: ScanResult, background_tasks: Optional[Any] = None) -> bool:
+        """Intenta procesar un directorio con los scanners disponibles.
+
+        Devuelve True si algún scanner lo ha reclamado como recurso.
+        """
         try:
             # 1. Cargar metadatos
             # Buscamos de forma genérica metadata.json/metadata.yaml usando el primer scanner para cargarlo
@@ -461,7 +532,6 @@ class ScannerManager:
             result.warnings.append(str(e))
             metadata = None
 
-        handled = False
         for scanner in self.scanners:
             if scanner.can_handle(path, metadata):
                 try:
@@ -471,15 +541,14 @@ class ScannerManager:
                         result.created += 1
                     if updated:
                         result.updated += 1
-                    handled = True
-                    break
+                    return True
                 except Exception as e:
                     self.db.rollback()
                     result.errors.append(f"Error escaneando {path} con {scanner.__class__.__name__}: {str(e)}")
-                    handled = True
-                    break
+                    return True
 
-        if not handled and metadata:
+        if metadata:
             result.warnings.append(
                 f"Directorio {path} contiene metadata pero ningún scanner registrado pudo procesarlo."
             )
+        return False

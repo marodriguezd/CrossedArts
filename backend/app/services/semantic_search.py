@@ -1,98 +1,198 @@
 """
-Semantic Search Service using LangChain.
-Provides vector similarity search across all indexed content.
+Semantic Search Service.
+
+Proporciona búsqueda por similitud sobre todo el contenido indexado.
+
+Escalabilidad (A-4): el cálculo de similitud se delega en
+`SQLiteVectorStore`, que filtra por modelo/entidad en SQL, recorre los
+registros en lotes y mantiene solo el top-k en memoria. La semántica existente
+para bibliotecas pequeñas se conserva (umbral 0.25, orden por puntuación,
+límite de registros explorados configurable).
+
+Tipos de recurso relacionados (A-7): `get_related_resources` devuelve el tipo
+de dominio REAL de cada recurso (course/book/...), resuelto con consultas en
+lote en lugar de asumir "course" para todo.
 """
-import json
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
+
 from sqlalchemy.orm import Session
-from backend.app.services.embedding import EmbeddingService
-from backend.app.models.content import EmbeddingRecord, TranscriptSegment, ContentIndex
+
+from backend.app.core.logging import get_logger
+from backend.app.core.settings import settings
 from backend.app.models.activity import Note
-from backend.app.models.resource import MediaAsset
+from backend.app.models.content import ContentIndex, EmbeddingRecord, Transcript, TranscriptSegment
+from backend.app.models.resource import Book, Course, MediaAsset
+from backend.app.services.embedding import EmbeddingService
+from backend.app.services.vector_store import (
+    DEFAULT_SIMILARITY_THRESHOLD,
+    SQLiteVectorStore,
+    SimilarityHit,
+)
+
+logger = get_logger("services.semantic_search")
 
 
 class SemanticSearchService:
     """Service for semantic similarity search."""
 
+    #: Umbral de similitud para la búsqueda semántica general.
+    SEARCH_THRESHOLD = DEFAULT_SIMILARITY_THRESHOLD
+    #: Umbral (más permisivo) para notas relacionadas.
+    RELATED_NOTES_THRESHOLD = 0.10
+
+    # ------------------------------------------------------------------ #
+    # Utilidades internas                                                 #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _build_store(db: Session) -> SQLiteVectorStore:
+        return SQLiteVectorStore(db, scan_limit=settings.semantic_scan_limit)
+
+    @staticmethod
+    def _collect_entity_ids(db: Session, resource_id) -> List:
+        """IDs de todas las entidades indexadas que pertenecen a un recurso."""
+        ci_ids = [
+            ci.id
+            for ci in db.query(ContentIndex.id)
+            .join(MediaAsset, ContentIndex.media_asset_id == MediaAsset.id)
+            .filter(MediaAsset.resource_id == resource_id)
+            .all()
+        ]
+        note_ids = [n.id for n in db.query(Note.id).filter(Note.resource_id == resource_id).all()]
+        ts_ids = [
+            ts.id
+            for ts in db.query(TranscriptSegment.id)
+            .join(Transcript, TranscriptSegment.transcript_id == Transcript.id)
+            .join(MediaAsset, Transcript.media_asset_id == MediaAsset.id)
+            .filter(MediaAsset.resource_id == resource_id)
+            .all()
+        ]
+        return ci_ids + note_ids + ts_ids
+
+    @staticmethod
+    def _resolve_resource_ids(db: Session, entity_ids: List[str]) -> Dict[str, object]:
+        """
+        Mapa entity_id -> resource_id resuelto en LOTE (sin N+1).
+
+        Cubre las tres familias indexadas: notas (resource_id directo),
+        contenido de documentos (vía MediaAsset) y segmentos de transcripción
+        (vía Transcript -> MediaAsset).
+        """
+        result: Dict[str, object] = {}
+        if not entity_ids:
+            return result
+
+        parsed = []
+        for eid in entity_ids:
+            try:
+                parsed.append(uuid.UUID(eid) if len(eid) == 36 else eid)
+            except ValueError:
+                parsed.append(eid)
+
+        notes = db.query(Note.id, Note.resource_id).filter(Note.id.in_(parsed)).all()
+        for note_id, resource_id in notes:
+            if resource_id is not None:
+                result[str(note_id)] = resource_id
+
+        contents = (
+            db.query(ContentIndex.id, MediaAsset.resource_id)
+            .join(MediaAsset, ContentIndex.media_asset_id == MediaAsset.id)
+            .filter(ContentIndex.id.in_(parsed))
+            .all()
+        )
+        for content_id, resource_id in contents:
+            if resource_id is not None:
+                result[str(content_id)] = resource_id
+
+        segments = (
+            db.query(TranscriptSegment.id, MediaAsset.resource_id)
+            .join(Transcript, TranscriptSegment.transcript_id == Transcript.id)
+            .join(MediaAsset, Transcript.media_asset_id == MediaAsset.id)
+            .filter(TranscriptSegment.id.in_(parsed))
+            .all()
+        )
+        for segment_id, resource_id in segments:
+            if resource_id is not None:
+                result[str(segment_id)] = resource_id
+
+        return result
+
+    @staticmethod
+    def _resolve_resource_types(db: Session, resource_ids) -> Dict[object, Tuple[str, str]]:
+        """
+        Mapa resource_id -> (título, tipo de dominio real).
+
+        Consulta en lote sobre las tablas concretas (Course, Book) para
+        devolver el tipo REAL y no una etiqueta genérica.
+        """
+        info: Dict[object, Tuple[str, str]] = {}
+        ids = [rid for rid in resource_ids if rid is not None]
+        if not ids:
+            return info
+        courses = db.query(Course.id, Course.title).filter(Course.id.in_(ids)).all()
+        for course_id, title in courses:
+            info[course_id] = (title, "course")
+        books = db.query(Book.id, Book.title).filter(Book.id.in_(ids)).all()
+        for book_id, title in books:
+            info[book_id] = (title, "book")
+        return info
+
+    # ------------------------------------------------------------------ #
+    # API pública                                                         #
+    # ------------------------------------------------------------------ #
+
     @classmethod
-    def search(cls, db: Session, query: str, limit: int = 20,
-               resource_type: Optional[str] = None,
-               resource_id: Optional[str] = None) -> List[dict]:
-        """Search for similar content using cosine similarity."""
+    def search(
+        cls,
+        db: Session,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+    ) -> List[dict]:
+        """Busca contenido similar usando similitud coseno (paginado)."""
         if not query or not query.strip():
             return []
 
         try:
             query_vector = EmbeddingService.get_embedding(query.strip())
         except Exception as e:
-            print(f"[CrossedArts] Embedding error for search: {e}")
+            logger.error("Error generando embedding para la búsqueda: %s", e)
             return []
 
         # Nunca mezclar embeddings generados por modelos distintos.
         current_model = EmbeddingService.get_model_name()
-        query_filter = db.query(EmbeddingRecord).filter(
-            EmbeddingRecord.model == current_model
-        ).order_by(EmbeddingRecord.created_at.desc())
-        
+
+        entity_ids: Optional[List] = None
         if resource_id:
-            # Find entity IDs that belong to this resource
-            from backend.app.models.resource import Course, Book
-            
-            # ContentIndex entities via MediaAsset
-            ci_ids = [ci.id for ci in db.query(ContentIndex.id).join(
-                MediaAsset, ContentIndex.media_asset_id == MediaAsset.id
-            ).filter(MediaAsset.resource_id == resource_id).all()]
-            
-            # Note entities directly linked to resource
-            note_ids = [n.id for n in db.query(Note.id).filter(
-                Note.resource_id == resource_id
-            ).all()]
-            
-            # TranscriptSegment entities via Transcript -> MediaAsset
-            from backend.app.models.content import Transcript
-            ts_ids = [ts.id for ts in db.query(TranscriptSegment.id).join(
-                Transcript, TranscriptSegment.transcript_id == Transcript.id
-            ).join(
-                MediaAsset, Transcript.media_asset_id == MediaAsset.id
-            ).filter(MediaAsset.resource_id == resource_id).all()]
-            
-            all_entity_ids = ci_ids + note_ids + ts_ids
-            if not all_entity_ids:
+            entity_ids = cls._collect_entity_ids(db, resource_id)
+            if not entity_ids:
                 return []
-            
-            query_filter = query_filter.filter(EmbeddingRecord.entity_id.in_(all_entity_ids))
-        
-        records = query_filter.limit(3000).all()
-        
-        if not records:
+
+        store = cls._build_store(db)
+        # Se piden limit+offset resultados: el offset se aplica sobre el ranking
+        # global y el top-k se mantiene acotado en memoria.
+        hits: List[SimilarityHit] = store.search(
+            query_vector,
+            model=current_model,
+            limit=max(0, limit) + max(0, offset),
+            threshold=cls.SEARCH_THRESHOLD,
+            entity_ids=entity_ids,
+        )
+        if offset > 0:
+            hits = hits[offset:]
+        hits = hits[:limit]
+
+        if not hits:
             return []
 
-        # Compute cosine similarity
-        results = []
-        for record in records:
-            try:
-                record_vector = json.loads(record.vector)
-                score = cls._cosine_similarity(query_vector, record_vector)
-                if score >= 0.25:
-                    results.append({
-                        "entity_id": str(record.entity_id),
-                        "entity_type": record.entity_type,
-                        "score": score,
-                        "model": record.model,
-                    })
-            except Exception:
-                continue
-
-        # Sort by score descending
-        results.sort(key=lambda x: x["score"], reverse=True)
-        results = results[:limit]
-
-        # Batch load full entities
+        # Carga en lote de entidades completas (una consulta por tipo).
         entity_map = {}
-        note_ids = [r["entity_id"] for r in results if r["entity_type"] == "note"]
-        transcript_ids = [r["entity_id"] for r in results if r["entity_type"] == "transcript_segment"]
-        content_ids = [r["entity_id"] for r in results if r["entity_type"] == "content_index"]
+        note_ids = [h.entity_id for h in hits if h.entity_type == "note"]
+        transcript_ids = [h.entity_id for h in hits if h.entity_type == "transcript_segment"]
+        content_ids = [h.entity_id for h in hits if h.entity_type == "content_index"]
 
         if note_ids:
             notes = db.query(Note).filter(Note.id.in_(note_ids)).all()
@@ -104,55 +204,52 @@ class SemanticSearchService:
             contents = db.query(ContentIndex).filter(ContentIndex.id.in_(content_ids)).all()
             entity_map.update({str(c.id): c for c in contents})
 
-        # Collect resource_ids from the entities themselves
+        # Resource IDs de las entidades encontradas.
         rid_set = set()
-        for eid, entity in entity_map.items():
-            if hasattr(entity, 'resource_id') and entity.resource_id:
-                rid_set.add(entity.resource_id)
-        resource_map = {}
-        if rid_set:
-            from backend.app.models.resource import Course, Book
-            courses = db.query(Course).filter(Course.id.in_(rid_set)).all()
-            resource_map.update({c.id: (c.title, "course") for c in courses})
-            books = db.query(Book).filter(Book.id.in_(rid_set)).all()
-            resource_map.update({b.id: (b.title, "book") for b in books})
+        for entity in entity_map.values():
+            rid = getattr(entity, "resource_id", None)
+            if rid:
+                rid_set.add(rid)
+        resource_map = cls._resolve_resource_types(db, rid_set)
 
-        # Build results with snippets
+        # Resultados enriquecidos con fragmento y metadatos.
         enriched = []
-        for r in results:
-            eid = r["entity_id"]
-            etype = r["entity_type"]
-            entity = entity_map.get(eid)
+        for hit in hits:
+            entity = entity_map.get(hit.entity_id)
             if not entity:
                 continue
 
             snippet = ""
             title = ""
-            if etype == "note":
+            if hit.entity_type == "note":
                 snippet = entity.content[:200] if entity.content else ""
                 title = "Nota de Estudio"
-            elif etype == "transcript_segment":
+            elif hit.entity_type == "transcript_segment":
                 snippet = entity.text[:200] if entity.text else ""
                 title = f"Transcripción ({entity.start_time:.1f}s)"
-            elif etype == "content_index":
+            elif hit.entity_type == "content_index":
                 snippet = entity.content[:200] if entity.content else ""
-                title = entity.section_name if hasattr(entity, 'section_name') and entity.section_name else "Contenido"
+                title = (
+                    entity.section_name
+                    if hasattr(entity, "section_name") and entity.section_name
+                    else "Contenido"
+                )
 
-            rid = getattr(entity, 'resource_id', None)
+            rid = getattr(entity, "resource_id", None)
             res_info = resource_map.get(rid) if rid else None
 
             enriched.append({
-                "entity_id": eid,
-                "entity_type": etype,
-                "score": round(r["score"], 4),
+                "entity_id": hit.entity_id,
+                "entity_type": hit.entity_type,
+                "score": round(hit.score, 4),
                 "title": title,
                 "snippet": snippet,
-                "model": r["model"],
+                "model": hit.model,
                 "resource_id": rid,
                 "resource_title": res_info[0] if res_info else "",
                 "resource_type": res_info[1] if res_info else "",
-                # Backward compatibility keys
-                "match_type": etype,
+                # Claves de compatibilidad hacia atrás.
+                "match_type": hit.entity_type,
                 "match_reason": title,
             })
 
@@ -160,137 +257,117 @@ class SemanticSearchService:
 
     @classmethod
     def get_related_resources(cls, db: Session, resource_id, limit: int = 5) -> List[dict]:
-        """Find resources conceptually related to the given resource."""
-        from backend.app.models.resource import Course, Book
-        from backend.app.models.content import Transcript
-
-        # Collect all entity IDs belonging to this resource
-        ci_ids = [ci.id for ci in db.query(ContentIndex.id).join(
-            MediaAsset, ContentIndex.media_asset_id == MediaAsset.id
-        ).filter(MediaAsset.resource_id == resource_id).all()]
-
-        note_ids = [n.id for n in db.query(Note.id).filter(
-            Note.resource_id == resource_id
-        ).all()]
-
-        ts_ids = [ts.id for ts in db.query(TranscriptSegment.id).join(
-            Transcript, TranscriptSegment.transcript_id == Transcript.id
-        ).join(
-            MediaAsset, Transcript.media_asset_id == MediaAsset.id
-        ).filter(MediaAsset.resource_id == resource_id).all()]
-
-        all_entity_ids = ci_ids + note_ids + ts_ids
+        """Encuentra recursos conceptualmente relacionados con el dado."""
+        all_entity_ids = cls._collect_entity_ids(db, resource_id)
         if not all_entity_ids:
             return []
 
-        # Load embeddings for these entities
         current_model = EmbeddingService.get_model_name()
-        resource_embeddings = db.query(EmbeddingRecord).filter(
-            EmbeddingRecord.entity_id.in_(all_entity_ids),
-            EmbeddingRecord.model == current_model
-        ).limit(30).all()
 
+        # Huella del recurso: media de sus embeddings (máximo 30, como antes).
+        resource_embeddings = (
+            db.query(EmbeddingRecord)
+            .filter(
+                EmbeddingRecord.entity_id.in_(all_entity_ids),
+                EmbeddingRecord.model == current_model,
+            )
+            .limit(30)
+            .all()
+        )
         if not resource_embeddings:
             return []
 
-        # Compute resource fingerprint (average of all embeddings)
-        all_vectors = []
-        for r in resource_embeddings:
-            try:
-                all_vectors.append(json.loads(r.vector))
-            except Exception:
-                continue
+        import json
 
+        all_vectors = []
+        for record in resource_embeddings:
+            try:
+                all_vectors.append(json.loads(record.vector))
+            except (TypeError, ValueError):
+                continue
         if not all_vectors:
             return []
 
-        fingerprint = [sum(v[i] for v in all_vectors) / len(all_vectors) for i in range(len(all_vectors[0]))]
+        fingerprint = [
+            sum(vector[i] for vector in all_vectors) / len(all_vectors)
+            for i in range(len(all_vectors[0]))
+        ]
 
-        # Compare against all other embeddings
-        other_records = db.query(EmbeddingRecord).filter(
-            ~EmbeddingRecord.entity_id.in_(all_entity_ids),
-            EmbeddingRecord.model == current_model
-        ).order_by(EmbeddingRecord.created_at.desc()).limit(3000).all()
+        # Se piden varios candidatos por recurso destino para poder deduplicar
+        # por recurso sin perder resultados útiles.
+        store = cls._build_store(db)
+        hits = store.search(
+            fingerprint,
+            model=current_model,
+            limit=max(limit * 5, limit),
+            threshold=0.0,
+            exclude_entity_ids=all_entity_ids,
+        )
 
-        scores = {}
-        for record in other_records:
-            try:
-                record_vector = json.loads(record.vector)
-                score = cls._cosine_similarity(fingerprint, record_vector)
-                eid = str(record.entity_id)
-                if eid not in scores or score > scores[eid]:
-                    scores[eid] = score
-            except Exception:
+        # Resolución en lote: entidad -> recurso -> tipo real (A-7, sin N+1).
+        entity_to_resource = cls._resolve_resource_ids(db, [h.entity_id for h in hits])
+        ordered_resource_ids = []
+        best_score_by_resource: Dict[object, float] = {}
+        for hit in hits:
+            rid = entity_to_resource.get(hit.entity_id)
+            if rid is None or rid == resource_id:
                 continue
+            if rid not in best_score_by_resource:
+                ordered_resource_ids.append(rid)
+                best_score_by_resource[rid] = hit.score
+            elif hit.score > best_score_by_resource[rid]:
+                best_score_by_resource[rid] = hit.score
+            if len(ordered_resource_ids) >= limit:
+                break
 
-        # Sort and return top results
-        sorted_results = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:limit]
+        resource_info = cls._resolve_resource_types(db, ordered_resource_ids)
 
-        # Enrich with resource_id from the matched entities
         result = []
-        for eid_str, score in sorted_results:
-            eid = uuid.UUID(eid_str) if len(eid_str) == 36 else eid_str
-            rid = None
-            note = db.query(Note).filter(Note.id == eid).first()
-            if note:
-                rid = note.resource_id
-            else:
-                ci = db.query(ContentIndex).filter(ContentIndex.id == eid).first()
-                if ci and ci.media_asset:
-                    rid = ci.media_asset.resource_id
-            result.append({"id": rid, "type": "course", "similarity": round(score, 4)})
+        for rid in ordered_resource_ids:
+            title, real_type = resource_info.get(rid, ("", "resource"))
+            result.append({
+                "id": rid,
+                "title": title,
+                "type": real_type,
+                "similarity": round(best_score_by_resource[rid], 4),
+            })
 
         return result
 
     @classmethod
     def get_related_notes(cls, db: Session, note_id, limit: int = 5) -> List[dict]:
-        """Find notes conceptually similar to the given note."""
-        # Similar to get_related_resources but scoped to notes
+        """Encuentra notas conceptualmente similares a la dada."""
         current_model = EmbeddingService.get_model_name()
-        note_record = db.query(EmbeddingRecord).filter(
-            EmbeddingRecord.entity_id == note_id,
-            EmbeddingRecord.entity_type == "note",
-            EmbeddingRecord.model == current_model
-        ).first()
-
+        note_record = (
+            db.query(EmbeddingRecord)
+            .filter(
+                EmbeddingRecord.entity_id == note_id,
+                EmbeddingRecord.entity_type == "note",
+                EmbeddingRecord.model == current_model,
+            )
+            .first()
+        )
         if not note_record:
             return []
 
+        import json
+
         try:
             note_vector = json.loads(note_record.vector)
-        except Exception:
+        except (TypeError, ValueError):
             return []
 
-        other_notes = db.query(EmbeddingRecord).filter(
-            EmbeddingRecord.entity_type == "note",
-            EmbeddingRecord.entity_id != note_id,
-            EmbeddingRecord.model == current_model
-        ).all()
+        store = cls._build_store(db)
+        hits = store.search(
+            note_vector,
+            model=current_model,
+            limit=limit,
+            threshold=cls.RELATED_NOTES_THRESHOLD,
+            entity_types=["note"],
+            exclude_entity_ids=[note_id],
+        )
 
-        results = []
-        for record in other_notes:
-            try:
-                record_vector = json.loads(record.vector)
-                score = cls._cosine_similarity(note_vector, record_vector)
-                if score >= 0.10:
-                    results.append({
-                        "note_id": str(record.entity_id),
-                        "similarity": round(score, 4),
-                    })
-            except Exception:
-                continue
-
-        results.sort(key=lambda x: x["similarity"], reverse=True)
-        return results[:limit]
-
-    @staticmethod
-    def _cosine_similarity(a: list, b: list) -> float:
-        """Compute cosine similarity between two vectors."""
-        if len(a) != len(b):
-            return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot / (norm_a * norm_b)
+        return [
+            {"note_id": hit.entity_id, "similarity": round(hit.score, 4)}
+            for hit in hits
+        ]

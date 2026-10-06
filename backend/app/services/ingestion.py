@@ -11,6 +11,7 @@ from backend.app.models.resource import Course, Book, MediaAsset, LearningResour
 from backend.app.models.course_structure import Module, Lesson
 from backend.app.models.base import ResourceStatus, CourseDifficulty, LessonType
 from backend.app.core.settings import settings
+from backend.app.core.logging import get_logger
 from backend.app.schemas.ingestion import (
     ImportResourceRequest, ImportResultResponse,
     StorageStrategy, StructureStrategy, DirectoryValidationResponse
@@ -177,11 +178,11 @@ class IngestionService:
                             try:
                                 manager.extract_and_index(aid, commit=True)
                             except Exception as e:
-                                print(f"[Background Extraction] Error for asset {aid}: {e}")
+                                logger.error("Error en extracción en segundo plano para asset %s: %s", aid, e)
                         # Reindexar embeddings
                         EmbeddingService.index_all_unindexed(db_local)
                     except Exception as e:
-                        print(f"[Background Extraction] Unexpected error: {e}")
+                        logger.error("Error inesperado en extracción en segundo plano: %s", e)
                     finally:
                         db_local.close()
                 

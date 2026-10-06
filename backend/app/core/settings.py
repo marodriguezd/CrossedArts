@@ -29,6 +29,17 @@ class CrossedArtsSettings(BaseSettings):
     # Computed after init
     api_base_url: str = Field(default="", description="API base URL (auto-computed)")
 
+    # === CORS ===
+    # Lista separada por comas de orígenes permitidos. Por defecto, los orígenes
+    # locales reales del frontend (Vite en 5173) y del propio backend.
+    cors_origins: str = Field(
+        default=(
+            "http://localhost:5173,http://127.0.0.1:5173,"
+            "http://localhost:8080,http://127.0.0.1:8080"
+        ),
+        description="Orígenes CORS permitidos, separados por comas",
+    )
+
     # === Database ===
     database_url: str = Field(default="", description="SQLAlchemy database URL (auto-computed from data_dir)")
 
@@ -42,6 +53,10 @@ class CrossedArtsSettings(BaseSettings):
 
     # === Embeddings ===
     embedding_provider: str = Field(default="mock", description="Embedding provider: mock, ollama, openai, huggingface")
+    # Número máximo de registros de embedding explorados por búsqueda semántica.
+    # El límite se aplica en SQL (no en memoria) y acota el coste del cálculo de
+    # similitud en Python. Ver backend/app/services/vector_store.py (A-4).
+    semantic_scan_limit: int = Field(default=3000, description="Máximo de embeddings explorados por búsqueda semántica")
     ollama_embed_url: str = Field(default="http://localhost:11434/api/embeddings", description="Ollama embeddings URL")
     ollama_embed_model: str = Field(default="nomic-embed-text", description="Ollama embedding model")
     openai_embed_model: str = Field(default="text-embedding-3-small", description="OpenAI embedding model")
@@ -64,10 +79,21 @@ class CrossedArtsSettings(BaseSettings):
             object.__setattr__(self, 'database_url', f"sqlite:///{db_path}")
 
     @property
+    def cors_origin_list(self) -> list[str]:
+        """Orígenes CORS permitidos como lista limpia (sin entradas vacías)."""
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
     def data_dir(self) -> Path:
         """
         User data directory.
-        Defaults to ~/.crossedarts/, with fallback to ~/.domestik/ if existing.
+
+        Compatibilidad DomestiK (intencional, no accidental): el proyecto era
+        anteriormente DomestiK y conserva rutas heredadas para no perder los
+        datos de usuarios existentes.
+          - Directorio actual: ~/.crossedarts/
+          - Directorio legado: ~/.domestik/ (solo se usa si ya existe y el
+            directorio actual todavía no existe)
         """
         legacy_dir = Path.home() / ".domestik"
         primary_dir = Path.home() / ".crossedarts"
@@ -77,7 +103,13 @@ class CrossedArtsSettings(BaseSettings):
 
     @property
     def db_path(self) -> Path:
-        """Path to the SQLite database file."""
+        """
+        Path to the SQLite database file.
+
+        Compatibilidad DomestiK (intencional): dentro del directorio de datos se
+        prefiere crossedarts.db y solo se usa domestik.db si es el único que
+        existe.
+        """
         legacy_db = self.data_dir / "domestik.db"
         primary_db = self.data_dir / "crossedarts.db"
         if legacy_db.exists() and not primary_db.exists():
@@ -107,6 +139,9 @@ class CrossedArtsSettings(BaseSettings):
 
 
 # Singleton instance and backward-compatibility alias
+# `DomestiKSettings` se conserva para importaciones heredadas de la etapa
+# DomestiK. Los nombres de campo se leen TAL CUAL por pydantic-settings: no se
+# aplica ningún prefijo automático (ver .env.example).
 settings = CrossedArtsSettings()
 DomestiKSettings = CrossedArtsSettings
 

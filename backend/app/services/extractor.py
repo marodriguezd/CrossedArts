@@ -13,6 +13,9 @@ from sqlalchemy import select
 from pypdf import PdfReader
 from backend.app.models.resource import MediaAsset
 from backend.app.models.content import ExtractedMetadata, Transcript, TranscriptSegment, ContentIndex
+from backend.app.core.logging import get_logger
+
+logger = get_logger("services.extractor")
 
 # Idioma indeterminado (ISO 639-2). Se usa cuando la fuente no declara idioma:
 # etiquetar transcriptos como español era una afirmación falsa.
@@ -303,7 +306,7 @@ class EPUBExtractor(ContentExtractor):
                     db.add_all(chapters_to_add)
 
         except Exception as e:
-            print(f"[EPUBExtractor] Error parseando {file_path}: {str(e)}")
+            logger.error("Error parseando EPUB %s: %s", file_path, e)
             raise e
 
         full_text = "\n\n".join(raw_text_parts)
@@ -367,7 +370,7 @@ class TranscriptExtractor(ContentExtractor):
                                 "text": s.get("text", "").strip()
                             })
             except Exception as e:
-                print(f"[TranscriptExtractor] Error leyendo JSON {file_path}: {e}")
+                logger.error("Error leyendo transcripción JSON %s: %s", file_path, e)
         
         elif ext == ".srt":
             try:
@@ -393,7 +396,7 @@ class TranscriptExtractor(ContentExtractor):
                                 "text": text_lines.strip()
                             })
             except Exception as e:
-                print(f"[TranscriptExtractor] Error leyendo SRT {file_path}: {e}")
+                logger.error("Error leyendo transcripción SRT %s: %s", file_path, e)
         
         elif ext == ".vtt":
             try:
@@ -425,7 +428,7 @@ class TranscriptExtractor(ContentExtractor):
                                 "text": " ".join(text_lines).strip()
                             })
             except Exception as e:
-                print(f"[TranscriptExtractor] Error leyendo VTT {file_path}: {e}")
+                logger.error("Error leyendo transcripción VTT %s: %s", file_path, e)
 
         # Si no encontramos ningún segmento, no hacemos nada
         if not segments_data:
@@ -560,6 +563,6 @@ class ContentIntelligenceManager:
                         self.db.commit()
                     return True
                 except Exception as e:
-                    print(f"[ContentIntelligenceManager] Error extrayendo metadatos de {file_path}: {e}")
+                    logger.error("Error extrayendo metadatos de %s: %s", file_path, e)
                     return False
         return False
