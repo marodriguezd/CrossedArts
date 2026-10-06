@@ -186,7 +186,7 @@ class LocalEmbeddingEngine {
         try {
           pipe = await pipeline('feature-extraction', modelId, {
             dtype: modelDef.preferredDtype ?? 'q8',
-            device: caps.backend === 'webgpu' ? 'webgpu' : 'wasm',
+            device: backend === 'webgpu' ? 'webgpu' : 'wasm',
             progress_callback: (item: any) => {
               if (item.status === 'progress' && item.progress !== undefined) {
                 this.progress = {
@@ -203,7 +203,7 @@ class LocalEmbeddingEngine {
             console.warn('Fallo inicializando embeddings en WebGPU, aplicando fallback a CPU/WASM:', deviceErr);
             this.backend = 'wasm';
             pipe = await pipeline('feature-extraction', modelId, {
-              dtype: 'q8',
+              dtype: modelDef.preferredDtype ?? 'q8',
               device: 'wasm',
               progress_callback: (item: any) => {
                 if (item.status === 'progress' && item.progress !== undefined) {
