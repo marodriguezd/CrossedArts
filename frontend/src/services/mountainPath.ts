@@ -33,14 +33,59 @@ export interface MountainMilestone {
   reached: boolean;
 }
 
-/** Hitos fijos del camino, de la base a la cumbre. */
-export const MOUNTAIN_MILESTONES: readonly { percent: number; label: string }[] = [
+/**
+ * Hitos genéricos del camino (vista global de la biblioteca).
+ *
+ * Son posiciones honestas sobre el recorrido, NO etapas psicológicas: el modelo
+ * de datos no guarda "fundamentos" ni "nivel intermedio", así que no se finge
+ * que existan. Cuando hay estructura real (los módulos de un curso), se usa esa
+ * estructura en su lugar: ver `deriveStagesFromModules`. */
+export const MOUNTAIN_MILESTONES: readonly MountainStageDefinition[] = [
   { percent: 0, label: 'Inicio' },
   { percent: 25, label: 'Base' },
   { percent: 50, label: 'Media altura' },
   { percent: 75, label: 'Cima a la vista' },
   { percent: 100, label: 'Cumbre' }
 ];
+
+/** Definición de un hito del camino: posición (0..100) y etiqueta en español. */
+export interface MountainStageDefinition {
+  percent: number;
+  label: string;
+}
+
+/**
+ * Deriva hitos REALES a partir de la estructura de un curso: cada módulo ocupa
+ * el tramo de lecciones que contiene, de modo que el hito marca el final de ese
+ * módulo. Si el curso no declara lecciones se devuelve `[]` y la vista conserva
+ * sus hitos genéricos: nunca se inventan etapas.
+ */
+export function deriveStagesFromModules(
+  modules: readonly { title: string; lessons?: readonly { is_completed: boolean }[] }[],
+  maxLabelLength = 40
+): MountainStageDefinition[] {
+  const totalLessons = modules.reduce((sum, mod) => sum + (mod.lessons?.length || 0), 0);
+  if (totalLessons <= 0) return [];
+
+  const truncate = (value: string): string => {
+    const clean = value.trim();
+    if (clean.length <= maxLabelLength) return clean;
+    return `${clean.slice(0, Math.max(1, maxLabelLength - 1)).trimEnd()}…`;
+  };
+
+  const stages: MountainStageDefinition[] = [{ percent: 0, label: 'Inicio' }];
+  let covered = 0;
+  for (const mod of modules) {
+    const count = mod.lessons?.length || 0;
+    if (count === 0) continue;
+    covered += count;
+    stages.push({
+      percent: clampPercent(Math.round((covered / totalLessons) * 100)),
+      label: truncate(mod.title)
+    });
+  }
+  return stages;
+}
 
 /** Acota un valor al rango [0, 100] y descarta NaN/Infinity. */
 export function clampPercent(value: number): number {
@@ -105,7 +150,7 @@ export function pointAtPercent(points: readonly TrailPoint[], percent: number): 
 /** Hitos del camino con su estado `reached` resuelto para un progreso dado. */
 export function resolveMilestones(
   progress: number,
-  definitions: readonly { percent: number; label: string }[] = MOUNTAIN_MILESTONES
+  definitions: readonly MountainStageDefinition[] = MOUNTAIN_MILESTONES
 ): MountainMilestone[] {
   const current = clampPercent(progress);
   return definitions.map((definition) => ({

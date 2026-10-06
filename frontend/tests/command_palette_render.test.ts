@@ -42,6 +42,7 @@ function emptyCatalog(): PaletteCatalogInput {
     lessons: [],
     concepts: [],
     resources: [],
+    practiceWork: [],
     pendingReviews: 0,
     continueTarget: null,
     isDarkTheme: false,

@@ -35,6 +35,22 @@ CrossedArts uses the SuperMemo-2 (SM-2) algorithm for spaced repetition scheduli
 
 The algorithm is deterministic and based on the Ebbinghaus forgetting curve. No adaptive learning or recommendation scores are used.
 
+## Learning Model
+
+CrossedArts models learning as a small, explicit chain:
+
+```
+LEARNING CONTENT  →  RELATIONSHIPS  →  PROGRESS  →  PRACTICE / EVIDENCE  →  OPTIONAL SHARING
+```
+
+- **Content** is a course, a book, an imported document, a note or a concept.
+- **Relationships** are stored as real edges (foreign keys and explicit `knowledge_connection` rows) and shown in the knowledge graph.
+- **Progress** is measured where the data supports it (lessons completed, pages read) and shown as a status where it does not. These are never mixed silently — see [`docs/PROGRESS.md`](docs/PROGRESS.md).
+- **Practice work** is what the learner produces (exercise, project, essay, drawing, code, other). It is evidence linked to the resource, lesson or concept it demonstrates, and it appears in the dashboard gallery and the graph.
+- **Sharing** is the course package: portable *educational material* (syllabus plus proposed practice work), transferred teacher → student. It never carries personal study state.
+
+The dashboard gallery, the knowledge graph and the mountain progress view are three views over the same environment. Artifacts stay in their own tables on purpose; the shared behaviour lives in small, explicit projections (`services/galleryItems.ts`, `services/graphExploration.ts`, `services/mountainPath.ts`) rather than in a universal entity table.
+
 ## AI Boundaries
 
 **What local AI can do:**
@@ -72,6 +88,11 @@ CrossedArts is explicitly **not**:
 - An adaptive learning system (no recommendation algorithms or learning path optimization)
 - A content authoring platform (no WYSIWYG editor, no video creation)
 - A replacement for formal education accreditation
+- A complete LMS (no classes, enrolment, grading or teacher administration)
+- A teacher management platform or a remote classroom system
+- A full collaborative education platform
+
+Course packages move *material* from one person to another; they are not a learning-management workflow. What a package contains is deliberately narrow: the resource, its modules and lessons, and the practice work proposed by the author — never progress, notes or sessions.
 
 ## Evolution from DomestiK
 

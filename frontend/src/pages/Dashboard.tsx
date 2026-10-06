@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { KPIMetrics, Course, Book, LearningSession, TimeRangeFilter, DailyActivityPoint } from '../types/models.ts';
+import {
+  KPIMetrics,
+  Course,
+  Book,
+  LearningResource,
+  LearningSession,
+  PracticeWork,
+  TimeRangeFilter,
+  DailyActivityPoint
+} from '../types/models.ts';
 import {
   GraduationCap,
   BookOpen,
@@ -19,12 +28,23 @@ import { getStoredPlaybackSeconds, formatPlaybackTime } from '../services/domain
 import { Button, ProgressBar, Panel, SectionHeading, EmptyState, Chip, Badge, cn } from '../components/ui/index.tsx';
 import { ResourceGallery, type GalleryEntry } from '../components/dashboard/ResourceGallery.tsx';
 import { MountainProgress } from '../components/dashboard/MountainProgress.tsx';
-import { buildGalleryItems } from '../services/galleryItems.ts';
+import {
+  buildGalleryItems,
+  groupGalleryItems,
+  ARTIFACT_ID_PREFIX,
+  type ArtifactKind,
+  type GalleryItem
+} from '../services/galleryItems.ts';
+import { summarizePracticeWork } from '../services/practiceWork.ts';
 
 interface DashboardProps {
   kpis: KPIMetrics | null;
   courses: Course[];
   books: Book[];
+  /** Recursos importados (documentos) que no son cursos ni libros. */
+  resources?: LearningResource[];
+  /** Trabajo práctico producido por el estudiante. */
+  practiceWork?: PracticeWork[];
   recentSessions: LearningSession[];
   onSelectCourse: (id: string) => void;
   onOpenLesson?: (lessonId: string) => void;
@@ -51,6 +71,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   kpis,
   courses,
   books,
+  resources = [],
+  practiceWork = [],
   recentSessions,
   onSelectCourse,
   onOpenLesson,
@@ -125,16 +147,45 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   // Galería visual unificada y agnóstica al dominio: `buildGalleryItems`
-  // normaliza cursos y libros a la MISMA forma (ver services/galleryItems.ts).
-  const galleryItems: GalleryEntry[] = buildGalleryItems(courses, books).map((item) => ({
-    ...item,
-    onOpen: () =>
-      item.id.startsWith('course:')
-        ? onSelectCourse(item.id.slice('course:'.length))
-        : openResourceOrCourse(item.id.slice('book:'.length))
-  }));
+  // normaliza cursos, libros, recursos importados y trabajo práctico a la MISMA
+  // forma (ver services/galleryItems.ts).
+  const practiceById = new Map(practiceWork.map((work) => [work.id, work]));
 
-  const mountainSources = galleryItems.map((item) => ({ percent: item.progress }));
+  /** Abre un artefacto en su destino real a partir del id normalizado. */
+  const openArtifact = (kind: ArtifactKind, id: string) => {
+    const rawId = id.slice(ARTIFACT_ID_PREFIX[kind].length);
+    if (kind === 'course') return onSelectCourse(rawId);
+    if (kind === 'practice') {
+      // El trabajo práctico se abre en su contexto de origen (recurso, lección o
+      // concepto): es evidencia ligada a algo que el usuario está estudiando.
+      const work = practiceById.get(rawId);
+      const contextId = work?.resource_id || work?.lesson_id || work?.concept_id;
+      if (contextId) return openResourceOrCourse(contextId);
+      return onNavigate('library');
+    }
+    return openResourceOrCourse(rawId);
+  };
+
+  const toEntries = (items: GalleryItem[]): GalleryEntry[] =>
+    items.map((item) => ({ ...item, onOpen: () => openArtifact(item.kind, item.id) }));
+
+  const sections = groupGalleryItems(buildGalleryItems(courses, books, { resources, practiceWork }));
+  const continueEntries = toEntries(sections.continueLearning);
+  const resourceEntries = toEntries(sections.resources);
+  const practiceEntries = toEntries(sections.practice);
+  const practiceSummary = summarizePracticeWork(practiceWork);
+  const hasVisibleArtifact = continueEntries.length + resourceEntries.length + practiceEntries.length > 0;
+  const hasOnlyCompleted = !hasVisibleArtifact && sections.completed.length > 0;
+  // La galería se considera poblada también cuando solo hay elementos
+  // completados: en ese caso el estado vacío debe decirlo, no fingir que no hay nada.
+  const hasAnyArtifact = hasVisibleArtifact || hasOnlyCompleted;
+
+  // La montaña usa SOLO progreso medido (lecciones de curso y páginas de libro).
+  // Mezclar indicadores gruesos de estado con porcentajes reales haría que el
+  // indicador mintiera sobre el avance.
+  const mountainSources = [...sections.continueLearning, ...sections.completed]
+    .filter((item) => item.progressSource !== 'status')
+    .map((item) => ({ percent: item.progress }));
 
   const shortcuts = [
     { tab: 'library', label: 'Biblioteca', hint: 'Explorar recursos', icon: Library },
@@ -257,6 +308,56 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </Panel>
       </div>
 
+      {/* --- Galería visual: el contenido va ANTES que las métricas --- */}
+      {hasAnyArtifact ? (
+        <div className="space-y-8">
+          <ResourceGallery
+            items={continueEntries}
+            title="Continúa aprendiendo"
+            description="Lo que tienes en marcha o pendiente, con su progreso real."
+            onSeeAll={() => onNavigate('library')}
+            seeAllLabel="Ver toda la Biblioteca"
+            limit={6}
+            emptyHint={
+              hasOnlyCompleted
+                ? 'Tienes todo lo que empezaste completado. Los cursos y libros terminados siguen disponibles en la Biblioteca.'
+                : 'Aún no tienes cursos ni libros. Importa un documento o crea un curso desde la Biblioteca.'
+            }
+          />
+
+          {resourceEntries.length > 0 && (
+            <ResourceGallery
+              items={resourceEntries}
+              title="Recursos importados"
+              description="Documentos que has incorporado y todavía no forman parte de un curso."
+              onSeeAll={() => onNavigate('library')}
+              seeAllLabel="Ver en la Biblioteca"
+              limit={6}
+            />
+          )}
+
+          {practiceEntries.length > 0 && (
+            /* Sin enlace "ver todo": el trabajo práctico no tiene una lista propia;
+               cada ficha abre su contexto de origen (recurso, lección o concepto). */
+            <ResourceGallery
+              items={practiceEntries}
+              title="Trabajo práctico"
+              description={`${practiceSummary.done} de ${practiceSummary.total} terminados · evidencia de lo que produces`}
+              limit={6}
+            />
+          )}
+        </div>
+      ) : (
+        <ResourceGallery
+          items={[]}
+          title="Continúa aprendiendo"
+          description="Lo que tienes en marcha o pendiente, con su progreso real."
+          onSeeAll={() => onNavigate('library')}
+          limit={6}
+          emptyHint="Tu galería está vacía. Importa un documento, crea un curso o registra un trabajo práctico desde la Biblioteca para empezar."
+        />
+      )}
+
       {/* --- Franja de métricas reales (una sola superficie, sin tarjetas) --- */}
       <div className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
         <div className="px-5 py-4">
@@ -276,13 +377,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="mt-1 text-xl font-semibold text-ink">{kpis?.active_streak_days ?? 0} días</p>
         </div>
       </div>
-
-      {/* --- Galería visual de recursos (agnóstica al dominio) --- */}
-      <ResourceGallery
-        items={galleryItems}
-        onSeeAll={() => onNavigate('library')}
-        limit={6}
-      />
 
       {/* --- Gráfico de actividad diaria interactivo con selector de rango y métrica --- */}
       <Panel className="p-5 sm:p-6">

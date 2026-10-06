@@ -16,6 +16,7 @@ import {
   Brain,
   Sparkles,
   ListChecks,
+  ClipboardList,
   Plus,
   FileText,
   Edit3,
@@ -74,6 +75,7 @@ const RELATED_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; 
   lesson: FileText,
   note: FileText,
   concept: Lightbulb,
+  practice: ClipboardList,
   resource: BookOpen
 };
 
@@ -686,7 +688,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                       className={cn(
                         'rounded px-1.5 py-0.5 text-micro font-medium transition',
                         playbackSpeed === s
-                          ? 'bg-accent text-white shadow-xs'
+                          ? 'bg-accent text-on-accent shadow-xs'
                           : 'text-muted hover:text-ink'
                       )}
                     >

@@ -143,6 +143,7 @@ function makeCatalogInput(overrides: Partial<PaletteCatalogInput> = {}): Palette
     lessons: [],
     concepts: [],
     resources: [],
+    practiceWork: [],
     pendingReviews: 0,
     continueTarget: null,
     isDarkTheme: false,

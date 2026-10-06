@@ -8,16 +8,22 @@
 
 ## Qué Es
 
-CrossedArts es un sistema de gestión de aprendizaje personal y *local-first* que se ejecuta completamente en el navegador. Centraliza cursos, libros, notas, tarjetas de memoria y un grafo de conocimiento, todo almacenado en una base de datos SQLite local sin requerir un servidor backend.
+CrossedArts es una **plataforma visual de aprendizaje y conocimiento, personal y *local-first*,** que se ejecuta íntegramente en el navegador. Reúne en un mismo entorno cursos, libros, documentos importados, notas, conceptos y el trabajo que tú produces, todo almacenado en una base de datos SQLite local sin requerir servidor backend.
+
+Todo se organiza como se estudia de verdad: una galería en el **Panel** con lo que estás aprendiendo, un **grafo de conocimiento** con cómo se relacionan las piezas, una **montaña** de progreso con ámbito y el **trabajo práctico** que registra lo que has producido. Es deliberadamente **agnóstica al dominio**: funciona igual para matemáticas, música, programación o arte.
 
 La aplicación está diseñada para estudiantes que desean control total sobre sus datos de estudio sin depender de servicios en la nube ni suscripciones.
 
 ## Capacidades
 
+- **Galería del Panel:** Punto de entrada visual y curado a tu aprendizaje: cursos, libros, documentos importados y trabajo práctico, agrupados por propósito (continuar aprendiendo, recursos importados, trabajo práctico)
 - **Cursos y Lecciones:** Estructura jerárquica con módulos, lecciones y contenido Markdown editable
 - **Libros y Recursos:** Catálogo de biblioteca con progreso de lectura, documentos importados (PDF, EPUB, TXT, MD) y organización de recursos
 - **Sesiones de Estudio:** Repaso unificado de tarjetas (SM-2), preguntas de práctica y modos mixtos con seguimiento de progreso local
-- **Grafo de Conocimiento:** Visualización interactiva 2D de cursos, libros, lecciones, notas, conceptos y sus relaciones
+- **Trabajo Práctico:** Ejercicios, proyectos, ensayos, dibujos o código que tú produces, ligados al recurso, la lección o el concepto que demuestran — en cualquier disciplina
+- **Grafo de Conocimiento:** Visualización interactiva 2D de cursos, libros, módulos, lecciones, notas, conceptos, trabajo práctico y sus relaciones
+- **Progreso de montaña:** Indicador de recorrido, global o con ámbito de curso, con progreso medido real y los módulos del curso como hitos
+- **Paquetes de curso:** Exporta el *material educativo* de un recurso (temario y trabajo propuesto, nunca tu progreso ni tus notas) como paquete JSON portable, para compartirlo e importarlo de forma aditiva
 - **Medios Locales:** Reproducción de vídeo y audio desde carpetas locales mediante la File System Access API
 - **Búsqueda Local:** Búsqueda determinista basada en SQL en todo el contenido, más una paleta de comandos global (Ctrl+K)
 - **Ingestión de Documentos:** Análisis en el navegador de archivos PDF, EPUB, TXT y MD con deduplicación SHA-256
@@ -61,8 +67,15 @@ CrossedArts admite cuatro modos de proveedor de IA:
 - Vectores cacheados en IndexedDB con hashing SHA-256 y versionado de pipeline (`v1.1-e5-sha256`)
 - Todo el cálculo de embeddings ocurre en el dispositivo
 
+## Semántica del progreso
+
+CrossedArts registra varias cosas que se llaman "progreso". Nunca se mezclan en silencio: el progreso medido (lecciones completadas, páginas leídas) se muestra como porcentaje; el estado grueso (`sin empezar` / `en progreso` / `completado`) se muestra como estado y nunca como un porcentaje inventado. El progreso de práctica, la maestría de concepto y la actividad de estudio son conceptos distintos con su propio significado.
+
+Todas las reglas —incluida la participación de cada artefacto en la galería, el grafo, la montaña y los paquetes de curso— están documentadas en [`docs/PROGRESS.md`](docs/PROGRESS.md).
+
 ## Limitaciones
 
+- **No es un LMS completo:** CrossedArts no tiene clases, matrículas, calificaciones, cuentas de profesor ni aula remota. Los paquetes de curso son *material educativo* portable, no un sistema de gestión.
 - **Soporte de navegador:** Se requiere Chrome, Edge o Brave para las funciones de medios locales (File System Access API). Otros navegadores pueden usar todas las funciones sin medios.
 - **Hardware de IA local:** Se recomienda GPU con soporte WebGPU para inferencia LLM local. La CPU está disponible como alternativa más lenta.
 - **Primera descarga:** El uso inicial de IA local requiere descargar los pesos del modelo (~135 MB para embeddings).
@@ -95,7 +108,7 @@ cd frontend
 npm test
 ```
 
-La suite de pruebas incluye 424 pruebas en 30 archivos de prueba que cubren inicialización de SQLite, algoritmo SM-2, sesiones de estudio, grafo de conocimiento, RAG, ingestión de documentos y proveedores de IA.
+La suite de pruebas incluye 471 pruebas en 36 archivos de prueba que cubren inicialización de SQLite, algoritmo SM-2, sesiones de estudio, grafo de conocimiento, RAG, ingestión de documentos, proveedores de IA, proyección de artefactos de aprendizaje, ámbito de la montaña, conflictos de paquetes de curso, contraste WCAG del tema y legibilidad del estado deshabilitado.
 
 ### Compilación
 

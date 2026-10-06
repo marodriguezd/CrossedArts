@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { dbBridge, type DbInitFailure } from '../db/sqliteBridge.ts';
 import { dao } from '../db/dao.ts';
-import type { KPIMetrics, Course, Book, Flashcard, Note, LearningSession } from '../types/models.ts';
+import type { KPIMetrics, Course, Book, Flashcard, Note, LearningSession, LearningResource, PracticeWork } from '../types/models.ts';
 
 export interface AppDataState {
   loading: boolean;
@@ -16,6 +16,10 @@ export interface AppDataState {
   books: Book[];
   flashcards: Flashcard[];
   notes: Note[];
+  /** Recursos importados (documentos) que no son cursos ni libros. */
+  resources: LearningResource[];
+  /** Trabajo práctico producido por el estudiante (evidencia de aprendizaje). */
+  practiceWork: PracticeWork[];
   recentSessions: LearningSession[];
   selectedCourse: Course | null;
   refreshData: () => Promise<void>;
@@ -32,6 +36,8 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
   const [books, setBooks] = useState<Book[]>([]);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [resources, setResources] = useState<LearningResource[]>([]);
+  const [practiceWork, setPracticeWork] = useState<PracticeWork[]>([]);
   const [recentSessions, setRecentSessions] = useState<LearningSession[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
 
@@ -42,13 +48,15 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
       await dbBridge.ensureFresh();
       // El grafo de conocimiento se carga de forma perezosa solo al abrir su vista
       // (KnowledgeGraph.tsx), no en el arranque de la aplicación.
-      const [k, c, b, f, n, s] = await Promise.all([
+      const [k, c, b, f, n, s, r, pw] = await Promise.all([
         dao.getKPIs(),
         dao.getCourses(),
         dao.getBooks(),
         dao.getFlashcards(),
         dao.getNotes(),
-        dao.getRecentStudySessions(4)
+        dao.getRecentStudySessions(4),
+        dao.getLearningResources(),
+        dao.getAllPracticeWork()
       ]);
       setKpis(k);
       setCourses(c);
@@ -56,6 +64,8 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
       setFlashcards(f);
       setNotes(n);
       setRecentSessions(s);
+      setResources(r);
+      setPracticeWork(pw);
 
       if (selectedCourseId) {
         const fullCourse = await dao.getCourseById(selectedCourseId);
@@ -134,6 +144,8 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
     books,
     flashcards,
     notes,
+    resources,
+    practiceWork,
     recentSessions,
     selectedCourse,
     refreshData,

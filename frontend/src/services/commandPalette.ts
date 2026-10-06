@@ -5,6 +5,8 @@ import type {
   Note,
   ResourceDestination,
 } from '../types/models.ts';
+import { practiceWorkKindLabel, practiceWorkStatusLabel } from './practiceWork.ts';
+import { resolveArtifactContextDestination } from './domainLogic.ts';
 
 /**
  * Lógica de la paleta de comandos global (Ctrl+K / Cmd+K).
@@ -32,7 +34,15 @@ import type {
  */
 
 /** Agrupación visual y semántica de un elemento de la paleta. */
-export type PaletteGroup = 'accion' | 'curso' | 'libro' | 'recurso' | 'leccion' | 'nota' | 'concepto';
+export type PaletteGroup =
+  | 'accion'
+  | 'curso'
+  | 'libro'
+  | 'recurso'
+  | 'practica'
+  | 'leccion'
+  | 'nota'
+  | 'concepto';
 
 export interface PaletteItem {
   /** Identificador estable y único dentro del catálogo. */
@@ -90,6 +100,19 @@ export interface ResourceIndexRow {
   resourceType: string;
 }
 
+/** Fila del índice de trabajo práctico (`dao.getPracticeWorkIndex`). */
+export interface PracticeWorkIndexRow {
+  practiceId: string;
+  practiceTitle: string;
+  practiceDescription?: string;
+  practiceKind: string;
+  practiceStatus: string;
+  resourceId?: string;
+  lessonId?: string;
+  conceptId?: string;
+  contextTitle?: string;
+}
+
 export interface PaletteCatalogInput {
   courses: Course[];
   books: Book[];
@@ -97,6 +120,8 @@ export interface PaletteCatalogInput {
   lessons: LessonIndexRow[];
   concepts: ConceptIndexRow[];
   resources: ResourceIndexRow[];
+  /** Trabajo práctico del usuario: evidencia que no tiene vista propia. */
+  practiceWork: PracticeWorkIndexRow[];
   /** Tarjetas pendientes de repaso, para etiquetar la acción de repaso. */
   pendingReviews: number;
   /** Continuación: siguiente lección pendiente, o null si no hay ninguna. */
@@ -392,13 +417,23 @@ export const PALETTE_GROUP_LABELS: Record<PaletteGroup, string> = {
   curso: 'Cursos',
   libro: 'Libros',
   recurso: 'Recursos',
+  practica: 'Trabajo práctico',
   leccion: 'Lecciones',
   nota: 'Notas',
   concepto: 'Conceptos'
 };
 
 /** Orden fijo de los grupos en la paleta: vista predecible de un vistazo. */
-const GROUP_ORDER: PaletteGroup[] = ['accion', 'curso', 'libro', 'recurso', 'leccion', 'nota', 'concepto'];
+const GROUP_ORDER: PaletteGroup[] = [
+  'accion',
+  'curso',
+  'libro',
+  'recurso',
+  'practica',
+  'leccion',
+  'nota',
+  'concepto'
+];
 
 /**
  * Traduce el identificador de una ACCIÓN de navegación a la pestaña de primer
@@ -673,6 +708,30 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
       destination: { tab: 'resource', resourceId: resource.resourceId },
       keywords: [resource.resourceType, resource.resourceCategory ?? '', 'recurso', 'documento', 'importado'],
       ...buildBody(resource.resourceDescription)
+    });
+  }
+
+  // Trabajo práctico: evidencia producida por el usuario. Se busca por título y
+  // descripción, y su destino es su contexto de origen (recurso, lección o
+  // concepto), porque no tiene vista propia. Misma decision que el grafo.
+  const byPractice = byTextThenId<PracticeWorkIndexRow>(p => p.practiceTitle, p => p.practiceId);
+  for (const work of [...input.practiceWork].sort(byPractice)) {
+    const kindLabel = practiceWorkKindLabel(work.practiceKind);
+    items.push({
+      id: `practica:${work.practiceId}`,
+      group: 'practica',
+      title: work.practiceTitle,
+      subtitle: work.contextTitle
+        ? `${kindLabel} · ${work.contextTitle}`
+        : `${kindLabel} · ${practiceWorkStatusLabel(work.practiceStatus)}`,
+      icon: 'practice',
+      destination: resolveArtifactContextDestination({
+        resourceId: work.resourceId,
+        lessonId: work.lessonId,
+        conceptId: work.conceptId
+      }),
+      keywords: [kindLabel, work.contextTitle ?? '', 'practica', 'trabajo', 'evidencia', 'proyecto'],
+      ...buildBody(work.practiceDescription)
     });
   }
 

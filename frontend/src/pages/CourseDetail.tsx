@@ -24,6 +24,8 @@ import { dao } from '../db/dao.ts';
 import { localMediaService } from '../services/localMediaService.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { describeDestructiveAction, filterCourseLessons } from '../services/domainLogic.ts';
+import { deriveStagesFromModules } from '../services/mountainPath.ts';
+import { MountainProgress } from '../components/dashboard/MountainProgress.tsx';
 import { LessonWorkspace } from '../components/lesson/LessonWorkspace.tsx';
 import { Button, Badge, InlineStatus, ProgressBar, EmptyState, SearchInput, cn } from '../components/ui/index.tsx';
 
@@ -226,6 +228,13 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
 
   const INPUT_CLS = 'rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
 
+  // "Montaña" con ámbito de curso: la MISMA vista que en el panel, pero con los
+  // módulos reales como hitos. Si el curso no tiene módulos con lecciones, se
+  // devuelve [] y la vista mantiene sus hitos genéricos en lugar de inventar etapas.
+  const courseStages = deriveStagesFromModules(course.modules || []);
+  const coursePercentValue =
+    course.total_lessons ? ((course.completed_lessons || 0) / course.total_lessons) * 100 : 0;
+
   return (
     <div className="animate-fade-in space-y-6">
       <button
@@ -311,6 +320,17 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
         </InlineStatus>
       )}
 
+      {(course.total_lessons || 0) > 0 && (
+        <MountainProgress
+          title="Tu recorrido en este curso"
+          subtitle="Cada hito marca el final de un módulo del temario; la subida es el porcentaje real de lecciones completadas."
+          scopeLabel={`el curso ${course.title}`}
+          progress={coursePercentValue}
+          stages={courseStages}
+          className="max-w-2xl"
+        />
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Plan de estudio (contexto: izquierda) */}
         <aside className="lg:col-span-3" aria-label="Plan de estudio">
@@ -355,7 +375,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
               <button
                 onClick={handleCreateModule}
                 disabled={!newModuleTitle.trim()}
-                className="rounded-lg bg-accent p-1.5 text-on-accent transition hover:opacity-90 disabled:opacity-40"
+                className="rounded-lg bg-accent p-1.5 text-on-accent transition hover:opacity-90 disabled:pointer-events-none disabled:bg-line disabled:text-muted"
                 title="Crear módulo"
                 aria-label="Crear módulo"
               >
@@ -518,7 +538,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                   <button
                     onClick={handleCreateLesson}
                     disabled={!newLessonTitle.trim()}
-                    className="rounded-lg bg-accent p-1.5 text-on-accent transition hover:opacity-90 disabled:opacity-40"
+                    className="rounded-lg bg-accent p-1.5 text-on-accent transition hover:opacity-90 disabled:pointer-events-none disabled:bg-line disabled:text-muted"
                     title="Crear lección"
                     aria-label="Crear lección"
                   >

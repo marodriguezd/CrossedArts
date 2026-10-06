@@ -18,7 +18,8 @@ import {
   Link2,
   AlertCircle,
   Download,
-  Search
+  Search,
+  ClipboardList
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { dbBridge, type DbInitFailure } from '../db/sqliteBridge.ts';
@@ -34,8 +35,10 @@ import {
 import {
   applyGraphFilters,
   availableRelationTypes,
-  computeConnectivityStats
+  computeConnectivityStats,
+  explainIsolation
 } from '../services/graphExploration.ts';
+import { practiceWorkKindLabel } from '../services/practiceWork.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { Button, Chip } from '../components/ui/index.tsx';
 
@@ -142,7 +145,10 @@ const NODE_ACCENT_VAR: Record<GraphNodeType, string> = {
   concept: '--c-accent',
   book: '--c-info',
   lesson: '--c-info',
+  // Notas y trabajo práctico comparten el tono de "contenido producido por el
+  // usuario": son las dos cosas que el estudiante escribe/crea, no material leído.
   note: '--c-success',
+  practice: '--c-success',
   resource: '--c-warning'
 };
 
@@ -163,11 +169,12 @@ const NODE_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; cla
   module: Layers,
   lesson: FileText,
   note: FileText,
+  practice: ClipboardList,
   concept: Lightbulb,
   resource: BookOpen
 };
 
-const FILTER_ORDER: GraphNodeType[] = ['course', 'book', 'module', 'lesson', 'note', 'concept', 'resource'];
+const FILTER_ORDER: GraphNodeType[] = ['course', 'book', 'module', 'lesson', 'note', 'concept', 'practice', 'resource'];
 
 function buildNetworkOptions(theme: ThemeMode): Options {
   const t = resolveGraphTokens(theme);
@@ -301,6 +308,13 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
   const connectivity = useMemo(
     () => computeConnectivityStats(graphData.nodes, graphData.edges),
     [graphData]
+  );
+
+  // Separa "sin ninguna relación" de "aislado solo en esta vista": filtrar por
+  // tipo puede ocultar las aristas de un nodo y hacer que parezca desconectado.
+  const isolation = useMemo(
+    () => explainIsolation(graphData.nodes, graphData.edges, visibleGraph.nodes, visibleGraph.edges),
+    [graphData, visibleGraph]
   );
 
   // Construye/actualiza la red vis-network sin re-inicializarla al filtrar.
@@ -539,8 +553,8 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
         <div>
           <h1 className="type-display text-ink">Grafo de conocimiento</h1>
           <p className="type-secondary mt-1 max-w-2xl">
-            Explora y organiza tus conocimientos y conexiones. Cursos, libros, módulos, lecciones,
-            notas, conceptos y recursos con relaciones explícitas guardadas en SQLite.
+            Explora cómo se relaciona lo que estudias. Cursos, libros, módulos, lecciones, notas,
+            conceptos, trabajo práctico y recursos, con relaciones explícitas guardadas en SQLite.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
@@ -678,18 +692,34 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           ) : (
             <div ref={containerRef} className="h-full w-full" />
           )}
-          {/* Leyenda de relaciones (accesible y discreta) */}
-          <div className="pointer-events-none absolute bottom-4 left-4 flex max-w-[calc(100%-2rem)] items-start gap-2 rounded-lg border border-line bg-raised/90 px-3 py-2 text-meta text-muted backdrop-blur-sm">
-            <Info size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-            <div>
-              <p>
+          {/*
+            Leyenda de relaciones (accesible y discreta).
+
+            Responsive: en pantallas estrechas se ancla a AMBOS lados para envolver
+            en menos líneas en vez de crecer en alto sobre el lienzo, y el padding
+            se reduce. Los metadatos (conectividad y aislamiento) bajan a `text-micro`
+            porque son información secundaria y semánticamente compactable; la
+            indicación de interacción principal se mantiene en `text-meta`. Nada se
+            oculta: toda la información sigue presente en cualquier tamaño.
+          */}
+          <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-start gap-2 rounded-lg border border-line bg-raised/95 px-2.5 py-1.5 text-meta text-muted backdrop-blur-sm sm:bottom-4 sm:left-4 sm:right-auto sm:max-w-[26rem] sm:px-3 sm:py-2">
+            <Info size={13} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="leading-snug">
                 Arrastra y haz zoom. Las aristas discontinuas son estructurales; las sólidas son
                 conexiones tuyas.
               </p>
-              <p className="mt-0.5 text-faint">
-                {connectivity.connected}/{connectivity.total} nodos con conexiones
-                {connectivity.isolated > 0 ? ` · ${connectivity.isolated} sin ninguna` : ''}
+              <p className="mt-0.5 text-micro leading-snug text-faint">
+                {connectivity.connected}/{connectivity.total} nodos con conexiones en el grafo completo
+                {connectivity.isolated > 0 ? ` · ${connectivity.isolated} sin ninguna relación` : ''}
               </p>
+              {isolation.apparentlyIsolated > 0 && (
+                <p className="mt-0.5 text-micro leading-snug text-faint">
+                  {isolation.apparentlyIsolated}{' '}
+                  {isolation.apparentlyIsolated === 1 ? 'nodo aparece aislado' : 'nodos aparecen aislados'} en
+                  esta vista porque un filtro oculta sus relaciones; en el grafo completo sí están conectados.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -740,6 +770,9 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
                 )}
                 {typeof selectedNode.meta?.duration_minutes === 'number' && !selectedNode.meta?.page_count && (
                   <><dt className="text-faint">Duración</dt><dd className="text-ink">{selectedNode.meta.duration_minutes} min</dd></>
+                )}
+                {selectedNode.meta?.practice_kind && (
+                  <><dt className="text-faint">Tipo</dt><dd className="text-ink">{practiceWorkKindLabel(selectedNode.meta.practice_kind)}</dd></>
                 )}
                 {selectedNode.meta?.tags && (<><dt className="text-faint">Etiquetas</dt><dd className="col-span-1 text-ink">{selectedNode.meta.tags}</dd></>)}
               </dl>

@@ -414,7 +414,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
               }
             }}
             disabled={loading}
-            className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-meta font-medium text-muted transition hover:bg-accent-soft/60 hover:text-ink disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-meta font-medium text-muted transition hover:bg-accent-soft/60 hover:text-ink disabled:pointer-events-none disabled:bg-surface disabled:border-line disabled:text-faint"
           >
             <Sparkles size={12} className="text-accent" aria-hidden="true" />
             <span>Explicar este recurso</span>
@@ -441,7 +441,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
           type="submit"
           disabled={loading || !input.trim() || sendBlocked}
           aria-label="Enviar mensaje"
-          className="rounded-lg bg-accent p-2.5 text-on-accent transition hover:opacity-90 disabled:opacity-40"
+          className="rounded-lg bg-accent p-2.5 text-on-accent transition hover:opacity-90 disabled:pointer-events-none disabled:bg-line disabled:text-muted"
         >
           <Send size={15} aria-hidden="true" />
         </button>

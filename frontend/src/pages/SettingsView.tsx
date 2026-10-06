@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, RotateCcw, Database, Check, Cpu, AlertTriangle, RefreshCw, Trash2, Info, Palette } from 'lucide-react';
 import { exportSqliteFile, importSqliteFile, exportJsonBackup, importJsonBackup } from '../db/exportImport.ts';
-import { describeImportResult, validateCoursePackage } from '../services/coursePackage.ts';
+import { describeImportResult, describeConflicts, validateCoursePackage } from '../services/coursePackage.ts';
 import { dbBridge } from '../db/sqliteBridge.ts';
 import { aiService, AISettings } from '../ai/aiService.ts';
 import { detectWebGPUCapability, WebGPUCapabilityReport } from '../lib/localLlm/capabilities.ts';
@@ -245,8 +245,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         return;
       }
 
-      const { created, skipped } = await dao.importCoursePackage(validation.package);
-      setPackageFeedback({ type: 'success', text: describeImportResult(created, skipped) });
+      const { created, skipped, conflicts } = await dao.importCoursePackage(validation.package);
+      // El conflicto no es un error: la importación es aditiva y conserva la
+      // versión local. Se informa aparte para que el usuario entienda el resultado.
+      const conflictNote = describeConflicts(conflicts);
+      setPackageFeedback({
+        type: 'success',
+        text: conflictNote ? `${describeImportResult(created, skipped)} ${conflictNote}` : describeImportResult(created, skipped)
+      });
       onDataReset();
     } catch (err: any) {
       setPackageFeedback({ type: 'error', text: 'Error importando el paquete: ' + (err?.message || 'desconocido') });

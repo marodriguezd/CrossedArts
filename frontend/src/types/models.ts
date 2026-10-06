@@ -161,8 +161,20 @@ export interface Flashcard {
   last_reviewed?: string;
 }
 
-/** Categorías de nodo que representan conocimiento o estructura de aprendizaje real. */
-export type GraphNodeType = 'concept' | 'course' | 'book' | 'module' | 'lesson' | 'note' | 'resource';
+/**
+ * Categorías de nodo que representan conocimiento o estructura de aprendizaje real.
+ * `practice` representa el trabajo práctico producido por el estudiante: no es
+ * contenido del que se estudia, es evidencia de lo aprendido.
+ */
+export type GraphNodeType =
+  | 'concept'
+  | 'course'
+  | 'book'
+  | 'module'
+  | 'lesson'
+  | 'note'
+  | 'practice'
+  | 'resource';
 
 /** Tipos de relación explícitos y validados (se almacenan como texto canónico). */
 export type GraphRelationType =
@@ -175,28 +187,112 @@ export type GraphRelationType =
   | 'builds_on'
   | 'about';
 
-/** Metadatos no crudos mostrados en el panel de detalle del grafo. */
-export interface GraphNodeMeta {
+/**
+ * Metadatos no crudos mostrados en el panel de detalle del grafo.
+ *
+ * En vez de un saco plano con todos los campos mezclados, la forma se declara
+ * POR TIPO DE NODO (`GraphNodeMetaByKind`) y se compone después. Cada campo tiene
+ * un dueño claro y añadir un tipo de nodo nuevo obliga a declarar su forma.
+ */
+
+/** Campos compartidos por más de un tipo de nodo. */
+export interface GraphNodeMetaCommon {
   category?: string;
   status?: string;
-  author?: string;
-  instructor?: string;
-  difficulty?: string;
-  page_count?: number;
-  current_page?: number;
-  reading_percentage?: number;
-  duration_minutes?: number;
-  lesson_type?: string;
-  total_lessons?: number;
-  order_index?: number;
-  course_id?: string;
-  module_id?: string;
-  resource_id?: string;
-  lesson_id?: string;
-  tags?: string;
   created_at?: string;
   source_path?: string;
 }
+
+/** Metadatos específicos de `course`. */
+export interface CourseNodeMeta extends GraphNodeMetaCommon {
+  instructor?: string;
+  difficulty?: string;
+  total_lessons?: number;
+}
+
+/** Metadatos específicos de `book`. */
+export interface BookNodeMeta extends GraphNodeMetaCommon {
+  author?: string;
+  page_count?: number;
+  current_page?: number;
+  reading_percentage?: number;
+}
+
+/** Metadatos específicos de `module`. */
+export interface ModuleNodeMeta extends GraphNodeMetaCommon {
+  course_id?: string;
+  order_index?: number;
+}
+
+/** Metadatos específicos de `lesson`. */
+export interface LessonNodeMeta extends GraphNodeMetaCommon {
+  module_id?: string;
+  course_id?: string;
+  duration_minutes?: number;
+  lesson_type?: string;
+  order_index?: number;
+}
+
+/** Metadatos específicos de `note`. */
+export interface NoteNodeMeta extends GraphNodeMetaCommon {
+  resource_id?: string;
+  lesson_id?: string;
+  tags?: string;
+}
+
+/** Metadatos específicos de `practice` (evidencia producida por el estudiante). */
+export interface PracticeNodeMeta extends GraphNodeMetaCommon {
+  resource_id?: string;
+  lesson_id?: string;
+  concept_id?: string;
+  practice_kind?: string;
+}
+
+/** Metadatos específicos de `resource` (documento importado). */
+export type ResourceNodeMeta = GraphNodeMetaCommon;
+
+/** Metadatos específicos de `concept`. */
+export type ConceptNodeMeta = GraphNodeMetaCommon;
+
+/**
+ * Mapa tipo de nodo → forma de `meta`.
+ *
+ * Es la garantía de cobertura a nivel de tipos: si se añade un nuevo
+ * `GraphNodeType` y no se declara aquí su forma, la compilación falla.
+ * Usar este mapa cuando el tipo de nodo es CONOCIDO en el punto de uso.
+ */
+export interface GraphNodeMetaByKind {
+  concept: ConceptNodeMeta;
+  course: CourseNodeMeta;
+  book: BookNodeMeta;
+  module: ModuleNodeMeta;
+  lesson: LessonNodeMeta;
+  note: NoteNodeMeta;
+  practice: PracticeNodeMeta;
+  resource: ResourceNodeMeta;
+}
+
+/**
+ * Vista de lectura de `ConceptNode.meta`.
+ *
+ * Es la intersección de todas las formas por tipo (todos los campos opcionales)
+ * porque un consumidor recibe `meta` junto a un `node_type` dinámico y necesita
+ * leer el campo de CUALQUIER tipo: `resolveGraphNodeDestination` lee `course_id`,
+ * `resource_id` y `lesson_id` sin saber el tipo de antemano. La forma por tipo
+ * (`GraphNodeMetaByKind`) queda para quien sí conoce el tipo.
+ *
+ * No cambia el comportamiento en tiempo de ejecución: exactamente los mismos
+ * campos opcionales que antes, solo agrupados y documentados.
+ */
+export type GraphNodeMeta = GraphNodeMetaCommon &
+  CourseNodeMeta &
+  BookNodeMeta &
+  ModuleNodeMeta &
+  LessonNodeMeta &
+  NoteNodeMeta &
+  PracticeNodeMeta &
+  ResourceNodeMeta &
+  ConceptNodeMeta;
 
 export interface ConceptNode {
   id: string;

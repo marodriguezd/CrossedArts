@@ -4,7 +4,13 @@ import { calculateBookProgress, calculateSM2, validateKnowledgeConnection, gener
 import {
   buildCoursePackage,
   planCoursePackageImport,
-  type CoursePackage
+  detectCoursePackageConflicts,
+  resourceSignature,
+  moduleSignature,
+  lessonSignature,
+  practiceWorkSignature,
+  type CoursePackage,
+  type CoursePackageConflict
 } from '../services/coursePackage.ts';
 import { resolveLocalDay, computeActiveStreak } from '../services/localDate.ts';
 import type { SM2Result } from '../services/domainLogic.ts';
@@ -555,6 +561,55 @@ export const dao = {
     }));
   },
 
+  /**
+   * Indice plano del TRABAJO PRACTICO en una sola consulta, para la paleta de
+   * comandos (Ctrl+K).
+   *
+   * El trabajo practico ya es un artefacto de primera clase en la galeria del
+   * panel y un nodo del grafo, asi que dejarlo fuera de la busqueda global era
+   * una inconsistencia: no se podia encontrar un ensayo o un proyecto por su
+   * titulo. No tiene vista propia, asi que cada fila viaja con su contexto de
+   * origen para poder abrirlo donde vive (misma decision que el grafo).
+   *
+   * Mismo contrato que `getLessonIndex()`/`getResourceIndex()`: consulta unica con
+   * JOIN (sin `N+1`), orden determinista, sin tocar datos y sin esquema nuevo.
+   */
+  async getPracticeWorkIndex(): Promise<Array<{
+    practiceId: string;
+    practiceTitle: string;
+    practiceDescription?: string;
+    practiceKind: string;
+    practiceStatus: string;
+    resourceId?: string;
+    lessonId?: string;
+    conceptId?: string;
+    contextTitle?: string;
+  }>> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(`
+      SELECT pw.id, pw.title, pw.description, pw.kind, pw.status,
+             pw.resource_id, pw.lesson_id, pw.concept_id,
+             COALESCE(r.title, c.name, les.title) AS context_title
+      FROM practice_work pw
+      LEFT JOIN learning_resource r ON pw.resource_id = r.id
+      LEFT JOIN concept c ON pw.concept_id = c.id
+      LEFT JOIN lesson les ON pw.lesson_id = les.id
+      ORDER BY pw.title ASC, pw.id ASC
+    `);
+    if (!res.length) return [];
+    return res[0].values.map((row: any[]) => ({
+      practiceId: String(row[0]),
+      practiceTitle: String(row[1]),
+      practiceDescription: row[2] ? String(row[2]) : undefined,
+      practiceKind: String(row[3] || 'other'),
+      practiceStatus: String(row[4] || 'PLANNED'),
+      resourceId: row[5] ? String(row[5]) : undefined,
+      lessonId: row[6] ? String(row[6]) : undefined,
+      conceptId: row[7] ? String(row[7]) : undefined,
+      contextTitle: row[8] ? String(row[8]) : undefined
+    }));
+  },
+
   async toggleLessonCompleted(lessonId: string, completed: boolean): Promise<void> {
     const db = dbBridge.getDatabase();
     db.run(
@@ -934,6 +989,30 @@ export const dao = {
       }
     }
 
+    // 5.b Trabajo práctico: evidencia producida por el estudiante. Participa en el
+    // grafo como nodo propio porque el usuario necesita responder "¿qué trabajo
+    // demuestra este concepto/lección?" sin salir del mapa de relaciones.
+    const practiceRes = db.exec(
+      'SELECT id, title, resource_id, lesson_id, concept_id, kind, status, created_at FROM practice_work'
+    );
+    if (practiceRes.length) {
+      for (const r of practiceRes[0].values) {
+        addNode({
+          id: String(r[0]),
+          name: String(r[1]),
+          node_type: 'practice',
+          meta: {
+            resource_id: r[2] ? String(r[2]) : undefined,
+            lesson_id: r[3] ? String(r[3]) : undefined,
+            concept_id: r[4] ? String(r[4]) : undefined,
+            practice_kind: r[5] ? String(r[5]) : undefined,
+            status: r[6] ? String(r[6]) : undefined,
+            created_at: r[7] ? String(r[7]) : undefined
+          }
+        });
+      }
+    }
+
     const edges: ConceptEdge[] = [];
 
     // 6. Aristas estructurales derivadas de claves foráneas (no editables)
@@ -965,6 +1044,26 @@ export const dao = {
         }
         if (lessonId && byId.has(lessonId)) {
           edges.push({ id: `derived-references-${noteId}-${lessonId}`, source_id: lessonId, target_id: noteId, connection_type: 'references', weight: 1, derived: true });
+        }
+      }
+    }
+
+    // 6.b Aristas derivadas del trabajo práctico: liga la evidencia con aquello
+    // que demuestra (recurso, lección o concepto). Solo si ambos extremos existen.
+    if (practiceRes.length) {
+      for (const r of practiceRes[0].values) {
+        const workId = String(r[0]);
+        const resourceId = r[2] ? String(r[2]) : null;
+        const lessonId = r[3] ? String(r[3]) : null;
+        const conceptId = r[4] ? String(r[4]) : null;
+        if (resourceId && byId.has(resourceId)) {
+          edges.push({ id: `derived-about-${workId}-${resourceId}`, source_id: workId, target_id: resourceId, connection_type: 'about', weight: 1, derived: true });
+        }
+        if (lessonId && byId.has(lessonId)) {
+          edges.push({ id: `derived-references-${lessonId}-${workId}`, source_id: lessonId, target_id: workId, connection_type: 'references', weight: 1, derived: true });
+        }
+        if (conceptId && byId.has(conceptId)) {
+          edges.push({ id: `derived-about-${workId}-${conceptId}`, source_id: workId, target_id: conceptId, connection_type: 'about', weight: 1, derived: true });
         }
       }
     }
@@ -1089,6 +1188,9 @@ export const dao = {
     collect('SELECT id FROM module');
     collect('SELECT id FROM lesson');
     collect('SELECT id FROM note');
+    // El trabajo práctico es un nodo del grafo: sus conexiones manuales no deben
+    // podarse como si fueran huérfanas.
+    collect('SELECT id FROM practice_work');
     return ids;
   },
 
@@ -1588,6 +1690,27 @@ export const dao = {
       }
     }
 
+    // El trabajo práctico es evidencia de aprendizaje del usuario: si la búsqueda
+    // global no lo encontrara, un artefacto visible en el panel y en el grafo
+    // sería inalcanzable desde la búsqueda.
+    const practiceRes = db.exec(
+      `SELECT id, title, description, resource_id, lesson_id FROM practice_work
+       WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(COALESCE(description,'')) LIKE ? ESCAPE '\\'`,
+      [like, like]
+    );
+    if (practiceRes.length) {
+      for (const r of practiceRes[0].values) {
+        results.push({
+          id: String(r[0]),
+          type: 'practice',
+          title: String(r[1]),
+          subtitle: r[2] ? String(r[2]).slice(0, 80) : 'Trabajo práctico',
+          resourceId: r[3] ? String(r[3]) : undefined,
+          lessonId: r[4] ? String(r[4]) : undefined
+        });
+      }
+    }
+
     // Orden determinista: título ascendente, id ascendente
     results.sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
     return results.slice(0, Math.max(1, limit));
@@ -1703,6 +1826,9 @@ export const dao = {
     const note = db.exec(`SELECT id, title FROM note WHERE id IN (${ph})`, unique);
     if (note.length) for (const r of note[0].values) map.set(String(r[0]), { title: String(r[1]), type: 'note' });
 
+    const practice = db.exec(`SELECT id, title FROM practice_work WHERE id IN (${ph})`, unique);
+    if (practice.length) for (const r of practice[0].values) map.set(String(r[0]), { title: String(r[1]), type: 'practice' });
+
     return map;
   },
 
@@ -1755,6 +1881,27 @@ export const dao = {
 
     const noteLesson = db.exec('SELECT lesson_id FROM note WHERE id = ? AND lesson_id IS NOT NULL', [nodeId]);
     if (noteLesson.length) for (const r of noteLesson[0].values) push(String(r[0]), 'references', true);
+
+    // Trabajo práctico como EVIDENCIA del aprendizaje: se muestra junto al
+    // recurso, la lección o el concepto que demuestra (y viceversa), para que la
+    // relación sea navegable y no viva solo en la base de datos.
+    const practiceOfResource = db.exec('SELECT id FROM practice_work WHERE resource_id = ?', [nodeId]);
+    if (practiceOfResource.length) for (const r of practiceOfResource[0].values) push(String(r[0]), 'about', true);
+
+    const practiceOfLesson = db.exec('SELECT id FROM practice_work WHERE lesson_id = ?', [nodeId]);
+    if (practiceOfLesson.length) for (const r of practiceOfLesson[0].values) push(String(r[0]), 'references', true);
+
+    const practiceOfConcept = db.exec('SELECT id FROM practice_work WHERE concept_id = ?', [nodeId]);
+    if (practiceOfConcept.length) for (const r of practiceOfConcept[0].values) push(String(r[0]), 'about', true);
+
+    const practiceContext = db.exec('SELECT resource_id, lesson_id, concept_id FROM practice_work WHERE id = ?', [nodeId]);
+    if (practiceContext.length) {
+      for (const r of practiceContext[0].values) {
+        if (r[0]) push(String(r[0]), 'about', true);
+        if (r[1]) push(String(r[1]), 'references', true);
+        if (r[2]) push(String(r[2]), 'about', true);
+      }
+    }
 
     const summaries = await this.getNodeSummaries(related.map(r => r.id));
     return related.map(item => {
@@ -2097,7 +2244,9 @@ export const dao = {
    * Nunca borra ni sobrescribe: cada fila cuyo id ya exista se omite. Devuelve el
    * recuento de elementos creados y omitidos para poder informar al usuario.
    */
-  async importCoursePackage(pkg: CoursePackage): Promise<{ created: number; skipped: number }> {
+  async importCoursePackage(
+    pkg: CoursePackage
+  ): Promise<{ created: number; skipped: number; conflicts: CoursePackageConflict[] }> {
     const db = dbBridge.getDatabase();
 
     const allIds = [
@@ -2106,7 +2255,7 @@ export const dao = {
       ...(pkg.lessons || []).map(l => l.id),
       ...(pkg.practiceWork || []).map(w => w.id)
     ];
-    if (allIds.length === 0) return { created: 0, skipped: 0 };
+    if (allIds.length === 0) return { created: 0, skipped: 0, conflicts: [] };
 
     const placeholders = allIds.map(() => '?').join(',');
     const existing = new Set<string>();
@@ -2127,6 +2276,41 @@ export const dao = {
     }
 
     const plan = planCoursePackageImport(pkg, existing);
+
+    // Conflictos: IDs que ya existen localmente con un contenido DISTINTO. La
+    // importación es aditiva y el contenido local gana siempre, así que el
+    // conflicto no cambia lo que se escribe; solo se reporta para que el
+    // resultado sea determinista y visible (nunca una pérdida silenciosa).
+    const localSignatures = new Map<string, string>();
+    const readSignatures = (sql: string, build: (row: any[]) => string) => {
+      const res = db.exec(sql, allIds);
+      if (!res.length) return;
+      for (const row of res[0].values) localSignatures.set(String(row[0]), build(row));
+    };
+    readSignatures(
+      `SELECT id, title, description, category, type FROM learning_resource WHERE id IN (${placeholders})`,
+      row => resourceSignature({ id: String(row[0]), title: String(row[1]), description: row[2] ?? null, category: row[3] ?? null, type: String(row[4]) })
+    );
+    readSignatures(
+      `SELECT id, title, order_index FROM module WHERE id IN (${placeholders})`,
+      row => moduleSignature({ id: String(row[0]), title: String(row[1]), order_index: Number(row[2]) || 0 })
+    );
+    readSignatures(
+      `SELECT id, module_id, title, content, order_index, duration_minutes, lesson_type, media_url FROM lesson WHERE id IN (${placeholders})`,
+      row => lessonSignature({
+        id: String(row[0]), module_id: String(row[1]), title: String(row[2]), content: row[3] ?? null,
+        order_index: Number(row[4]) || 0, duration_minutes: Number(row[5]) || 0,
+        lesson_type: String(row[6] ?? 'VIDEO'), media_url: row[7] ?? null
+      })
+    );
+    readSignatures(
+      `SELECT id, title, description, lesson_id, kind, notes FROM practice_work WHERE id IN (${placeholders})`,
+      row => practiceWorkSignature({
+        id: String(row[0]), title: String(row[1]), description: row[2] ?? null,
+        lesson_id: row[3] ?? null, kind: String(row[4] ?? 'exercise'), status: '', notes: row[5] ?? null
+      })
+    );
+    const conflicts = detectCoursePackageConflicts(pkg, localSignatures);
 
     if (!existing.has(pkg.resource.id)) {
       db.run(
@@ -2203,7 +2387,7 @@ export const dao = {
     }
 
     await dbBridge.persist();
-    return { created: plan.toCreate.length, skipped: plan.existing.length };
+    return { created: plan.toCreate.length, skipped: plan.existing.length, conflicts };
   },
 
   async getAllLearningResources() {

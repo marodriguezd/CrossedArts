@@ -144,3 +144,63 @@ export function computeConnectivityStats(
     isolatedIds
   };
 }
+
+/** Grado (nº de aristas incidentes) de cada nodo, contando cada extremo una vez. */
+export function computeDegrees(
+  nodes: readonly ConceptNode[],
+  edges: readonly ConceptEdge[]
+): Map<string, number> {
+  const degree = new Map<string, number>();
+  for (const node of nodes) degree.set(node.id, 0);
+  for (const edge of edges) {
+    if (degree.has(edge.source_id)) degree.set(edge.source_id, degree.get(edge.source_id)! + 1);
+    if (degree.has(edge.target_id)) degree.set(edge.target_id, degree.get(edge.target_id)! + 1);
+  }
+  return degree;
+}
+
+/**
+ * Distingue dos cosas que la interfaz NUNCA debe confundir:
+ *
+ *  - `isolatedGlobally`: nodos sin ninguna relación en el grafo completo.
+ *  - `apparentlyIsolated`: nodos que aparecen sin relaciones SOLO en la vista
+ *    actual porque un filtro o el enfoque de vecindario oculta sus aristas.
+ *
+ * Sin esta distinción, filtrar por tipo hacía que un nodo pareciera desconectado
+ * cuando en realidad estaba enlazado, y las estadísticas de conectividad mentían.
+ * El cálculo de conectividad global sigue siendo honesto: se mide sobre el grafo
+ * completo, no sobre la vista.
+ */
+export interface IsolationExplanation {
+  isolatedGlobally: number;
+  apparentlyIsolated: number;
+  apparentlyIsolatedIds: string[];
+}
+
+export function explainIsolation(
+  allNodes: readonly ConceptNode[],
+  allEdges: readonly ConceptEdge[],
+  visibleNodes: readonly ConceptNode[],
+  visibleEdges: readonly ConceptEdge[]
+): IsolationExplanation {
+  const globalDegree = computeDegrees(allNodes, allEdges);
+  const viewDegree = computeDegrees(visibleNodes, visibleEdges);
+
+  let isolatedGlobally = 0;
+  for (const node of allNodes) {
+    if ((globalDegree.get(node.id) ?? 0) === 0) isolatedGlobally += 1;
+  }
+
+  const apparentlyIsolatedIds: string[] = [];
+  for (const node of visibleNodes) {
+    if ((viewDegree.get(node.id) ?? 0) === 0 && (globalDegree.get(node.id) ?? 0) > 0) {
+      apparentlyIsolatedIds.push(node.id);
+    }
+  }
+
+  return {
+    isolatedGlobally,
+    apparentlyIsolated: apparentlyIsolatedIds.length,
+    apparentlyIsolatedIds
+  };
+}

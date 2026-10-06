@@ -260,6 +260,7 @@ export const GRAPH_NODE_LABELS: Record<GraphNodeType, string> = {
   module: 'Módulo',
   lesson: 'Lección',
   note: 'Nota',
+  practice: 'Trabajo práctico',
   resource: 'Recurso'
 };
 
@@ -273,6 +274,28 @@ export const GRAPH_RELATION_LABELS: Record<GraphRelationType, string> = {
   builds_on: 'se basa en',
   about: 'trata de'
 };
+
+/** Referencias al contexto de aprendizaje del que cuelga un artefacto. */
+export interface ArtifactContextRefs {
+  resourceId?: string;
+  lessonId?: string;
+  conceptId?: string;
+}
+
+/**
+ * Destino de un artefacto que NO tiene vista propia (trabajo práctico): se abre
+ * en su contexto de aprendizaje de origen. Sin contexto, la Biblioteca es la
+ * degradación honesta.
+ *
+ * Fuente única: la usan el grafo, la búsqueda local y la paleta de comandos, para
+ * que las tres rutas abran exactamente el mismo sitio.
+ */
+export function resolveArtifactContextDestination(refs: ArtifactContextRefs): ResourceDestination {
+  if (refs.resourceId) return { tab: 'resource', resourceId: refs.resourceId };
+  if (refs.lessonId) return { tab: 'course', resourceId: refs.lessonId };
+  if (refs.conceptId) return { tab: 'concept', conceptId: refs.conceptId };
+  return { tab: 'library' };
+}
 
 /**
  * Resuelve el destino de navegación de un resultado de búsqueda local.
@@ -292,6 +315,12 @@ export function resolveSearchResultDestination(result: SearchResult): ResourceDe
       return { tab: 'note', noteId: result.id };
     case 'concept':
       return { tab: 'concept', conceptId: result.id };
+    case 'practice':
+      // El trabajo práctico se abre en el contexto que demuestra.
+      return resolveArtifactContextDestination({
+        resourceId: result.resourceId,
+        lessonId: result.lessonId
+      });
     default:
       return { tab: 'library' };
   }
@@ -318,6 +347,14 @@ export function resolveGraphNodeDestination(node: Pick<ConceptNode, 'id' | 'node
     case 'module':
       if (node.meta?.course_id) return { tab: 'course', resourceId: node.meta.course_id };
       return { tab: 'library' };
+    case 'practice':
+      // El trabajo práctico no tiene vista propia: se abre en su contexto de
+      // origen (recurso → detalle, lección/concepto → su vista).
+      return resolveArtifactContextDestination({
+        resourceId: node.meta?.resource_id,
+        lessonId: node.meta?.lesson_id,
+        conceptId: node.meta?.concept_id
+      });
     default:
       return { tab: 'library' };
   }

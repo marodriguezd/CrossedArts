@@ -8,16 +8,22 @@
 
 ## What It Is
 
-CrossedArts is a personal, local-first Learning Management System that runs entirely in the browser. It centralizes courses, books, notes, flashcards, and a knowledge graph — all stored in a local SQLite database with no required backend server.
+CrossedArts is a personal, **local-first visual learning and knowledge platform** that runs entirely in the browser. It brings courses, books, imported documents, notes, concepts and the work you produce into one environment — all stored in a local SQLite database with no required backend server.
+
+Everything is organised the way a learner actually studies: a **Dashboard** gallery of what you are learning, a **knowledge graph** of how those pieces relate, a **mountain** progress view of a learning context, and **practice work** that records what you produced. It is deliberately **domain-neutral**: it works the same for mathematics, music, programming or art.
 
 The application is designed for learners who want full ownership of their study data without depending on cloud services or subscriptions.
 
 ## Capabilities
 
+- **Dashboard gallery:** A curated, visual entry point to your learning — courses, books, imported documents and practice work, grouped by purpose (continue learning, imported resources, practice work)
 - **Courses & Lessons:** Hierarchical course structure with modules, lessons, and editable Markdown content
 - **Books & Resources:** Library catalog with reading progress, imported documents (PDF, EPUB, TXT, MD), and resource organization
 - **Study Sessions:** Unified flashcard review (SM-2), practice questions, and mixed modes with local progress tracking
-- **Knowledge Graph:** Interactive 2D visualization of courses, books, lessons, notes, concepts, and their relationships
+- **Practice Work:** Exercises, projects, essays, drawings or code that you produce, linked to the resource, lesson or concept it demonstrates — in any discipline
+- **Knowledge Graph:** Interactive 2D visualization of courses, books, modules, lessons, notes, concepts, practice work and their relationships
+- **Mountain progress:** A journey indicator, global or scoped to a course, using real measured progress and real course modules as milestones
+- **Course packages:** Export the *educational material* of a resource (syllabus and proposed work, never your progress or notes) as a portable JSON package to share and import additively
 - **Local Media:** Video and audio playback from local folders via the File System Access API
 - **Local Search:** Deterministic SQL-based search across all content, plus a global command palette (Ctrl+K)
 - **Document Ingestion:** In-browser parsing of PDF, EPUB, TXT, and MD files with SHA-256 deduplication
@@ -61,8 +67,15 @@ CrossedArts supports four AI provider modes:
 - Vectors cached in IndexedDB with SHA-256 content hashing and pipeline versioning (`v1.1-e5-sha256`)
 - All embedding computation happens on-device
 
+## Progress Semantics
+
+CrossedArts tracks several different things that are all called "progress". They are never mixed silently: measured progress (completed lessons, pages read) is shown as a percentage; coarse status (`not started` / `in progress` / `completed`) is shown as a status and never as an invented percentage. Practice completion, concept mastery and study activity are separate concepts with their own meaning.
+
+The full rules — including which artifact participates in the gallery, the graph, the mountain and course packages — are documented in [`docs/PROGRESS.md`](docs/PROGRESS.md).
+
 ## Limitations
 
+- **Not a full LMS:** CrossedArts has no classes, enrolment, grading, teacher accounts or remote classroom. Course packages are portable *educational material*, not a management system.
 - **Browser support:** Chrome, Edge, or Brave required for local media features (File System Access API). Other browsers can use all non-media features.
 - **Local AI hardware:** WebGPU-capable GPU recommended for local LLM inference. CPU fallback is available but slower.
 - **First download:** Initial use of local AI requires downloading model weights (~135 MB for embeddings).
@@ -95,7 +108,7 @@ cd frontend
 npm test
 ```
 
-The test suite includes 424 tests across 30 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph, RAG, document ingestion, and AI providers.
+The test suite includes 471 tests across 36 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph, RAG, document ingestion, AI providers, learning-artifact projection, mountain scoping, course-package conflicts, WCAG theme contrast and disabled-state legibility.
 
 ### Build
 

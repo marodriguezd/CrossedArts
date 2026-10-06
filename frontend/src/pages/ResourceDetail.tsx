@@ -15,6 +15,7 @@ import {
   CheckCircle,
   Loader2,
   Database,
+  ClipboardList,
   ChevronDown,
   ChevronRight,
   Calendar,
@@ -48,6 +49,7 @@ const RELATED_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; 
   lesson: FileText,
   note: FileText,
   concept: Lightbulb,
+  practice: ClipboardList,
   resource: BookOpen
 };
 
@@ -84,7 +86,9 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
         return;
       }
       downloadJsonFile(pkg, `crossedarts-paquete-${slugifyForFilename(pkg.resource.title)}.json`);
-      setPackageFeedback('Paquete exportado. Compártelo para que otra persona lo importe.');
+      setPackageFeedback(
+        'Material exportado como paquete educativo (temario y trabajo propuesto). No incluye tu progreso, notas ni sesiones. Compártelo para que otra persona lo importe.'
+      );
     } catch (err) {
       console.warn('No se pudo exportar el paquete:', err);
       setPackageFeedback('No se pudo exportar el paquete del recurso.');
@@ -214,15 +218,18 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
             <Button size="sm" variant="outline" onClick={() => onExplainResource(resource.id, resource.title)}>
               <Sparkles size={13} aria-hidden="true" /> Explicar
             </Button>
-            {/* Paquete portable: material del recurso para compartir con un alumno. */}
+            {/*
+              Paquete portable: SOLO material educativo (estructura, contenido y
+              trabajo práctico propuesto). No es un respaldo de la cuenta ni
+              incluye el progreso, las notas ni las sesiones del alumno.
+            */}
             <Button
               size="sm"
               variant="outline"
               onClick={handleExportPackage}
-              title="Exportar el material de este recurso como paquete JSON (sin tus datos personales)"
+              title="Exportar el material educativo de este recurso como paquete JSON: temario y trabajo propuesto, sin tu progreso, notas ni sesiones"
             >
-              <Download size={13} aria-hidden="true" /> Paquete
-            </Button>
+              <Download size={13} aria-hidden="true" /> Material</Button>
           </div>
         </div>
 

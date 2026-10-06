@@ -24,6 +24,7 @@ import {
   type ConceptIndexRow,
   type LessonIndexRow,
   type ResourceIndexRow,
+  type PracticeWorkIndexRow,
   type PaletteItem,
 } from './services/commandPalette.ts';
 import { exportSqliteFile } from './db/exportImport.ts';
@@ -49,7 +50,7 @@ export const App: React.FC = () => {
   const [globalQuery, setGlobalQuery] = useState('');
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
-  const { loading, initError, kpis, courses, books, flashcards, notes, recentSessions, selectedCourse, refreshData, selectCourse, retryInit } =
+  const { loading, initError, kpis, courses, books, flashcards, notes, resources, practiceWork, recentSessions, selectedCourse, refreshData, selectCourse, retryInit } =
     useAppData(selectedCourseId);
 
   const handleSelectCourse = async (id: string) => {
@@ -197,6 +198,7 @@ export const App: React.FC = () => {
   const [lessonIndex, setLessonIndex] = useState<LessonIndexRow[]>([]);
   const [conceptIndex, setConceptIndex] = useState<ConceptIndexRow[]>([]);
   const [resourceIndex, setResourceIndex] = useState<ResourceIndexRow[]>([]);
+  const [practiceIndex, setPracticeIndex] = useState<PracticeWorkIndexRow[]>([]);
   const [continueTarget, setContinueTarget] = useState<{
     courseId: string;
     lessonId: string;
@@ -220,14 +222,16 @@ export const App: React.FC = () => {
     if (paletteLoadRef.current) return paletteLoadRef.current;
     const job = (async () => {
       try {
-        const [lessons, concepts, resources] = await Promise.all([
+        const [lessons, concepts, resources, practiceRows] = await Promise.all([
           dao.getLessonIndex(),
           dao.getConceptIndex(),
-          dao.getResourceIndex()
+          dao.getResourceIndex(),
+          dao.getPracticeWorkIndex()
         ]);
         setLessonIndex(lessons);
         setConceptIndex(concepts);
         setResourceIndex(resources);
+        setPracticeIndex(practiceRows);
       } catch (e) {
         console.warn('No se pudo preparar el índice de la paleta de comandos:', e);
       }
@@ -312,11 +316,12 @@ export const App: React.FC = () => {
         lessons: lessonIndex,
         concepts: conceptIndex,
         resources: resourceIndex,
+        practiceWork: practiceIndex,
         pendingReviews: kpis?.pending_reviews ?? 0,
         continueTarget,
         isDarkTheme: theme === 'dark'
       }),
-    [courses, books, notes, lessonIndex, conceptIndex, resourceIndex, kpis, continueTarget, theme]
+    [courses, books, notes, lessonIndex, conceptIndex, resourceIndex, practiceIndex, kpis, continueTarget, theme]
   );
 
   /** Despacha el elemento elegido: destino de entidad o acción por identificador. */
@@ -469,6 +474,8 @@ export const App: React.FC = () => {
             kpis={kpis}
             courses={courses}
             books={books}
+            resources={resources}
+            practiceWork={practiceWork}
             recentSessions={recentSessions}
             onSelectCourse={handleSelectCourse}
             onOpenLesson={handleOpenLesson}

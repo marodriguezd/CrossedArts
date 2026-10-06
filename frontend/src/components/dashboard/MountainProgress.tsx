@@ -3,19 +3,34 @@ import { Mountain } from 'lucide-react';
 import { Panel, cn } from '../ui/index.tsx';
 import {
   MOUNTAIN_TRAIL,
+  clampPercent,
   computeOverallProgress,
   pointAtPercent,
   resolveMilestones,
   toPolylinePoints,
+  type MountainStageDefinition,
   type ProgressSource
 } from '../../services/mountainPath.ts';
 
 interface MountainProgressProps {
-  /** Recursos reales de la biblioteca; su progreso medio alimenta la subida. */
-  resources: ProgressSource[];
+  /** Recursos reales cuya media alimenta la subida (vista global). */
+  resources?: ProgressSource[];
+  /**
+   * Progreso ya calculado por el llamador (vista con ámbito, p. ej. un curso).
+   * Si se indica, tiene prioridad sobre `resources`: la MISMA matemática del
+   * sendero se reutiliza y no hay dos implementaciones de montaña.
+   */
+  progress?: number;
+  /**
+   * Hitos a mostrar. Sin ellos se usan los genéricos de la biblioteca; con
+   * estructura real (módulos de un curso) se pasan los módulos como hitos.
+   */
+  stages?: readonly MountainStageDefinition[];
   title?: string;
   /** Texto descriptivo opcional mostrado bajo el título. */
   subtitle?: string;
+  /** Etiqueta accesible del SVG cuando el contexto no es la biblioteca global. */
+  scopeLabel?: string;
   className?: string;
 }
 
@@ -28,13 +43,18 @@ interface MountainProgressProps {
  * recursos, el progreso es 0 y se indica con un texto vacío honesto.
  */
 export const MountainProgress: React.FC<MountainProgressProps> = ({
-  resources,
+  resources = [],
+  progress: progressOverride,
+  stages,
   title = 'Camino a la cima',
   subtitle,
+  scopeLabel = 'la biblioteca',
   className
 }) => {
-  const progress = computeOverallProgress(resources);
-  const milestones = resolveMilestones(progress);
+  const progress =
+    typeof progressOverride === 'number' ? clampPercent(Math.round(progressOverride)) : computeOverallProgress(resources);
+  const hasCustomStages = Array.isArray(stages) && stages.length > 0;
+  const milestones = resolveMilestones(progress, hasCustomStages ? stages : undefined);
   const marker = pointAtPercent(MOUNTAIN_TRAIL, progress);
   const reached = milestones.filter((milestone) => milestone.reached);
 
@@ -51,7 +71,7 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
       <div className="mt-4 flex items-center justify-between">
         <span className="text-2xl font-semibold text-ink">{progress}%</span>
         <span className="type-meta">
-          {resources.length === 0
+          {!hasCustomStages && typeof progressOverride !== 'number' && resources.length === 0
             ? 'Sin recursos todavía'
             : `${reached.length}/${milestones.length} hitos alcanzados`}
         </span>
@@ -61,7 +81,7 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
         viewBox="0 0 100 100"
         className="mt-3 h-40 w-full text-accent"
         role="img"
-        aria-label={`Progreso de la biblioteca: ${progress} por ciento del camino a la cumbre`}
+        aria-label={`Progreso de ${scopeLabel}: ${progress} por ciento del camino a la cumbre`}
         preserveAspectRatio="none"
       >
         {/* Silueta de la montaña (relleno tenue con tokens semánticos). */}

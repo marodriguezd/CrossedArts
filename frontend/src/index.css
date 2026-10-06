@@ -22,10 +22,15 @@
   --c-line: 227 220 204;        /* separadores suaves gris-beige */
   --c-line-strong: 205 196 176; /* bordes con más presencia */
 
-  /* --- Tinta --- */
+  /* --- Tinta ---
+   * Valores ajustados para cumplir WCAG 2.1 AA (≥4.5:1) sobre las tres
+   * superficies claras (canvas/surface/raised). El metadato (`faint`) es texto
+   * normal de 12px, así que también necesita 4.5:1 y no puede ser meramente
+   * "decorativo". Ver `frontend/tests/theme_contrast.test.ts`, que recalcula el
+   * contraste real desde estos tokens y falla si alguna pareja baja de umbral. */
   --c-ink: 37 34 32;            /* texto principal, carbón cálido */
-  --c-muted: 108 101 90;        /* texto secundario gris cálido */
-  --c-faint: 142 135 122;       /* metadatos y micro-etiquetas */
+  --c-muted: 93 88 80;          /* texto secundario gris cálido */
+  --c-faint: 112 106 96;        /* metadatos y micro-etiquetas */
 
   /* --- Acento (ciruela contenida, herencia morada del producto) --- */
   --c-accent: 94 75 139;
@@ -77,15 +82,21 @@
   --c-line: 57 55 52;
   --c-line-strong: 76 73 69;
 
-  /* --- Tinta (cálida, contraste suave) --- */
+  /* --- Tinta (cálida, contraste suave) ---
+   * Igual que en claro: muted/faint cumplen AA sobre canvas/surface/raised. */
   --c-ink: 231 226 217;
-  --c-muted: 162 155 145;
-  --c-faint: 126 120 111;
+  --c-muted: 178 171 161;
+  --c-faint: 155 149 140;
 
-  /* --- Acento en oscuro (púrpura vibrante, con texto blanco de alto contraste) --- */
-  --c-accent: 139 108 212;      /* #8b6cd4: legible sobre fondos oscuros y excelente fondo para botones */
+  /* --- Acento en oscuro ---
+   * Un único acento no puede servir a la vez de color de TEXTO (necesita ≥4.5:1
+   * sobre el carbón) y de RELLENO con texto blanco (exigiría un púrpura mucho más
+   * oscuro). En oscuro se elige el acento legible sobre la superficie y un
+   * `on-accent` oscuro para los botones sólidos: así ambos usos cumplen AA con los
+   * tokens existentes, sin añadir una segunda paleta. */
+  --c-accent: 158 128 226;      /* #9e80e2: legible como texto sobre fondos oscuros */
   --c-accent-soft: 46 38 62;    /* #2e263e: superficie ciruela oscura para badges y fondos tenues */
-  --c-on-accent: 255 255 255;   /* SIEMPRE blanco nítido (#ffffff) para texto sobre botones sólidos */
+  --c-on-accent: 26 25 24;      /* texto oscuro sobre el relleno de acento brillante */
 
   /* --- Semánticos (baja saturación, sin glare) --- */
   --c-success: 133 180 143;
@@ -96,7 +107,7 @@
   --c-error-soft: 59 40 35;
   --c-info: 143 179 204;
   --c-info-soft: 37 48 57;
-  --c-focus: 139 108 212;
+  --c-focus: 158 128 226;
 
   /* --- Sombras discretas: en oscuro mandan los bordes --- */
   --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.25);

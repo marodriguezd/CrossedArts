@@ -23,10 +23,33 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  solid: 'bg-accent text-white font-medium border border-transparent hover:opacity-90 shadow-card',
+  // El texto usa el token `text-on-accent`: en el tema oscuro el relleno de
+  // acento es un púrpura claro y la tinta legible sobre él es oscura. El token
+  // resuelve ambos temas y mantiene ≥4.5:1 en los dos.
+  solid: 'bg-accent text-on-accent font-medium border border-transparent hover:opacity-90 shadow-card',
   outline: 'bg-surface text-ink border border-line-strong hover:bg-accent-soft/60',
   quiet: 'bg-transparent text-muted border border-transparent hover:bg-accent-soft/60 hover:text-ink',
   danger: 'bg-transparent text-error border border-error/40 hover:bg-error-soft',
+};
+
+/**
+ * Estado deshabilitado por variante.
+ *
+ * Antes el botón deshabilitado se resolvía con `opacity-50` sobre TODO el
+ * elemento: al atenuar también el texto, un botón sólido en tema oscuro quedaba
+ * con texto oscuro sobre un púrpura translúcido (prácticamente ilegible).
+ *
+ * Ahora el estado deshabilitado usa una superficie y una tinta semánticas: la
+ * acción deja de parecer primaria (sigue siendo inequívocamente "deshabilitada")
+ * pero el texto conserva contraste real (≥4.5:1 en ambos temas, con los tokens
+ * `line`/`muted`/`faint`). No se introducen colores literales y el estado
+ * habilitado no cambia.
+ */
+const BUTTON_DISABLED: Record<ButtonVariant, string> = {
+  solid: 'disabled:bg-line disabled:text-muted disabled:border-line disabled:shadow-none',
+  outline: 'disabled:bg-surface disabled:text-muted disabled:border-line',
+  quiet: 'disabled:bg-transparent disabled:text-faint',
+  danger: 'disabled:bg-transparent disabled:text-muted disabled:border-line',
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
@@ -45,8 +68,11 @@ export const Button: React.FC<ButtonProps> = ({
     type={type}
     className={cn(
       'inline-flex items-center justify-center font-medium transition-colors duration-fast',
-      'disabled:opacity-50 disabled:pointer-events-none',
+      // Sin atenuar el elemento completo: el estado deshabilitado se resuelve
+      // por variante para no degradar el texto (ver BUTTON_DISABLED).
+      'disabled:pointer-events-none',
       BUTTON_VARIANTS[variant],
+      BUTTON_DISABLED[variant],
       BUTTON_SIZES[size],
       className
     )}

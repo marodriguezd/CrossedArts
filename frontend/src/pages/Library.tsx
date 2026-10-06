@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Course, Book, SearchResult, UnorganizedResource, GraphNodeType } from '../types/models.ts';
-import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ArrowUpRight, UploadCloud } from 'lucide-react';
+import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ClipboardList, ArrowUpRight, UploadCloud } from 'lucide-react';
 import { resolveSearchResultDestination, filterSupportedFiles, adjustBookPage } from '../services/domainLogic.ts';
 import type { MediaScanReport } from '../services/localMediaService.ts';
 import { dao } from '../db/dao.ts';
@@ -205,6 +205,7 @@ export const Library: React.FC<LibraryProps> = ({
     lesson: FileText,
     note: FileText,
     concept: Lightbulb,
+    practice: ClipboardList,
     resource: BookOpen
   };
 

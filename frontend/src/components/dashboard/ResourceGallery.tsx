@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Layers } from 'lucide-react';
+import { ArrowRight, ClipboardList, Layers } from 'lucide-react';
 import { Badge, ProgressBar, SectionHeading, cn } from '../ui/index.tsx';
 import type { ResourceStatus } from '../../types/models.ts';
 import { resourceInitials, type GalleryItem } from '../../services/galleryItems.ts';
@@ -15,6 +15,8 @@ interface ResourceGalleryProps {
   description?: string;
   /** Acción "ver todo" (normalmente navegar a la Biblioteca). */
   onSeeAll?: () => void;
+  /** Texto del enlace de `onSeeAll`. */
+  seeAllLabel?: string;
   /** Nº máximo de tarjetas visibles; el resto queda tras "ver todo". */
   limit?: number;
   emptyHint?: string;
@@ -29,18 +31,29 @@ const STATUS_LABELS: Record<ResourceStatus, { text: string; tone: 'neutral' | 'a
 };
 
 /**
- * Galería visual de recursos de aprendizaje.
+ * Galería visual de artefactos de aprendizaje.
  *
  * Es agnóstica al dominio: solo conoce `GalleryItem`, así que sirve igual para
- * cursos, libros, documentos importados o cualquier artefacto de aprendizaje
- * futuro. Cada tarjeta es un `<button>` con nombre accesible explícito y el
- * progreso usa `ProgressBar` (nunca color como único indicador).
+ * cursos, libros, documentos importados o trabajo práctico. Cada tarjeta es un
+ * `<button>` con nombre accesible explícito y el progreso usa `ProgressBar`
+ * (nunca color como único indicador).
+ *
+ * Dos tratamientos dentro de la MISMA lengua visual:
+ *  - Portada (`cover`): cursos, libros y recursos, con portada 3:4 e iniciales de
+ *    respaldo cuando no hay imagen.
+ *  - Ficha (`row`): trabajo práctico, que no tiene portada; se presenta como
+ *    artefacto con icono, estado y tipo.
+ *
+ * El progreso solo se dibuja como barra cuando es `measured`. Si el modelo solo
+ * guarda un estado (`status`), se muestra el estado y NUNCA un porcentaje
+ * inventado (ver docs/PROGRESS.md).
  */
 export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
   items,
   title = 'Tu aprendizaje de un vistazo',
   description = 'Galería visual de los recursos que estás trabajando.',
   onSeeAll,
+  seeAllLabel = 'Ver toda la Biblioteca',
   limit = 6,
   emptyHint = 'Aún no hay recursos. Importa un documento o crea tu primer curso desde la Biblioteca.',
   className
@@ -59,7 +72,7 @@ export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
               onClick={onSeeAll}
               className="inline-flex items-center gap-1 text-meta font-medium text-accent hover:underline"
             >
-              Ver toda la Biblioteca
+              {seeAllLabel}
               <ArrowRight size={12} aria-hidden="true" />
             </button>
           ) : undefined
@@ -75,13 +88,43 @@ export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           {visible.map((item) => {
             const status = item.status ? STATUS_LABELS[item.status] : undefined;
+            const isMeasured = item.progressSource !== 'status';
             const progress = Math.min(100, Math.max(0, Math.round(item.progress)));
+            const accessibleName = `Abrir ${item.kindLabel.toLowerCase()} ${item.title}${status ? ` (${status.text})` : ''}`;
+
+            if (item.kind === 'practice') {
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={item.onOpen}
+                    aria-label={accessibleName}
+                    className="group flex h-full w-full flex-col gap-2 rounded-xl border border-line bg-surface p-3 text-left shadow-card transition-all duration-fast hover:border-accent/40 hover:shadow-pop focus:outline-none focus:ring-2 focus:ring-focus"
+                  >
+                    <span className="flex items-start gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-accent-soft text-accent"
+                      >
+                        <ClipboardList size={14} />
+                      </span>
+                      {status && <Badge tone={status.tone}>{status.text}</Badge>}
+                    </span>
+                    <span className="type-item line-clamp-3 text-ink group-hover:text-accent">
+                      {item.title}
+                    </span>
+                    <span className="type-meta mt-auto truncate text-muted">{item.meta ?? item.kindLabel}</span>
+                  </button>
+                </li>
+              );
+            }
+
             return (
               <li key={item.id}>
                 <button
                   type="button"
                   onClick={item.onOpen}
-                  aria-label={`Abrir ${item.kindLabel.toLowerCase()} ${item.title}${status ? ` (${status.text})` : ''}`}
+                  aria-label={accessibleName}
                   className="group flex h-full w-full flex-col overflow-hidden rounded-xl border border-line bg-surface text-left shadow-card transition-all duration-fast hover:border-accent/40 hover:shadow-pop focus:outline-none focus:ring-2 focus:ring-focus"
                 >
                   <span className="relative block aspect-[3/4] w-full overflow-hidden border-b border-line bg-accent-soft">
@@ -117,11 +160,22 @@ export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
                       {item.category ? ` · ${item.category}` : ''}
                     </span>
                     <span className="mt-auto block pt-1.5">
-                      <ProgressBar value={progress} label={`Progreso de ${item.title}`} />
-                      <span className="mt-1 flex items-center justify-between">
-                        <span className="type-meta truncate text-faint">{item.meta ?? ''}</span>
-                        <span className="type-meta font-semibold text-muted">{progress}%</span>
-                      </span>
+                      {isMeasured ? (
+                        <>
+                          <ProgressBar value={progress} label={`Progreso de ${item.title}`} />
+                          <span className="mt-1 flex items-center justify-between">
+                            <span className="type-meta truncate text-faint">{item.meta ?? ''}</span>
+                            <span className="type-meta font-semibold text-muted">{progress}%</span>
+                          </span>
+                        </>
+                      ) : (
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="type-meta truncate text-faint">{item.meta ?? ''}</span>
+                          <span className="type-meta shrink-0 text-muted">
+                            {status ? status.text : 'Sin estado'}
+                          </span>
+                        </span>
+                      )}
                     </span>
                   </span>
                 </button>

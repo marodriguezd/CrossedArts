@@ -215,6 +215,114 @@ export function planCoursePackageImport(
   return { existing, toCreate };
 }
 
+/* -------------------------------------------------------------------------- */
+/* Conflictos de importación                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Huella determinista del contenido con el que se compara un elemento.
+ *
+ * Función pura y estable: los mismos datos producen siempre la misma huella,
+ * independientemente del navegador o del orden de las claves. Se usa FNV-1a de
+ * 32 bits porque solo hace falta comparar dentro de una misma importación (no
+ * es un hash de seguridad ni un identificador persistente).
+ */
+export function contentSignature(parts: ReadonlyArray<string | number | null | undefined>): string {
+  const joined = parts
+    .map((part) => (part === null || part === undefined ? '' : String(part).replace(/\s+/g, ' ').trim()))
+    .join('\u001f');
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < joined.length; i += 1) {
+    hash ^= joined.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+export type CoursePackageConflictKind = 'resource' | 'module' | 'lesson' | 'practiceWork';
+
+export interface CoursePackageConflict {
+  id: string;
+  kind: CoursePackageConflictKind;
+  /** Etiqueta legible del elemento en conflicto. */
+  label: string;
+}
+
+/** Firma canónica del recurso de un paquete. */
+export function resourceSignature(resource: CoursePackageResource): string {
+  return contentSignature([resource.title, resource.description, resource.category, resource.type]);
+}
+
+/** Firma canónica de un módulo de un paquete. */
+export function moduleSignature(module: CoursePackageModule): string {
+  return contentSignature([module.title, module.order_index]);
+}
+
+/**
+ * Firma canónica de una lección. El material que viaja profesor→alumno NO
+ * incluye `is_completed`: el progreso es del alumno y no forma parte del paquete.
+ */
+export function lessonSignature(lesson: CoursePackageLesson): string {
+  return contentSignature([
+    lesson.title,
+    lesson.content,
+    lesson.order_index,
+    lesson.duration_minutes,
+    lesson.lesson_type,
+    lesson.media_url
+  ]);
+}
+
+/**
+ * Firma canónica del trabajo práctico PROPUESTO. Se excluye `status` a propósito:
+ * el estado de un trabajo es progreso personal del alumno, no material docente,
+ * así que un trabajo ya terminado localmente no debe reportarse como conflicto.
+ */
+export function practiceWorkSignature(work: CoursePackagePracticeWork): string {
+  return contentSignature([work.title, work.description, work.lesson_id, work.kind, work.notes]);
+}
+
+/**
+ * Detecta elementos del paquete cuyo ID ya existe localmente pero cuyo CONTENIDO
+ * difiere del que trae el paquete.
+ *
+ * Regla de resolución: la importación es ADITIVA y el contenido LOCAL gana
+ * SIEMPRE. Nunca se sobrescribe trabajo del alumno con material importado. La
+ * función no decide qué hacer con el conflicto: solo lo hace visible, para que el
+ * resultado sea determinista y explicable en lugar de silencioso.
+ */
+export function detectCoursePackageConflicts(
+  pkg: CoursePackage,
+  localSignatures: ReadonlyMap<string, string>
+): CoursePackageConflict[] {
+  const conflicts: CoursePackageConflict[] = [];
+
+  const check = (
+    id: string,
+    kind: CoursePackageConflictKind,
+    label: string,
+    incomingSignature: string
+  ) => {
+    const local = localSignatures.get(id);
+    if (local !== undefined && local !== incomingSignature) {
+      conflicts.push({ id, kind, label });
+    }
+  };
+
+  check(pkg.resource.id, 'resource', pkg.resource.title, resourceSignature(pkg.resource));
+  for (const module of pkg.modules || []) {
+    check(module.id, 'module', module.title, moduleSignature(module));
+  }
+  for (const lesson of pkg.lessons || []) {
+    check(lesson.id, 'lesson', lesson.title, lessonSignature(lesson));
+  }
+  for (const work of pkg.practiceWork || []) {
+    check(work.id, 'practiceWork', work.title, practiceWorkSignature(work));
+  }
+
+  return conflicts;
+}
+
 /** Resumen legible para la interfaz tras importar. */
 export function describeImportResult(created: number, skipped: number): string {
   if (created === 0 && skipped === 0) return 'El paquete estaba vacío.';
@@ -223,4 +331,14 @@ export function describeImportResult(created: number, skipped: number): string {
   }
   const base = `Paquete importado: ${created} elemento${created === 1 ? '' : 's'} nuevo${created === 1 ? '' : 's'}.`;
   return skipped > 0 ? `${base} ${skipped} ya existían y se omitieron.` : base;
+}
+
+/**
+ * Completa el resumen de importación con los conflictos detectados. Se mantiene
+ * aparte de `describeImportResult` para no alterar su contrato ya probado.
+ */
+export function describeConflicts(conflicts: readonly CoursePackageConflict[]): string {
+  if (conflicts.length === 0) return '';
+  const label = conflicts.length === 1 ? '1 elemento ya existía' : `${conflicts.length} elementos ya existían`;
+  return `${label} con un contenido distinto: se conservó tu versión local y no se sobrescribió nada.`;
 }
