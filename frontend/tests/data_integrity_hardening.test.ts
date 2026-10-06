@@ -276,3 +276,46 @@ test('17.8 The embedding cache declares the model+pipeline indexes it relies on'
   // La degradación segura se mantiene si el índice no está disponible.
   assert.ok(cache.includes('store.getAll()'), 'Debe existir la degradación a lectura completa');
 });
+
+test('17.9 pruneOtherModels removes stale model/pipeline entries and keeps the active one', async () => {
+  const vector = new Array(4).fill(0.1);
+  const entry = (chunkId: string, modelId: string, pipelineVersion: string) => ({
+    chunkId,
+    sourceType: 'lesson',
+    sourceId: 'l1',
+    title: 'Lección',
+    text: 'contenido',
+    contentHash: `hash-${chunkId}`,
+    modelId,
+    pipelineVersion,
+    dimensions: 4,
+    vector,
+    updatedAt: 1
+  });
+
+  await embeddingCache.setEntry(entry('keep', 'modelo-activo', EMBEDDING_PIPELINE_VERSION));
+  await embeddingCache.setEntry(entry('old-model', 'modelo-antiguo', EMBEDDING_PIPELINE_VERSION));
+  await embeddingCache.setEntry(entry('old-pipeline', 'modelo-activo', 'v0.0-obsoleto'));
+
+  const removed = await embeddingCache.pruneOtherModels('modelo-activo', EMBEDDING_PIPELINE_VERSION);
+  assert.ok(removed >= 2, `Debe purgar al menos las dos entradas obsoletas (purgadas: ${removed})`);
+
+  const active = await embeddingCache.getAllEntriesForModel('modelo-activo', EMBEDDING_PIPELINE_VERSION);
+  assert.deepEqual(active.map((e) => e.chunkId), ['keep'], 'La entrada del modelo activo se conserva');
+
+  await embeddingCache.clearCache();
+});
+
+test('17.10 pruneStaleCache on the embedding engine never throws outside a browser', async () => {
+  const { localEmbeddingEngine } = await import('../src/lib/localEmbeddings/engine.ts');
+  const result = await localEmbeddingEngine.pruneStaleCache('modelo-activo');
+  assert.equal(typeof result, 'number');
+  assert.ok(result >= 0);
+});
+
+test('17.11 the semantic runtime prunes stale embeddings before indexing', () => {
+  const source = readFileSync(new URL('../src/services/localAiRuntime.ts', import.meta.url), 'utf8');
+  assert.ok(source.includes('pruneStaleCache?.'), 'El runtime debe invocar la purga de forma best-effort');
+  const cache = readFileSync(new URL('../src/lib/localEmbeddings/cache.ts', import.meta.url), 'utf8');
+  assert.ok(cache.includes('pruneOtherModels'), 'La caché debe exponer la purga por modelo');
+});

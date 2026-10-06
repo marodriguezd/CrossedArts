@@ -89,6 +89,8 @@ export interface LocalAiRuntimeDeps {
     loadModel(id?: string): Promise<void>;
     indexChunks(chunks: SemanticChunk[], onProgress?: (indexed: number, total: number) => void): Promise<number>;
     cancelIndexing(): void;
+    /** Opcional: purga vectores de modelos antiguos antes de indexar (A-11). */
+    pruneStaleCache?(activeModelId?: string): Promise<number>;
   };
   detectCapabilities: () => Promise<WebGPUCapabilityReport>;
   isOnline: () => boolean;
@@ -518,6 +520,13 @@ export class LocalAiRuntime {
       if (this.deps.embeddingEngine.getStatus() !== 'ready') {
         await this.deps.embeddingEngine.loadModel(DEFAULT_EMBEDDING_MODEL_ID);
       }
+
+      // Purga proactiva (A-11): las entradas de modelos/pipelines anteriores ya
+      // no se sirven, pero ocupaban espacio indefinidamente. Best-effort: si
+      // falla, la indexación continúa.
+      try {
+        await this.deps.embeddingEngine.pruneStaleCache?.(DEFAULT_EMBEDDING_MODEL_ID);
+      } catch { /* la purga nunca debe bloquear la indexación */ }
 
       this.setSemanticStatus({ stage: 'indexing', progress: 0, message: 'Preparando búsqueda…' });
 

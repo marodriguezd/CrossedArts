@@ -274,6 +274,23 @@ class LocalEmbeddingEngine {
    * Indexa un conjunto de fragmentos de forma incremental y asíncrona, usando el caché de IndexedDB.
    * Previene carreras de indexación concurrentes y soporta cancelación inmediata.
    */
+  /**
+   * Purga proactiva de vectores de modelos/pipelines distintos del activo.
+   *
+   * Se invoca al preparar el índice semántico: al cambiar de modelo de
+   * embeddings las entradas del anterior dejan de ser válidas, pero hasta ahora
+   * solo se liberaban si el usuario limpiaba la caché a mano. Nunca lanza: una
+   * purga fallida no debe impedir la indexación.
+   */
+  public async pruneStaleCache(activeModelId?: string): Promise<number> {
+    const modelId = activeModelId || this.currentModelId || DEFAULT_EMBEDDING_MODEL_ID;
+    try {
+      return await embeddingCache.pruneOtherModels(modelId, EMBEDDING_PIPELINE_VERSION);
+    } catch {
+      return 0;
+    }
+  }
+
   public async indexChunks(
     chunks: SemanticChunk[],
     onProgress?: (indexed: number, total: number) => void

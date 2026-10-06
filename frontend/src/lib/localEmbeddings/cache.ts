@@ -302,6 +302,63 @@ class LocalEmbeddingCache {
     } catch {}
   }
 
+  /**
+   * Purga proactiva de vectores de modelos/pipelines distintos del activo.
+   *
+   * La caché ya está versionada por (modelId, pipelineVersion), así que las
+   * entradas antiguas NUNCA se sirven; pero hasta ahora solo se liberaban al
+   * limpiar la caché a mano. Tras cambiar de modelo de embeddings quedaban
+   * ocupando espacio indefinidamente. Devuelve cuántas entradas se eliminaron
+   * (útil para diagnóstico y pruebas).
+   */
+  public async pruneOtherModels(
+    activeModelId: string,
+    activePipelineVersion: string = EMBEDDING_PIPELINE_VERSION
+  ): Promise<number> {
+    const isActive = (entry: CachedVectorEntry): boolean =>
+      entry.modelId === activeModelId &&
+      (entry.pipelineVersion || EMBEDDING_PIPELINE_VERSION) === activePipelineVersion;
+
+    let removed = 0;
+    for (const [key, entry] of Array.from(this.inMemoryCache.entries())) {
+      if (!isActive(entry)) {
+        this.inMemoryCache.delete(key);
+        removed += 1;
+      }
+    }
+
+    if (!this.hasIndexedDB()) return removed;
+
+    try {
+      const db = await this.openIDB();
+      const fromIdb = await new Promise<number>((resolve) => {
+        const storeName = this.resolveStore(db);
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        let count = 0;
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (!cursor) return;
+          const value = cursor.value as CachedVectorEntry;
+          if (value && !isActive(value)) {
+            cursor.delete();
+            count += 1;
+          }
+          cursor.continue();
+        };
+        tx.oncomplete = () => resolve(count);
+        tx.onerror = () => resolve(count);
+      });
+      // IndexedDB es la fuente de verdad: se informa de las entradas realmente
+      // borradas del almacén persistente. `removed` solo se usa como resultado
+      // cuando IndexedDB no está disponible.
+      return fromIdb;
+    } catch {
+      return removed;
+    }
+  }
+
   public async clearCache(): Promise<void> {
     this.inMemoryCache.clear();
     if (!this.hasIndexedDB()) return;
