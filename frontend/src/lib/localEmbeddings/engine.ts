@@ -33,9 +33,12 @@ export function vectorNorm(v: number[]): number {
 /**
  * Normaliza un vector mediante norma L2. Rechaza vectores con valores no finitos o norma 0.
  */
-export function l2NormalizeVector(v: number[]): number[] {
-  if (!v || v.length !== 384) {
-    throw new Error(`Vector inválido: se esperaban exactamente 384 dimensiones, recibidas ${v?.length || 0}`);
+export function l2NormalizeVector(v: number[], expectedDimensions?: number): number[] {
+  if (!v || v.length === 0) {
+    throw new Error('Vector inválido: no puede estar vacío');
+  }
+  if (expectedDimensions !== undefined && v.length !== expectedDimensions) {
+    throw new Error(`Vector inválido: se esperaban exactamente ${expectedDimensions} dimensiones, recibidas ${v.length}`);
   }
   for (let i = 0; i < v.length; i++) {
     if (!Number.isFinite(v[i])) {
@@ -64,6 +67,13 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   }
   if (normA === 0 || normB === 0) return 0;
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function stripKnownEmbeddingPrefix(text: string): string {
+  return text.replace(
+    /^(query:\s+|passage:\s+|task:\s+search result \| query:\s+|title:\s+none \| text:\s+)/i,
+    ''
+  );
 }
 
 class LocalEmbeddingEngine {
@@ -175,8 +185,8 @@ class LocalEmbeddingEngine {
         let pipe: any;
         try {
           pipe = await pipeline('feature-extraction', modelId, {
-            dtype: 'q8',
-            device: caps.backend === 'webgpu' ? 'webgpu' : 'wasm',
+            dtype: modelDef.preferredDtype ?? 'q8',
+            device: backend === 'webgpu' ? 'webgpu' : 'wasm',
             progress_callback: (item: any) => {
               if (item.status === 'progress' && item.progress !== undefined) {
                 this.progress = {
@@ -193,7 +203,7 @@ class LocalEmbeddingEngine {
             console.warn('Fallo inicializando embeddings en WebGPU, aplicando fallback a CPU/WASM:', deviceErr);
             this.backend = 'wasm';
             pipe = await pipeline('feature-extraction', modelId, {
-              dtype: 'q8',
+              dtype: modelDef.preferredDtype ?? 'q8',
               device: 'wasm',
               progress_callback: (item: any) => {
                 if (item.status === 'progress' && item.progress !== undefined) {
@@ -243,21 +253,28 @@ class LocalEmbeddingEngine {
     this.notify();
 
     try {
-      // E5 requiere exactamente "query: <texto>" o "passage: <texto>"
-      let formattedInput: string;
-      if (isQuery) {
-        formattedInput = text.startsWith('query: ') ? text : `query: ${text.replace(/^(query|passage):\s*/i, '')}`;
-      } else {
-        formattedInput = text.startsWith('passage: ') ? text : `passage: ${text.replace(/^(query|passage):\s*/i, '')}`;
-      }
+      const modelDef = getEmbeddingModelById(modelId);
+      if (!modelDef) throw new Error(`Modelo de embedding desconocido: ${modelId}`);
+
+      const body = stripKnownEmbeddingPrefix(text.trim());
+      const prefix = isQuery ? (modelDef.queryPrefix ?? '') : (modelDef.documentPrefix ?? '');
+      const formattedInput = `${prefix}${body}`;
 
       const output = await this.pipelineInstance(formattedInput, {
         pooling: 'mean',
-        normalize: false // Normalizamos nosotros de forma determinista y verificada
+        normalize: false
       });
 
       const rawVector = Array.from(output.data as Float32Array | number[]);
-      const vector = l2NormalizeVector(rawVector);
+      if (rawVector.length < modelDef.dimension) {
+        throw new Error(
+          `Embedding inválido: el modelo ${modelId} debería producir al menos ${modelDef.dimension} dimensiones y produjo ${rawVector.length}`
+        );
+      }
+
+      const outputDimension = modelDef.outputDimension ?? modelDef.dimension;
+      const truncatedVector = rawVector.slice(0, outputDimension);
+      const vector = l2NormalizeVector(truncatedVector, outputDimension);
 
       this.status = 'ready';
       this.notify();
@@ -321,7 +338,7 @@ class LocalEmbeddingEngine {
         cached.pipelineVersion === EMBEDDING_PIPELINE_VERSION &&
         cached.contentHash === chunk.contentHash &&
         Array.isArray(cached.vector) &&
-        cached.vector.length === (expectedDimensionsForModel(modelId) ?? 384)
+        cached.vector.length === expectedDimensionsForModel(modelId)
       ) {
         if (onProgress) onProgress(i + 1, chunks.length);
         continue;

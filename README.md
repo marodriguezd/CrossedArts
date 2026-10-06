@@ -65,10 +65,10 @@ CrossedArts supports four AI provider modes:
 | **OpenAI** | Uses OpenAI API with in-memory key storage | Yes |
 
 **Embeddings & RAG:**
-- Local embeddings via Transformers.js with `Xenova/multilingual-e5-small` (384 dimensions, ~135 MB)
+- Local embeddings via Transformers.js with `onnx-community/embeddinggemma-300m-ONNX` (768 native dimensions, stored as 256d via Matryoshka Representation Learning)
 - Hybrid retrieval combining lexical search and semantic embeddings
-- Vectors cached in IndexedDB with SHA-256 content hashing and pipeline versioning (`v1.1-e5-sha256`)
-- All embedding computation happens on-device
+- Vectors cached in IndexedDB with SHA-256 content hashing and pipeline versioning (`v2.0-embeddinggemma-mrl256-sha256`)
+- All embedding computation happens on-device; the browser integration uses the verified ONNX EmbeddingGemma 300M export and currently prefers WASM for correctness
 
 ## Progress Semantics
 
@@ -81,7 +81,7 @@ The full rules — including which artifact participates in the gallery, the gra
 - **Not a full LMS:** CrossedArts has no classes, enrolment, grading, teacher accounts or remote classroom. Course packages are portable *educational material*, not a management system.
 - **Browser support:** Chrome, Edge, or Brave required for local media features (File System Access API). Other browsers can use all non-media features.
 - **Local AI hardware:** WebGPU-capable GPU recommended for local LLM inference. CPU fallback is available but slower.
-- **First download:** Initial use of local AI requires downloading model weights (~135 MB for embeddings).
+- **First download:** Initial use of local AI requires downloading model weights; the embedding model is fetched on demand and cached by the browser.
 - **Media backup:** Local media files are not included in SQLite backups. Only the database is backed up; media must be re-linked after restore.
 - **No automatic sync:** Multi-device synchronization is not built-in. Export/import is the manual transfer mechanism.
 - **Single-user:** No multi-user support or authentication.
@@ -180,6 +180,7 @@ Inside the Settings view:
 CrossedArts is licensed under [GPL-3.0-only](LICENSE).
 
 Third-party dependencies retain their respective licenses:
+- `onnx-community/embeddinggemma-300m-ONNX`: Gemma Terms of Use
 - `Xenova/multilingual-e5-small`: MIT
 - WebLLM (`@mlc-ai/web-llm`): Apache-2.0
 - Transformers.js (`@huggingface/transformers`): Apache-2.0
