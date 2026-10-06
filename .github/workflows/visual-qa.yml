@@ -46,7 +46,16 @@ jobs:
           echo $! > /tmp/crossedarts-preview.pid
 
       - name: Wait for preview
-        run: npx playwright wait-for-server http://127.0.0.1:4173
+        run: |
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'Preview server did not become ready.'
+          cat /tmp/crossedarts-preview.log || true
+          exit 1
 
       - name: Run visual QA
         env:
