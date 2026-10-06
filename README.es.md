@@ -65,10 +65,11 @@ CrossedArts admite cuatro modos de proveedor de IA:
 | **OpenAI** | Usa la API de OpenAI con almacenamiento de clave en memoria | Sí |
 
 **Embeddings y RAG:**
-- Embeddings locales con Transformers.js y `Xenova/multilingual-e5-small` (384 dimensiones, ~135 MB)
+- Embeddings locales con Transformers.js y `onnx-community/embeddinggemma-300m-ONNX` (768 dimensiones nativas, almacenadas como 256d mediante Matryoshka Representation Learning)
 - Recuperación híbrida que combina búsqueda léxica y embeddings semánticos
-- Vectores cacheados en IndexedDB con hashing SHA-256 y versionado de pipeline (`v1.1-e5-sha256`)
-- Todo el cálculo de embeddings ocurre en el dispositivo
+- Vectores cacheados en IndexedDB con hashing SHA-256 y versionado de pipeline (`v2.0-embeddinggemma-mrl256-sha256`)
+- Todo el cálculo de embeddings ocurre en el dispositivo; el export ONNX de EmbeddingGemma 300M está verificado para Transformers.js y el frontend prioriza WASM por corrección
+- EmbeddingGemma 2 (740M, multimodal) no se declara integrado todavía porque no existe un export ONNX/Transformers.js verificado para este frontend
 
 ## Semántica del progreso
 
