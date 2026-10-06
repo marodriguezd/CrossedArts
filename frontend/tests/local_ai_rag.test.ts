@@ -315,15 +315,21 @@ import { cosineSimilarity } from '../src/lib/localEmbeddings/engine.ts';
 import { embeddingCache } from '../src/lib/localEmbeddings/cache.ts';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 
-test('8.14 Embedding Registry: Validates multilingual-e5-small model specifications', () => {
+test('8.14 Embedding Registry: Validates browser-ready EmbeddingGemma specifications', () => {
   assert.ok(EMBEDDING_MODELS_REGISTRY.length >= 2);
-  assert.strictEqual(DEFAULT_EMBEDDING_MODEL_ID, 'Xenova/multilingual-e5-small');
+  assert.strictEqual(DEFAULT_EMBEDDING_MODEL_ID, 'onnx-community/embeddinggemma-300m-ONNX');
 
   const model = getEmbeddingModelById(DEFAULT_EMBEDDING_MODEL_ID);
   assert.ok(model, 'Default multilingual model must exist');
-  assert.strictEqual(model?.dimensions, 384);
+  assert.strictEqual(model?.dimension, 768);
+  assert.strictEqual(model?.dimensions, 256);
+  assert.strictEqual(model?.outputDimension, 256);
   assert.strictEqual(model?.quantization, 'q8');
-  assert.strictEqual(model?.license, 'MIT', 'Model license must be MIT');
+  assert.strictEqual(model?.queryPrefix, 'task: search result | query: ');
+  assert.strictEqual(model?.documentPrefix, 'title: none | text: ');
+  assert.strictEqual(model?.preferredBackend, 'wasm');
+  assert.strictEqual(model?.multimodal, false);
+  assert.strictEqual(model?.license, 'Gemma Terms of Use', 'License metadata must match the browser model');
   assert.strictEqual(model?.recommended, true);
 });
 
@@ -396,20 +402,20 @@ test('8.17 Local Embedding Cache & Invalidation: Storage, retrieval, and model s
     title: 'Nota de Test',
     text: 'Contenido de prueba',
     contentHash: computeContentHash('Contenido de prueba'),
-    modelId: 'Xenova/multilingual-e5-small',
-    pipelineVersion: 'v1.1-e5-sha256',
-    dimensions: 384,
-    vector: new Array(384).fill(0.1),
+    modelId: 'onnx-community/embeddinggemma-300m-ONNX',
+    pipelineVersion: 'v2.0-embeddinggemma-mrl256-sha256',
+    dimensions: 256,
+    vector: new Array(256).fill(0.1),
     updatedAt: Date.now()
   };
 
   await embeddingCache.setEntry(testEntry);
   // La identidad de caché es (chunk, modelo, versión de pipeline): la lectura
   // sin el modelo correcto no devuelve el vector de otro modelo.
-  const retrieved = await embeddingCache.getEntry('chunk_test_1', 'Xenova/multilingual-e5-small');
+  const retrieved = await embeddingCache.getEntry('chunk_test_1', 'onnx-community/embeddinggemma-300m-ONNX');
   assert.ok(retrieved);
   assert.strictEqual(retrieved?.title, 'Nota de Test');
-  assert.strictEqual(retrieved?.vector.length, 384);
+  assert.strictEqual(retrieved?.vector.length, 256);
 
   const otherModel = await embeddingCache.getEntry('chunk_test_1', 'Xenova/all-MiniLM-L6-v2');
   assert.strictEqual(otherModel, null, 'Un chunk cacheado para un modelo no es visible para otro');
@@ -418,11 +424,11 @@ test('8.17 Local Embedding Cache & Invalidation: Storage, retrieval, and model s
   const entriesOtherModel = await embeddingCache.getAllEntriesForModel('other-model');
   assert.strictEqual(entriesOtherModel.length, 0);
 
-  const entriesCurrentModel = await embeddingCache.getAllEntriesForModel('Xenova/multilingual-e5-small');
+  const entriesCurrentModel = await embeddingCache.getAllEntriesForModel('onnx-community/embeddinggemma-300m-ONNX');
   assert.ok(entriesCurrentModel.length >= 1);
 
   // Invalidación por versión de pipeline
-  const entriesOldPipeline = await embeddingCache.getAllEntriesForModel('Xenova/multilingual-e5-small', 'v1.0-deprecated');
+  const entriesOldPipeline = await embeddingCache.getAllEntriesForModel('onnx-community/embeddinggemma-300m-ONNX', 'v1.0-deprecated');
   assert.strictEqual(entriesOldPipeline.length, 0);
 
   // Limpiar caché
@@ -471,24 +477,24 @@ test('9.1 Cryptographic Content Hashing (SHA-256): Determinism and collision avo
   assert.strictEqual(hash1.length, 64, 'SHA-256 output must be 64 hex characters');
 });
 
-test('9.2 Vector Normalization & Validation Contract: 384 dimensions, finite check, unit norm', () => {
-  // 1. Vector válido de 384 dimensiones
-  const raw = new Array(384).fill(0.5);
-  const normalized = l2NormalizeVector(raw);
-  assert.strictEqual(normalized.length, 384);
+test('9.2 Vector Normalization & Validation Contract: model-aware dimensions, finite check, unit norm', () => {
+  // 1. Vector válido con la dimensión almacenada por defecto (256d MRL)
+  const raw = new Array(256).fill(0.5);
+  const normalized = l2NormalizeVector(raw, 256);
+  assert.strictEqual(normalized.length, 256);
   const norm = vectorNorm(normalized);
   assert.ok(Math.abs(norm - 1.0) < 1e-5, `Norm must be approximately 1.0, got ${norm}`);
 
   // 2. Vector con longitud inválida rechaza
-  assert.throws(() => l2NormalizeVector([0.1, 0.2]), /exactamente 384 dimensiones/);
+  assert.throws(() => l2NormalizeVector([0.1, 0.2], 256), /exactamente 256 dimensiones/);
 
   // 3. Vector con NaN o Infinity rechaza
-  const nanVec = new Array(384).fill(0.1);
+  const nanVec = new Array(256).fill(0.1);
   nanVec[10] = NaN;
   assert.throws(() => l2NormalizeVector(nanVec), /no finito/);
 
   // 4. Vector de ceros rechaza norma 0
-  const zeroVec = new Array(384).fill(0.0);
+  const zeroVec = new Array(256).fill(0.0);
   assert.throws(() => l2NormalizeVector(zeroVec), /norma nula o inválida/);
 });
 
