@@ -1,5 +1,3 @@
-import os
-from pathlib import Path
 from typing import Optional
 from backend.app.core.settings import settings
 

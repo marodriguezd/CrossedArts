@@ -1,5 +1,4 @@
 import uuid
-import pytest
 from sqlalchemy.orm import Session
 
 from backend.app.models.resource import Course, Book

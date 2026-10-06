@@ -1,13 +1,12 @@
 import uuid
 from sqlalchemy.orm import Session
-from sqlalchemy import select
 from fastapi.testclient import TestClient
 
 from backend.app.models.resource import Course, Book, MediaAsset
-from backend.app.models.activity import Note, LearningSession
-from backend.app.models.content import Quiz, ContentIndex, EmbeddingRecord
+from backend.app.models.activity import LearningSession
+from backend.app.models.content import ContentIndex
 from backend.app.models.base import ResourceStatus
-from backend.app.services.llm import LLMService, PromptTemplateRegistry
+from backend.app.services.llm import PromptTemplateRegistry
 from backend.app.services.context import ContextRetrievalService
 from backend.app.services.insights import LearningInsightsService
 from backend.app.services.embedding import EmbeddingService
@@ -95,7 +94,6 @@ def test_ai_api_quiz_generation(client: TestClient, db: Session):
     assert len(response_list.json()) == 1
 
 def test_concept_mastery_and_gaps_insights(db: Session):
-    from backend.app.services.knowledge_service import KnowledgeService
     from backend.app.services.note import NoteService
     
     # 1. Crear concepto y nota para activar el parser

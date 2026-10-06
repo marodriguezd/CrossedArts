@@ -1,5 +1,5 @@
 import { dbBridge } from './sqliteBridge.ts';
-import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, Module, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter, PracticeWork, PracticeWorkKind, PracticeWorkStatus } from '../types/models.ts';
+import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter, PracticeWork, PracticeWorkKind, PracticeWorkStatus } from '../types/models.ts';
 import { calculateBookProgress, calculateSM2, validateKnowledgeConnection, generateDailyActivitySeries } from '../services/domainLogic.ts';
 import {
   buildCoursePackage,
@@ -40,22 +40,23 @@ function asNullableNumber(value: unknown): number | null {
 }
 
 /** Mapea una fila cruda de `practice_work` a un objeto de dominio tipado. */
-function mapPracticeWorkRow(row: any[]): PracticeWork {
+function mapPracticeWorkRow(row: readonly unknown[]): PracticeWork {
+  const r = new SqlRow(row);
   return {
-    id: row[0],
-    title: row[1],
-    description: row[2] ?? undefined,
-    resource_id: row[3] ?? undefined,
-    lesson_id: row[4] ?? undefined,
-    concept_id: row[5] ?? undefined,
-    kind: (row[6] || 'exercise') as PracticeWorkKind,
-    status: (row[7] || 'PLANNED') as PracticeWorkStatus,
-    artifact_url: row[8] ?? undefined,
-    notes: row[9] ?? undefined,
-    self_rating: row[10] === null || row[10] === undefined ? undefined : Number(row[10]),
-    completed_at: row[11] ?? undefined,
-    created_at: row[12] ?? undefined,
-    updated_at: row[13] ?? undefined
+    id: r.str(0),
+    title: r.str(1),
+    description: r.optionalStr(2),
+    resource_id: r.optionalStr(3),
+    lesson_id: r.optionalStr(4),
+    concept_id: r.optionalStr(5),
+    kind: (r.optionalStr(6) as PracticeWorkKind) || 'exercise',
+    status: (r.optionalStr(7) as PracticeWorkStatus) || 'PLANNED',
+    artifact_url: r.optionalStr(8),
+    notes: r.optionalStr(9),
+    self_rating: r.optionalStr(10) === undefined ? undefined : r.num(10),
+    completed_at: r.optionalStr(11),
+    created_at: r.optionalStr(12),
+    updated_at: r.optionalStr(13)
   };
 }
 
@@ -100,7 +101,7 @@ class SqlRow {
   }
 }
 
-function mapLearningSessionRow(row: any[]): LearningSession {
+function mapLearningSessionRow(row: readonly unknown[]): LearningSession {
   const r = new SqlRow(row);
   return {
     id: r.str(0),

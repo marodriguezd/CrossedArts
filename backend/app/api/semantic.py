@@ -32,7 +32,7 @@ def semantic_search(
 
     La paginación (`limit`/`offset`) se aplica sobre el ranking de similitud: el
     top-k se mantiene acotado en memoria y nunca se materializa la colección
-    completa de embeddings (A-4/A-8).
+    completa de embeddings.
     """
     return SemanticSearchService.search(
         db, query=q, limit=limit, offset=offset, resource_type=resource_type
@@ -46,7 +46,7 @@ def trigger_reindex(background_tasks: BackgroundTasks):
     def run_reindex():
         # `SessionLocal` se importa dentro de la función: las pruebas parchean
         # `backend.app.core.database.SessionLocal` para que el trabajo en
-        # segundo plano use SIEMPRE la base de datos de prueba (A-1).
+        # segundo plano use SIEMPRE la base de datos de prueba.
         from backend.app.core.database import SessionLocal as session_factory
         db = session_factory()
         try:

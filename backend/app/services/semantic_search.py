@@ -3,13 +3,13 @@ Semantic Search Service.
 
 Proporciona búsqueda por similitud sobre todo el contenido indexado.
 
-Escalabilidad (A-4): el cálculo de similitud se delega en
+Escalabilidad: el cálculo de similitud se delega en
 `SQLiteVectorStore`, que filtra por modelo/entidad en SQL, recorre los
 registros en lotes y mantiene solo el top-k en memoria. La semántica existente
 para bibliotecas pequeñas se conserva (umbral 0.25, orden por puntuación,
 límite de registros explorados configurable).
 
-Tipos de recurso relacionados (A-7): `get_related_resources` devuelve el tipo
+Tipos de recurso relacionados: `get_related_resources` devuelve el tipo
 de dominio REAL de cada recurso (course/book/...), resuelto con consultas en
 lote en lugar de asumir "course" para todo.
 """
@@ -304,7 +304,7 @@ class SemanticSearchService:
             exclude_entity_ids=all_entity_ids,
         )
 
-        # Resolución en lote: entidad -> recurso -> tipo real (A-7, sin N+1).
+        # Resolución en lote: entidad -> recurso -> tipo real (sin N+1).
         entity_to_resource = cls._resolve_resource_ids(db, [h.entity_id for h in hits])
         ordered_resource_ids = []
         best_score_by_resource: Dict[object, float] = {}

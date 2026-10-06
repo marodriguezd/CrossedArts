@@ -2,10 +2,9 @@
 LLM Service using LangChain.
 Provides chat model abstraction with Mock, Ollama, and OpenAI providers.
 """
-from typing import Optional, AsyncGenerator, Dict, Any
+from typing import Optional, AsyncGenerator, Dict
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage
 from backend.app.core.settings import settings
 from backend.app.core.logging import get_logger
 

@@ -15,7 +15,6 @@ import {
   CheckCircle,
   Loader2,
   Database,
-  Link2,
   ChevronDown,
   ChevronRight,
   Calendar,

@@ -1,5 +1,5 @@
 import { tokenizeLexical } from '../localRag/retrieval.ts';
-import type { GeneratedFlashcard, GeneratedQuestion, GroundingCheckResult } from './types.ts';
+import type { GroundingCheckResult } from './types.ts';
 
 /**
  * Validador heurístico de fundamentación (grounding check):

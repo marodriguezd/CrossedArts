@@ -6,7 +6,7 @@ import zipfile
 import defusedxml.ElementTree as ET
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any, Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -238,8 +238,8 @@ class EPUBExtractor(ContentExtractor):
                 if creator_elem is not None:
                     author = creator_elem.text
 
-                # Intentar leer TOC desde manifiesto (e.g. toc.ncx)
-                # Por simplicidad de MVP, extraeremos el texto de los capítulos secuencialmente
+                # Leer el manifiesto OPF y recorrer el spine para extraer los
+                # capítulos en su orden de lectura.
                 manifest_items = {}
                 for item in root_opf.findall(".//opf:manifest/opf:item", ns_opf):
                     manifest_items[item.attrib["id"]] = item.attrib["href"]

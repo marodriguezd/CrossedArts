@@ -18,7 +18,6 @@ export async function parseEpubFile(
   }
 
   // Parsear entradas descomprimidas del zip o extraer fragmentos de texto XHTML
-  const decoder = new TextDecoder('utf-8');
   const latinDecoder = new TextDecoder('latin1');
   const rawString = latinDecoder.decode(bytes);
 

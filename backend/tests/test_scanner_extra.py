@@ -1,5 +1,4 @@
 import json
-import yaml
 import pytest
 import uuid
 from pathlib import Path
@@ -10,7 +9,7 @@ from backend.app.core.settings import settings
 from backend.app.models.resource import Course, Book, MediaAsset
 from backend.app.models.course_structure import Module, Lesson
 from backend.app.models.base import ResourceStatus, LessonType
-from backend.app.services.scanner import ScannerManager, CourseScanner, BookScanner
+from backend.app.services.scanner import CourseScanner, BookScanner
 
 
 @pytest.fixture(autouse=True)

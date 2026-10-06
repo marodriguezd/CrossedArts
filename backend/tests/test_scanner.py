@@ -1,6 +1,5 @@
 import json
 import yaml
-import pytest
 from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import select

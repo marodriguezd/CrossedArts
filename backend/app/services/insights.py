@@ -1,10 +1,10 @@
-from typing import Dict, Any, List
-from sqlalchemy import select, func, desc, and_, or_
+from typing import Dict, Any
+from sqlalchemy import select, func, desc, and_
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from backend.app.core.utils import utc_now_naive
 
-from backend.app.models.resource import LearningResource, Course, Book
+from backend.app.models.resource import LearningResource
 from backend.app.models.activity import LearningSession, Note
 from backend.app.models.base import ResourceStatus
 from backend.app.models.knowledge import Concept, KnowledgeConnection

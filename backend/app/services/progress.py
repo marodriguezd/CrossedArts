@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from backend.app.models.resource import Course, Book
 from backend.app.models.course_structure import Lesson

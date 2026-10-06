@@ -11,7 +11,7 @@ export { cn, Kbd } from './primitives.ts';
 export type { KbdProps } from './primitives.ts';
 
 /* -------------------------------------------------------------------------- */
-/* Button / IconButton                                                         */
+/* Button                                                                      */
 /* -------------------------------------------------------------------------- */
 
 type ButtonVariant = 'solid' | 'outline' | 'quiet' | 'danger';
@@ -48,26 +48,6 @@ export const Button: React.FC<ButtonProps> = ({
       'disabled:opacity-50 disabled:pointer-events-none',
       BUTTON_VARIANTS[variant],
       BUTTON_SIZES[size],
-      className
-    )}
-    {...props}
-  />
-);
-
-interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  /** Nombre accesible obligatorio: los iconos solos nunca quedan sin etiqueta. */
-  label: string;
-}
-
-export const IconButton: React.FC<IconButtonProps> = ({ label, className, type = 'button', ...props }) => (
-  <button
-    type={type}
-    aria-label={label}
-    title={label}
-    className={cn(
-      'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-line',
-      'text-muted hover:text-ink hover:bg-accent-soft/60 transition-colors duration-fast',
-      'disabled:opacity-50',
       className
     )}
     {...props}
@@ -290,7 +270,7 @@ export const InlineStatus: React.FC<InlineStatusProps> = ({ tone = 'info', child
 );
 
 /* -------------------------------------------------------------------------- */
-/* Panel / SectionHeading / MetadataRow                                        */
+/* Panel / SectionHeading                                                      */
 /* -------------------------------------------------------------------------- */
 
 interface PanelProps {
@@ -323,19 +303,3 @@ export const SectionHeading: React.FC<SectionHeadingProps> = ({ title, descripti
     {action}
   </div>
 );
-
-interface MetadataRowProps {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-}
-
-/** Fila de metadatos discreta: etiqueta apagada + valor con más presencia. */
-export const MetadataRow: React.FC<MetadataRowProps> = ({ label, children, className }) => (
-  <div className={cn('flex items-baseline justify-between gap-3 py-1.5 text-meta', className)}>
-    <dt className="text-faint">{label}</dt>
-    <dd className="text-right text-muted font-medium">{children}</dd>
-  </div>
-);
-
-/* -------------------------------------------------------------------------- */

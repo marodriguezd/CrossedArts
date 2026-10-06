@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from fastapi.testclient import TestClient
 
-from backend.app.models.resource import Course, Book, MediaAsset
+from backend.app.models.resource import Course
 from backend.app.models.activity import Note
-from backend.app.models.content import EmbeddingRecord, ContentIndex, Transcript, TranscriptSegment
+from backend.app.models.content import EmbeddingRecord
 from backend.app.models.base import ResourceStatus
 from backend.app.services.embedding import EmbeddingService, CosineSimilarityCalculator
 from backend.app.services.semantic_search import SemanticSearchService

@@ -2,9 +2,6 @@ import uuid
 from datetime import date, datetime
 from typing import List, Optional
 from pydantic import BaseModel
-from backend.app.schemas.common import BaseResponse
-from backend.app.schemas.resource import ResourceBaseResponse
-from backend.app.schemas.course import TaskResponse
 
 class DashboardSummaryResponse(BaseModel):
     total_resources: int

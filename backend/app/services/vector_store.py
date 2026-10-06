@@ -1,5 +1,5 @@
 """
-Almacén vectorial ligero sobre SQLite (hallazgo A-4).
+Almacén vectorial ligero sobre SQLite.
 
 Contexto y decisión:
 - CrossedArts es local-first: NO se introduce ninguna infraestructura externa

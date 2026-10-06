@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Upload, RotateCcw, Bot, ShieldCheck, Database, HardDrive, Check, Cpu, AlertTriangle, RefreshCw, Trash2, Info, Palette } from 'lucide-react';
+import { Download, Upload, RotateCcw, Database, Check, Cpu, AlertTriangle, RefreshCw, Trash2, Info, Palette } from 'lucide-react';
 import { exportSqliteFile, importSqliteFile, exportJsonBackup, importJsonBackup } from '../db/exportImport.ts';
 import { describeImportResult, validateCoursePackage } from '../services/coursePackage.ts';
 import { dbBridge } from '../db/sqliteBridge.ts';
@@ -38,7 +38,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   // Semantic Embedding & Indexing state
   const [embStatus, setEmbStatus] = useState<EmbeddingEngineStatus>(localEmbeddingEngine.getStatus());
-  const [embProgress, setEmbProgress] = useState(localEmbeddingEngine.getProgress());
+  const [, setEmbProgress] = useState(localEmbeddingEngine.getProgress());
   const [embCount, setEmbCount] = useState<number>(0);
   const [indexingText, setIndexingText] = useState<string | null>(null);
   const [embError, setEmbError] = useState<string | null>(null);

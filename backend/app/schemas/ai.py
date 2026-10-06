@@ -3,7 +3,7 @@ Pydantic models for AI responses.
 Used with LangChain's structured output for type-safe LLM responses.
 """
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import Literal
 
 
 class QuizQuestion(BaseModel):

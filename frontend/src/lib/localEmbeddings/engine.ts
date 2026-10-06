@@ -1,6 +1,6 @@
 import { DEFAULT_EMBEDDING_MODEL_ID, getEmbeddingModelById } from './registry.ts';
 import { detectEmbeddingCapabilities, type EmbeddingRuntimeBackend } from './capabilities.ts';
-import { embeddingCache, EMBEDDING_PIPELINE_VERSION, expectedDimensionsForModel, type CachedVectorEntry } from './cache.ts';
+import { embeddingCache, EMBEDDING_PIPELINE_VERSION, expectedDimensionsForModel } from './cache.ts';
 import type { SemanticChunk } from './chunking.ts';
 
 export type EmbeddingEngineStatus =

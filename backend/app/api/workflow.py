@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional, Dict, Any
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,6 @@ from backend.app.schemas.workflow import (
     LearningHabitResponse, CreateLearningHabitRequest, HabitStatsResponse,
     ReviewItemResponse, CreateReviewItemRequest, SubmitReviewRequest
 )
-from backend.app.models.activity import Note
 from backend.app.models.content import Quiz
 from backend.app.models.workflow import ReviewItem
 

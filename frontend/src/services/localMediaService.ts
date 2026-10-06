@@ -73,11 +73,6 @@ export function isSupportedMedia(fileName: string): boolean {
 
 export type MatchTier = 'EXACT_PATH' | 'EXACT_NAME' | 'STEM_MATCH' | 'TITLE_FALLBACK';
 
-export interface MatchResultItem {
-  file: DiscoveredMediaFile;
-  tier: MatchTier;
-}
-
 /**
  * Emparejamiento determinista entre archivos descubiertos y lecciones por niveles de fuerza.
  * Niveles jerárquicos:

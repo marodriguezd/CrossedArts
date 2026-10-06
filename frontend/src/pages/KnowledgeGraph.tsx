@@ -37,7 +37,7 @@ import {
   computeConnectivityStats
 } from '../services/graphExploration.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
-import { Button, Chip, cn } from '../components/ui/index.tsx';
+import { Button, Chip } from '../components/ui/index.tsx';
 
 interface KnowledgeGraphProps {
   version?: number;

@@ -15,12 +15,11 @@ import time
 import uuid
 
 import pytest
-from sqlalchemy import select
 
 from backend.app.models.activity import Note
-from backend.app.models.content import ContentIndex, EmbeddingRecord  # noqa: F401
+from backend.app.models.content import EmbeddingRecord
 from backend.app.models.base import ResourceStatus
-from backend.app.models.resource import Book, Course, MediaAsset  # noqa: F401
+from backend.app.models.resource import Book, Course
 from backend.app.services.semantic_search import SemanticSearchService
 from backend.app.services.vector_store import SQLiteVectorStore, cosine_similarity
 

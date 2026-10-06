@@ -1,4 +1,3 @@
-import pytest
 import uuid
 from pathlib import Path
 from sqlalchemy.orm import Session
@@ -6,7 +5,7 @@ from sqlalchemy import select
 from fastapi.testclient import TestClient
 
 from backend.app.services.thumbnail import ThumbnailService
-from backend.app.services.scanner import CourseScanner, BookScanner, ScannerManager
+from backend.app.services.scanner import CourseScanner, BookScanner
 from backend.app.models.base import ResourceStatus
 from backend.app.models.resource import Course, Book, MediaAsset
 from backend.app.models.activity import MediaProgress

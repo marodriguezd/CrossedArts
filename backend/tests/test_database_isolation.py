@@ -12,12 +12,10 @@ Estas pruebas aseguran:
   3. El endpoint de reindexado (que abre su propia sesión) escribe en la base
      de la prueba.
 """
-import os
 from pathlib import Path
 
 import pytest
 from sqlalchemy import inspect
-from sqlalchemy.orm import sessionmaker
 
 TESTS_DIR = Path(__file__).parent
 

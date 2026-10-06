@@ -1,4 +1,4 @@
-import type { GraphNodeType, GraphRelationType, ResourceDestination, SearchResult, ConceptNode, DailyActivityPoint, TimeRangeFilter, Note, Flashcard, Module, Lesson } from '../types/models.ts';
+import type { GraphNodeType, GraphRelationType, ResourceDestination, SearchResult, ConceptNode, DailyActivityPoint, TimeRangeFilter, Note, Flashcard, Module } from '../types/models.ts';
 
 export interface BookProgressCalculation {
   clampedPage: number;
@@ -128,17 +128,6 @@ export function parseUtcTimestamp(value: string | null | undefined): number {
   const normalized = value.trim().replace(' ', 'T');
   const withZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : `${normalized}Z`;
   return Date.parse(withZone);
-}
-
-/**
- * Calcula la duración en minutos entre dos marcas temporales almacenadas por SQLite
- * (formato `YYYY-MM-DD HH:MM:SS`, interpretado como UTC de forma consistente).
- */
-export function computeStudyDurationMinutes(startedAt: string, endedAt: string): number {
-  const start = parseUtcTimestamp(startedAt);
-  const end = parseUtcTimestamp(endedAt);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
-  return Math.max(1, Math.round((end - start) / 60000));
 }
 
 /**

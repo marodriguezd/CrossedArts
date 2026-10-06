@@ -1,7 +1,6 @@
 import uuid
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import select
 
 from backend.app.core.database import get_db
 from backend.app.models.resource import Course

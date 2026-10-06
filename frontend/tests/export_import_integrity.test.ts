@@ -34,7 +34,7 @@ test('4.2 SQLite database roundtrip import restores complete database state from
   assert.strictEqual(concepts.length, 0, 'Temporary record should not exist in restored database');
 });
 
-test('4.3 JSON backup dump extracts all 10 tables with exact relational content', () => {
+test('4.3 JSON backup dump extracts every registered table with exact relational content', () => {
   const dump = generateJsonBackup();
   const tables = getDatabaseTables();
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sparkles, Plus, Trash2, Check, AlertCircle, BookOpen, Layers } from 'lucide-react';
+import { X, Sparkles, Trash2, Check, AlertCircle, BookOpen } from 'lucide-react';
 import type { GeneratedFlashcard, StudyDifficulty } from '../../lib/studyGeneration/types.ts';
 import { aiService } from '../../ai/aiService.ts';
 import { dao } from '../../db/dao.ts';

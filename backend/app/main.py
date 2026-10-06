@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         logger.info("Base de datos SQLite inicializada (modo AUTO_CREATE_TABLES).")
     elif not os.getenv("SKIP_MIGRATION_VALIDATION", "0").lower() in ("1", "true", "yes"):
-        # Validación del estado de migraciones (A-2): detectar de forma temprana
+        # Validación del estado de migraciones: detectar de forma temprana
         # una base sin aplicar o con un esquema que no corresponde al historial.
         # Es de solo lectura y NO repara nada por su cuenta.
         from backend.app.core.migrations import validate_migration_state
@@ -70,7 +70,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configuración de CORS (A-3).
+# Configuración de CORS.
 #
 # Antes se usaba allow_origins=["*"] junto a allow_credentials=True, una
 # combinación innecesariamente amplia que los navegadores rechazan para

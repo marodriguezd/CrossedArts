@@ -18,7 +18,6 @@ import {
   ArrowDown,
   ArrowRight,
   FolderCheck,
-  Search,
   Check
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';

@@ -216,13 +216,6 @@ export interface ConceptEdge {
   derived?: boolean;
 }
 
-export interface KnowledgeConnectionInput {
-  sourceId: string;
-  targetId: string;
-  relationType: string;
-  weight?: number;
-}
-
 export interface KnowledgeConnection {
   id: string;
   source_id: string;

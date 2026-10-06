@@ -12,7 +12,7 @@ import { twMerge } from 'tailwind-merge';
  * quisiera usar `cn` o `Kbd` en sus pruebas.
  *
  * La salida es mover esas dos piezas a un `.ts` escrito con `createElement` y
- * reexportarlas desde `ui/index.tsx`, de modo que sus 17 consumidores no cambian.
+ * reexportarlas desde `ui/index.tsx`, de modo que sus consumidores no cambian.
  * Es el mismo precio que ya pagó `components/ai/MarkdownMessage.ts`.
  *
  * NO añadas aquí componentes con JSX: perderían justo esta propiedad.

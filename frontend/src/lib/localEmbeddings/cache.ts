@@ -1,4 +1,3 @@
-import type { SemanticChunk } from './chunking.ts';
 import { getEmbeddingModelById } from './registry.ts';
 
 export const EMBEDDING_PIPELINE_VERSION = 'v1.1-e5-sha256';

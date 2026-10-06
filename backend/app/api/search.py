@@ -22,7 +22,7 @@ def search(
 
     La paginación (`limit`/`offset`) se aplica a nivel de base de datos: cada
     fuente consulta como mucho `limit + offset` filas, así que responder una
-    página no exige cargar en memoria todas las coincidencias (A-8).
+    página no exige cargar en memoria todas las coincidencias.
     """
     return SearchService.search(
         db, query=q, resource_type=resource_type, limit=limit, offset=offset

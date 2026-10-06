@@ -1,5 +1,4 @@
 import uuid
-from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from backend.app.services.semantic_search import SemanticSearchService
 

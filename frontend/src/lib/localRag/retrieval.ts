@@ -333,7 +333,6 @@ export async function retrieveLocalContext(
   // 6. Búsqueda semántica usando el caché de vectores (si el motor o caché están disponibles)
   let semanticMatches: { chunkId: string; score: number; entry: any }[] = [];
   let isSemanticReady = localEmbeddingEngine.getStatus() === 'ready';
-  let modeUsed: 'lexical' | 'hybrid' = 'lexical';
 
   // Preparación automática de embeddings cuando la recuperación semántica es
   // útil. Si tarda o falla, se degrada inmediatamente a recuperación léxica en SQLite.
@@ -474,8 +473,6 @@ export async function retrieveLocalContext(
 
     mergedMap.set(key, { ...base, chunkKey: key });
   }
-
-  if (semanticRanked.length > 0) modeUsed = 'hybrid';
 
   const allMerged = Array.from(mergedMap.values());
 

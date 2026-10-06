@@ -21,7 +21,6 @@ import {
   Edit3,
   X,
   Save,
-  Link2,
   Lightbulb,
   BookOpen,
   Layers,
@@ -51,7 +50,7 @@ import {
 import { FlashcardGenerationModal } from '../study/FlashcardGenerationModal.tsx';
 import { MarkdownViewer } from '../common/MarkdownViewer.tsx';
 import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
-import { Button, Badge, ProgressBar, EmptyState, InlineStatus, cn } from '../ui/index.tsx';
+import { Button, Badge, EmptyState, InlineStatus, cn } from '../ui/index.tsx';
 
 interface LessonWorkspaceProps {
   courseId: string;

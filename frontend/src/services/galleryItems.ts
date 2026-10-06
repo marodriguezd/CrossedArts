@@ -6,6 +6,7 @@
  * cada tipo. Al vivir fuera de React se prueba con node:test sin DOM.
  */
 import type { Book, Course, ResourceStatus } from '../types/models.ts';
+import { clampPercent } from './mountainPath.ts';
 
 /** Elemento ya normalizado de la galería. */
 export interface GalleryItem {
@@ -34,11 +35,6 @@ export function coursePercent(course: Pick<Course, 'completed_lessons' | 'total_
 /** Porcentaje de lectura de un libro, acotado a [0, 100]. */
 export function bookPercent(book: Pick<Book, 'reading_percentage'>): number {
   return clampPercent(Math.round(book.reading_percentage || 0));
-}
-
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(100, Math.max(0, value));
 }
 
 /**

@@ -11,7 +11,6 @@ from backend.app.models.resource import Course, Book, MediaAsset, LearningResour
 from backend.app.models.course_structure import Module, Lesson
 from backend.app.models.base import ResourceStatus, CourseDifficulty, LessonType
 from backend.app.core.settings import settings
-from backend.app.core.logging import get_logger
 from backend.app.schemas.ingestion import (
     ImportResourceRequest, ImportResultResponse,
     StorageStrategy, StructureStrategy, DirectoryValidationResponse

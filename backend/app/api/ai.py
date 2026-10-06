@@ -1,13 +1,12 @@
 import uuid
 import json
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from backend.app.core.database import get_db
 from backend.app.models.content import Quiz, ContentIndex
-from backend.app.models.resource import MediaAsset
 from backend.app.models.activity import Note
 
 from backend.app.services.llm import LLMService

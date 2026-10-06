@@ -1,16 +1,15 @@
-import re
 import unicodedata
 from typing import List, Dict, Any, Optional
-from sqlalchemy import select, or_, and_, func
+from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session, joinedload
 
-from backend.app.models.resource import LearningResource, Course, Book, MediaAsset
+from backend.app.models.resource import LearningResource, MediaAsset
 from backend.app.models.activity import Note
-from backend.app.models.content import ExtractedMetadata, ContentIndex, TranscriptSegment, Transcript
+from backend.app.models.content import ContentIndex, TranscriptSegment, Transcript
 
 # Límite duro de resultados por fuente cuando el llamador no pide uno concreto.
 # Cada consulta SQL aplica `limit + offset` a nivel de base de datos: nunca se
-# cargan colecciones completas solo para devolver una página pequeña (A-8).
+# cargan colecciones completas solo para devolver una página pequeña.
 DEFAULT_SEARCH_LIMIT = 50
 MAX_SEARCH_LIMIT = 200
 
@@ -37,7 +36,7 @@ class SearchService:
         - Transcripciones de lecciones de video
         - Metadatos y contenido extraído de PDF/EPUB
 
-        Paginación (A-8): `limit`/`offset` se aplican sobre el ranking combinado.
+        Paginación: `limit`/`offset` se aplican sobre el ranking combinado.
         Cada consulta fuente carga como mucho `limit + offset` filas directamente
         desde la base de datos (SQL LIMIT), de modo que devolver una página nunca
         exige materializar todas las coincidencias. El comportamiento por defecto

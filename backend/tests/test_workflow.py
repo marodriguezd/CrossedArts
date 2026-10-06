@@ -1,14 +1,11 @@
 import uuid
-import math
-from datetime import timedelta, date
+from datetime import timedelta
 from backend.app.core.utils import utc_now_naive
 from sqlalchemy.orm import Session
 
 from backend.app.models.resource import Book
 from backend.app.models.activity import Note
-from backend.app.models.content import Quiz
 from backend.app.services.workflow import WorkflowService
-from backend.app.models.workflow import ReviewItem
 
 def test_learning_paths(db: Session):
     # 1. Crear un path

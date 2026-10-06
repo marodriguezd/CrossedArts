@@ -10,9 +10,6 @@ from backend.app.models.workflow import (
     LearningPath, LearningPathItem, StudyPlan, Goal, GoalProgress,
     LearningHabit, HabitRecord, ReviewItem, ReviewHistory
 )
-from backend.app.models.resource import LearningResource, Course, Book
-from backend.app.models.course_structure import Lesson, Task
-from backend.app.models.activity import Note, LearningSession
 
 class WorkflowService:
     # ----------------- LEARNING PATHS -----------------

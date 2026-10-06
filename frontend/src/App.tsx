@@ -25,7 +25,6 @@ import {
   type LessonIndexRow,
   type ResourceIndexRow,
   type PaletteItem,
-  type PaletteNavigation,
 } from './services/commandPalette.ts';
 import { exportSqliteFile } from './db/exportImport.ts';
 import { Loader2, AlertTriangle, X, RotateCcw } from 'lucide-react';

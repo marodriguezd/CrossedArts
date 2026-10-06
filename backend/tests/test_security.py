@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from backend.app.core.security import is_safe_path
 from backend.app.core.settings import settings
 

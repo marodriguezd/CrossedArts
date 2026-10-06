@@ -8,7 +8,7 @@ from backend.app.core.database import get_db
 from backend.app.core.settings import settings
 from backend.app.models.resource import LearningResource, Course, Book
 from backend.app.models.base import ResourceStatus
-from backend.app.schemas.resource import ResourceResponse, CourseBaseResponse, BookBaseResponse, UpdateResourceRequest
+from backend.app.schemas.resource import ResourceResponse, UpdateResourceRequest
 from backend.app.api.dependencies import get_http_exception
 from backend.app.core.logging import get_logger
 
@@ -142,7 +142,7 @@ def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
     from backend.app.models.content import EmbeddingRecord, ContentIndex, TranscriptSegment, Transcript
     from backend.app.models.course_structure import Lesson, Module
     from backend.app.models.knowledge import KnowledgeConnection
-    from sqlalchemy import or_, and_, select
+    from sqlalchemy import or_, select
 
     note_ids = db.scalars(select(Note.id).where(Note.resource_id == resource_id)).all()
     media_asset_ids = db.scalars(select(MediaAsset.id).where(MediaAsset.resource_id == resource_id)).all()
@@ -185,7 +185,6 @@ def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
 
     # Eliminar archivos físicos asociados
     import shutil
-    from pathlib import Path
     storage_dir = settings.media_dir / str(resource_id)
     if storage_dir.exists() and storage_dir.is_dir():
         try:

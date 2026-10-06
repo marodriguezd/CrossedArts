@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useReducer, useMemo, useCallback } from 'react';
 import { Flashcard, LearningResource, LearningSession, StudySessionMode } from '../types/models.ts';
 import {
-  Brain,
   CheckCircle2,
   RotateCcw,
   Sparkles,

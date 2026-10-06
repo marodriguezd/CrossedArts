@@ -1,7 +1,7 @@
 """
 Validación del estado de migraciones Alembic al arrancar la aplicación.
 
-Objetivo (hallazgo A-2): detectar de forma temprana una base de datos cuyo
+Objetivo: detectar de forma temprana una base de datos cuyo
 esquema no corresponde al historial de migraciones, con un mensaje accionable,
 en lugar de permitir que la aplicación arranque y falle más tarde en un
 ALTER TABLE o una consulta.

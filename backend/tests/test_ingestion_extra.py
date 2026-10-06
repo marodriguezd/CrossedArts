@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from backend.app.core.settings import settings
-from backend.app.models.resource import Course, MediaAsset
+from backend.app.models.resource import Course
 from backend.app.models.course_structure import Module, Lesson
 from backend.app.schemas.ingestion import ImportResourceRequest
 from backend.app.services.ingestion import IngestionService

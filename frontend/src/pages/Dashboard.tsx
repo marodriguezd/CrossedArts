@@ -12,11 +12,9 @@ import {
   Flame,
   History,
   BarChart3,
-  Calendar,
   Clock,
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
-import { resolveLocalDay } from '../services/localDate.ts';
 import { getStoredPlaybackSeconds, formatPlaybackTime } from '../services/domainLogic.ts';
 import { Button, ProgressBar, Panel, SectionHeading, EmptyState, Chip, Badge, cn } from '../components/ui/index.tsx';
 import { ResourceGallery, type GalleryEntry } from '../components/dashboard/ResourceGallery.tsx';
@@ -96,7 +94,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [timeRange, setTimeRange] = useState<TimeRangeFilter>('7d');
   const [chartMetric, setChartMetric] = useState<'minutes' | 'reviews'>('minutes');
   const [activityPoints, setActivityPoints] = useState<DailyActivityPoint[]>([]);
-  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [, setLoadingActivity] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -359,7 +357,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {activityPoints.map((point) => {
                     const val = chartMetric === 'minutes' ? point.minutes : point.reviews;
                     const heightPct = maxValue > 0 ? Math.min(100, Math.max(val > 0 ? 8 : 2, Math.round((val / maxValue) * 100))) : 2;
-                    const isToday = point.date === resolveLocalDay().day;
 
                     return (
                       <div

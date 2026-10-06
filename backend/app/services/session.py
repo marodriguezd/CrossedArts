@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 from backend.app.core.utils import utc_now_naive
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from backend.app.models.activity import LearningSession

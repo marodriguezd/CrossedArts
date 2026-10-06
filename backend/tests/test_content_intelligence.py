@@ -5,9 +5,9 @@ from sqlalchemy import select
 
 from backend.app.models.resource import Course, Book, MediaAsset
 from backend.app.models.activity import Note
-from backend.app.models.content import ExtractedMetadata, ContentIndex, Transcript, TranscriptSegment
+from backend.app.models.content import ExtractedMetadata, Transcript, TranscriptSegment
 from backend.app.models.base import ResourceStatus
-from backend.app.services.extractor import PDFExtractor, EPUBExtractor, TranscriptExtractor, ContentIntelligenceManager
+from backend.app.services.extractor import PDFExtractor, TranscriptExtractor
 from backend.app.services.search import SearchService
 
 def test_pdf_extraction(db: Session, tmp_path: Path):

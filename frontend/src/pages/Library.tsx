@@ -5,7 +5,7 @@ import { resolveSearchResultDestination, filterSupportedFiles, adjustBookPage } 
 import type { MediaScanReport } from '../services/localMediaService.ts';
 import { dao } from '../db/dao.ts';
 import { localIngestionService } from '../lib/localIngestion/service.ts';
-import type { IngestionProgress, IngestionResult } from '../lib/localIngestion/types.ts';
+import type { IngestionProgress } from '../lib/localIngestion/types.ts';
 import { Button, Chip, SearchInput, Panel, SectionHeading, Badge, InlineStatus, ProgressBar, EmptyState, cn } from '../components/ui/index.tsx';
 
 interface LibraryProps {
@@ -375,7 +375,7 @@ export const Library: React.FC<LibraryProps> = ({
   const handleConfirmPreviewImport = async () => {
     if (!previewDoc) return;
     setIsImporting(true);
-    const { file, parsed } = previewDoc;
+    const { file } = previewDoc;
 
     try {
       const res = await localIngestionService.ingestFile(file, {

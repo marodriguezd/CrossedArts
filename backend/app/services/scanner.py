@@ -3,15 +3,14 @@ import json
 import yaml
 import uuid
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any, Iterator, Tuple
+from typing import List, Optional, Dict, Any, Iterator
 from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from backend.app.core.logging import get_logger
-from backend.app.models.resource import LearningResource, Course, Book, MediaAsset
-from backend.app.models.activity import MediaProgress
+from backend.app.models.resource import Course, Book, MediaAsset
 from backend.app.models.base import ResourceStatus, CourseDifficulty
 
 logger = get_logger("services.scanner")
@@ -319,7 +318,7 @@ class CourseScanner(BaseScanner):
         if background_tasks is not None:
             def run_background_extraction(asset_id=asset_id):
                 # `SessionLocal` se importa en tiempo de llamada: las pruebas
-                # parchean la fábrica para usar su propia base (A-1).
+                # parchean la fábrica para usar su propia base.
                 from backend.app.core.database import SessionLocal
                 from backend.app.services.extractor import ContentIntelligenceManager
                 db_local = SessionLocal()

@@ -1,9 +1,7 @@
 import os
-import re
 import uuid
-from typing import Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, status, Response
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 

@@ -11,7 +11,6 @@ Cubre:
   - El arranque (lifespan) falla de forma temprana y accionable.
   - AUTO_CREATE_TABLES y SKIP_MIGRATION_VALIDATION siguen funcionando.
 """
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient

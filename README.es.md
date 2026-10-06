@@ -95,7 +95,7 @@ cd frontend
 npm test
 ```
 
-La suite de pruebas incluye 368 pruebas en 26 archivos de prueba que cubren inicialización de SQLite, algoritmo SM-2, sesiones de estudio, grafo de conocimiento, RAG, ingestión de documentos y proveedores de IA.
+La suite de pruebas incluye 424 pruebas en 30 archivos de prueba que cubren inicialización de SQLite, algoritmo SM-2, sesiones de estudio, grafo de conocimiento, RAG, ingestión de documentos y proveedores de IA.
 
 ### Compilación
 

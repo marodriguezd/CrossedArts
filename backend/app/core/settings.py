@@ -1,6 +1,4 @@
-import os
 from pathlib import Path
-from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -55,7 +53,7 @@ class CrossedArtsSettings(BaseSettings):
     embedding_provider: str = Field(default="mock", description="Embedding provider: mock, ollama, openai, huggingface")
     # Número máximo de registros de embedding explorados por búsqueda semántica.
     # El límite se aplica en SQL (no en memoria) y acota el coste del cálculo de
-    # similitud en Python. Ver backend/app/services/vector_store.py (A-4).
+    # similitud en Python. Ver backend/app/services/vector_store.py.
     semantic_scan_limit: int = Field(default=3000, description="Máximo de embeddings explorados por búsqueda semántica")
     ollama_embed_url: str = Field(default="http://localhost:11434/api/embeddings", description="Ollama embeddings URL")
     ollama_embed_model: str = Field(default="nomic-embed-text", description="Ollama embedding model")

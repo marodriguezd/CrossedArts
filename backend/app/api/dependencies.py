@@ -1,5 +1,4 @@
 from fastapi import HTTPException, status
-from backend.app.schemas.common import ErrorResponse, ErrorDetail
 
 def get_http_exception(code: str, message: str, status_code: int = status.HTTP_404_NOT_FOUND) -> HTTPException:
     """

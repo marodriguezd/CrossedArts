@@ -1,10 +1,7 @@
 import io
-import os
-import uuid
 import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 from backend.app.core.settings import settings
 

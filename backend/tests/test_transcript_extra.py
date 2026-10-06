@@ -1,12 +1,11 @@
 import uuid
 import json
-import pytest
 from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from backend.app.models.resource import Course, MediaAsset
-from backend.app.models.content import Transcript, TranscriptSegment, ContentIndex
+from backend.app.models.content import Transcript, TranscriptSegment
 from backend.app.models.base import ResourceStatus
 from backend.app.services.extractor import TranscriptExtractor
 
