@@ -180,6 +180,7 @@ Dentro de la vista de Ajustes:
 CrossedArts está licenciado bajo [GPL-3.0-only](LICENSE).
 
 Las dependencias de terceros conservan sus respectivas licencias:
+- `onnx-community/embeddinggemma-300m-ONNX`: Gemma Terms of Use
 - `Xenova/multilingual-e5-small`: MIT
 - WebLLM (`@mlc-ai/web-llm`): Apache-2.0
 - Transformers.js (`@huggingface/transformers`): Apache-2.0
