@@ -1,6 +1,6 @@
 import { getEmbeddingModelById } from './registry.ts';
 
-export const EMBEDDING_PIPELINE_VERSION = 'v1.1-e5-sha256';
+export const EMBEDDING_PIPELINE_VERSION = 'v2.0-embeddinggemma-mrl256-sha256';
 
 export interface CachedVectorEntry {
   chunkId: string;
