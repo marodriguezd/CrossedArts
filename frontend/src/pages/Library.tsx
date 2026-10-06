@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Course, Book, SearchResult, UnorganizedResource, GraphNodeType } from '../types/models.ts';
-import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ClipboardList, ArrowUpRight, UploadCloud } from 'lucide-react';
+import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ClipboardList, ArrowUpRight, UploadCloud, Target } from 'lucide-react';
 import { resolveSearchResultDestination, filterSupportedFiles, adjustBookPage } from '../services/domainLogic.ts';
 import type { MediaScanReport } from '../services/localMediaService.ts';
 import { dao } from '../db/dao.ts';
@@ -24,6 +24,8 @@ interface LibraryProps {
   onOpenResource?: (resourceId: string) => void;
   onOpenNote?: (noteId: string) => void;
   onOpenConcept?: (conceptId: string) => void;
+  /** Abre la vista de Metas, opcionalmente con una meta concreta seleccionada. */
+  onOpenGoals?: (goalId?: string) => void;
 }
 
 export const Library: React.FC<LibraryProps> = ({ 
@@ -40,7 +42,8 @@ export const Library: React.FC<LibraryProps> = ({
   onExplainResource,
   onOpenResource,
   onOpenNote,
-  onOpenConcept
+  onOpenConcept,
+  onOpenGoals
 }) => {
   const [filter, setFilter] = useState<'all' | 'courses' | 'books'>('all');
   const [query, setQuery] = useState('');
@@ -193,12 +196,15 @@ export const Library: React.FC<LibraryProps> = ({
       case 'resource':
         onOpenResource?.(dest.resourceId);
         break;
+      case 'goals':
+        onOpenGoals?.(dest.goalId);
+        break;
       default:
         break;
     }
   };
 
-  const RESULT_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; className?: string }>> = {
+  const RESULT_ICONS: Partial<Record<GraphNodeType | 'goal', React.ComponentType<{ size?: number; className?: string }>>> = {
     course: GraduationCap,
     book: BookOpen,
     module: Layers,
@@ -206,7 +212,21 @@ export const Library: React.FC<LibraryProps> = ({
     note: FileText,
     concept: Lightbulb,
     practice: ClipboardList,
-    resource: BookOpen
+    resource: BookOpen,
+    goal: Target
+  };
+
+  /** Etiqueta en español del tipo de resultado de búsqueda. */
+  const SEARCH_TYPE_LABELS: Partial<Record<SearchResult['type'], string>> = {
+    course: 'Curso',
+    book: 'Libro',
+    module: 'Módulo',
+    lesson: 'Lección',
+    note: 'Nota',
+    concept: 'Concepto',
+    practice: 'Trabajo práctico',
+    resource: 'Recurso',
+    goal: 'Meta'
   };
 
   // Estado de arrastrar y soltar (Drag and Drop)
@@ -689,7 +709,7 @@ export const Library: React.FC<LibraryProps> = ({
           </div>
           {searchResults.length === 0 && !isSearching ? (
             <p className="type-meta">
-              Sin coincidencias en cursos, libros, lecciones, notas, conceptos o recursos importados.
+              Sin coincidencias en cursos, libros, lecciones, notas, conceptos, recursos importados o metas.
             </p>
           ) : (
             <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -706,7 +726,7 @@ export const Library: React.FC<LibraryProps> = ({
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-meta font-semibold text-ink">{result.title}</span>
                         {result.subtitle && <span className="block truncate text-micro">{result.subtitle}</span>}
-                        <span className="type-micro block">{result.type}</span>
+                        <span className="type-micro block">{SEARCH_TYPE_LABELS[result.type] ?? result.type}</span>
                       </span>
                       <ArrowUpRight size={13} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
                     </button>
@@ -858,7 +878,17 @@ export const Library: React.FC<LibraryProps> = ({
                         {editingBookId === book.id ? 'Cancelar' : 'Editar'}
                       </button>
                     </div>
-                    <h4 className="type-item truncate text-ink">{book.title}</h4>
+                    <h4 className="type-item truncate text-ink">
+                      <button
+                        type="button"
+                        onClick={() => onOpenResource?.(book.id)}
+                        className="block w-full truncate text-left transition hover:text-accent"
+                        aria-label={`Abrir recurso ${book.title}`}
+                        title="Abrir el detalle del recurso"
+                      >
+                        {book.title}
+                      </button>
+                    </h4>
                     <p className="type-meta truncate">{book.author}</p>
 
                     {/* Acciones del recurso: fuentes, estudio, explicación y metadatos */}

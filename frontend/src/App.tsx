@@ -9,6 +9,9 @@ import { ReviewCenter } from './pages/ReviewCenter.tsx';
 import { NotesView } from './pages/NotesView.tsx';
 import { ResourceDetail } from './pages/ResourceDetail.tsx';
 import { SettingsView } from './pages/SettingsView.tsx';
+import { FocusToday } from './pages/FocusToday.tsx';
+import { AnalyticsView } from './pages/AnalyticsView.tsx';
+import { GoalsView } from './pages/GoalsView.tsx';
 import { AIAssistantDrawer } from './components/ai/AIAssistantDrawer.tsx';
 import { CommandPalette } from './components/common/CommandPalette.ts';
 import { localMediaService } from './services/localMediaService.ts';
@@ -28,6 +31,7 @@ import {
   type PaletteItem,
 } from './services/commandPalette.ts';
 import { exportSqliteFile } from './db/exportImport.ts';
+import type { ResourceDestination } from './types/models.ts';
 import { Loader2, AlertTriangle, X, RotateCcw } from 'lucide-react';
 import { Button } from './components/ui/index.tsx';
 
@@ -36,6 +40,7 @@ const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph.tsx').then(m =>
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [initialLessonId, setInitialLessonId] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
@@ -50,7 +55,7 @@ export const App: React.FC = () => {
   const [globalQuery, setGlobalQuery] = useState('');
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
-  const { loading, initError, kpis, courses, books, flashcards, notes, resources, practiceWork, recentSessions, selectedCourse, refreshData, selectCourse, retryInit } =
+  const { loading, initError, kpis, courses, books, flashcards, notes, resources, practiceWork, recentSessions, goals, selectedCourse, refreshData, selectCourse, retryInit } =
     useAppData(selectedCourseId);
 
   const handleSelectCourse = async (id: string) => {
@@ -61,6 +66,7 @@ export const App: React.FC = () => {
 
   const handleNavigateTab = (tab: string) => {
     setSelectedCourseId(null);
+    setSelectedGoalId(null);
     setInitialLessonId(null);
     setSelectedNoteId(null);
     setSelectedResourceId(null);
@@ -147,6 +153,37 @@ export const App: React.FC = () => {
   const handleExplainResource = (resourceId: string, label: string, lessonId?: string) => {
     setAiResource({ id: resourceId, label, lessonId });
     setIsAIOpen(true);
+  };
+
+  /**
+   * Destino determinista de una entidad: lo comparten paleta, búsqueda, grafo,
+   * Hoy y Metas, para que todas las rutas abran exactamente el mismo sitio.
+   */
+  const handleOpenDestination = (destination: ResourceDestination) => {
+    switch (destination.tab) {
+      case 'course':
+        if (destination.lessonId) void handleOpenLesson(destination.lessonId);
+        else void handleSelectCourse(destination.resourceId);
+        return;
+      case 'note':
+        handleOpenNote(destination.noteId);
+        return;
+      case 'concept':
+        handleOpenConcept(destination.conceptId);
+        return;
+      case 'resource':
+        void handleOpenResource(destination.resourceId);
+        return;
+      case 'goals':
+        handleNavigateTab('goals');
+        setSelectedGoalId(destination.goalId ?? null);
+        return;
+      case 'library':
+        handleNavigateTab('library');
+        return;
+      default:
+        return;
+    }
   };
 
   const handleMountLocalFolder = async () => {
@@ -317,11 +354,12 @@ export const App: React.FC = () => {
         concepts: conceptIndex,
         resources: resourceIndex,
         practiceWork: practiceIndex,
+        goals,
         pendingReviews: kpis?.pending_reviews ?? 0,
         continueTarget,
         isDarkTheme: theme === 'dark'
       }),
-    [courses, books, notes, lessonIndex, conceptIndex, resourceIndex, practiceIndex, kpis, continueTarget, theme]
+    [courses, books, notes, lessonIndex, conceptIndex, resourceIndex, practiceIndex, goals, kpis, continueTarget, theme]
   );
 
   /** Despacha el elemento elegido: destino de entidad o acción por identificador. */
@@ -339,7 +377,11 @@ export const App: React.FC = () => {
         openResource: id => {
           void handleOpenResource(id);
         },
-        openLibrary: () => handleNavigateTab('library')
+        openLibrary: () => handleNavigateTab('library'),
+        openGoals: goalId => {
+          handleNavigateTab('goals');
+          setSelectedGoalId(goalId ?? null);
+        }
       });
       return;
     }
@@ -484,6 +526,38 @@ export const App: React.FC = () => {
           />
         )}
 
+        {currentTab === 'focus' && (
+          <FocusToday
+            kpis={kpis}
+            courses={courses}
+            books={books}
+            practiceWork={practiceWork}
+            goals={goals}
+            recentSessions={recentSessions}
+            onNavigate={handleNavigateTab}
+            onOpenDestination={handleOpenDestination}
+          />
+        )}
+
+        {currentTab === 'analytics' && (
+          <AnalyticsView
+            courses={courses}
+            books={books}
+            practiceWork={practiceWork}
+          />
+        )}
+
+        {currentTab === 'goals' && (
+          <GoalsView
+            goals={goals}
+            courses={courses}
+            books={books}
+            practiceWork={practiceWork}
+            initialGoalId={selectedGoalId}
+            onRefresh={refreshData}
+          />
+        )}
+
         {currentTab === 'library' && (
           <Library
             courses={courses}
@@ -500,6 +574,10 @@ export const App: React.FC = () => {
             onOpenResource={handleOpenResource}
             onOpenNote={handleOpenNote}
             onOpenConcept={handleOpenConcept}
+            onOpenGoals={goalId => {
+              handleNavigateTab('goals');
+              setSelectedGoalId(goalId ?? null);
+            }}
           />
         )}
 
@@ -577,6 +655,11 @@ export const App: React.FC = () => {
         activeContext={aiResource?.label || (selectedCourse ? selectedCourse.title : currentTab)}
         activeResourceId={aiResource?.id || selectedCourse?.id}
         activeLessonId={aiResource?.lessonId}
+        onOpenCitation={citation => {
+          // Todo destino de cita resuelve por el mismo camino que el grafo y la
+          // paleta: `handleOpenResource` identifica el tipo y abre su vista.
+          if (citation.navigate) void handleOpenResource(citation.navigate.id);
+        }}
       />
 
       {/* La paleta se monta como hermana del Shell para que su overlay no dependa

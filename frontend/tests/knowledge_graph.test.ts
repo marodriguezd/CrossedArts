@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
 import {
@@ -302,5 +303,61 @@ test('14.15 searchGraphNodes matches by name and description and exportCanvasAsI
 
   // exportCanvasAsImage en entorno sin DOM o con canvas nulo
   assert.equal(exportCanvasAsImage(null as any), false);
+});
+
+test('14.16 El grafo usa los builds ESNext de vis (evita el Set sin Symbol.iterator)', () => {
+  // Los builds `peer`/`umd` de vis-network arrastran un bundle de core-js cuyo
+  // `Set` interno no es iterable. vis-network transpila sus campos privados a
+  // getters que hacen `[...this.#selection]`, así que con esos builds
+  // `new Network(...)` lanza y la vista del grafo queda en blanco. En Node no
+  // hay navegador para probarlo, así que el guardarraíl fija qué subpáginas de
+  // vis se importan en todo el código de producción (no solo en este archivo,
+  // para que un wrapper intermedio tampoco esquive la regla).
+  const collectSpecifiers = (dir: string, out: Set<string>): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        collectSpecifiers(full, out);
+      } else if (/\.tsx?$/.test(entry.name)) {
+        const text = readFileSync(full, 'utf8');
+        for (const match of text.matchAll(/from\s*(['"])([^'"\n]+)\1/g)) {
+          const spec = match[2];
+          if (
+            spec === 'vis-network' ||
+            spec.startsWith('vis-network/') ||
+            spec === 'vis-data' ||
+            spec.startsWith('vis-data/')
+          ) {
+            out.add(spec);
+          }
+        }
+      }
+    }
+  };
+
+  const specifiers = new Set<string>();
+  collectSpecifiers('src', specifiers);
+  const found = [...specifiers];
+
+  assert.ok(found.length > 0, 'al menos un archivo debe importar vis-network/vis-data');
+  assert.ok(
+    found.some((spec) => spec.endsWith('/esnext')),
+    `debe usarse el build esnext (encontrado: ${found.join(', ')})`
+  );
+  const bare = found.filter((spec) => spec === 'vis-network' || spec === 'vis-data');
+  assert.deepEqual(
+    bare,
+    [],
+    `los builds peer/umd de vis-network/vis-data rompen el grafo en producción: ${bare.join(', ')}`
+  );
+  // Y los subpaths deben existir de verdad en el paquete instalado.
+  assert.ok(
+    existsSync('node_modules/vis-network/esnext/esm/vis-network.mjs'),
+    'vis-network/esnext debe existir en el paquete instalado'
+  );
+  assert.ok(
+    existsSync('node_modules/vis-data/esnext/esm/vis-data.mjs'),
+    'vis-data/esnext debe existir en el paquete instalado'
+  );
 });
 

@@ -12,6 +12,7 @@ una, de dónde sale su dato y qué interfaz la representa.
 | **Maestría de concepto** | Estimación de comprensión según el modelo de repaso | SM-2 (`repetition_count`, `interval_days`, `ease_factor`) | No se expone como % |
 | **Actividad de estudio** | Cuánto se ha estudiado (tiempo e ítems repasados) | `learning_session` | No (es magnitud, no avance) |
 | **Progreso de montaña** | Indicador de recorrido de alto nivel, con ámbito | Derivado (ver abajo) | Sí, pero con reglas explícitas |
+| **Progreso de meta** | Cuánto falta para una meta declarada por el usuario | Progreso medido del recurso asociado, o estado + fecha objetivo | Solo si el dato es medido |
 
 ## Reglas explícitas
 
@@ -58,21 +59,79 @@ una, de dónde sale su dato y qué interfaz la representa.
    a la vez legible (≥4.5:1; 5.16:1 en claro y 5.22:1 en oscuro para
    `muted`/`line`). El estado habilitado no cambia.
 
+7. **Una meta no inventa su progreso.** Una meta (`learning_goal`) declara su
+   tipo (`course` / `book` / `practice` / `habit`), a qué artefacto apunta y una
+   fecha objetivo opcional. Si el artefacto tiene progreso **medido** (curso,
+   libro), la meta muestra ese porcentaje; en cualquier otro caso muestra estado
+   y días restantes, **sin barra inventada**. Los umbrales de vencimiento son
+   explícitos (`GOAL_DUE_SOON_DAYS = 7`).
+   - Implementación: `frontend/src/services/goals.ts` (`computeGoalProgress`,
+     `classifyGoalDeadline`).
+
+8. **La analítica mide, no juzga.** Las vistas de Análisis derivan todo de
+   registros reales: `learning_session` (minutos, ítems) y los repasos de
+   tarjetas (aciertos). La precisión es `aciertos / total` de datos existentes.
+   No hay puntuaciones de dominio, "motivación" ni índices psicológicos, y
+   cuando no hay datos se dice explícitamente en vez de dibujar un cero
+   ambiguo.
+   - Implementación: `frontend/src/services/analytics.ts`.
+
+9. **El plan de "Hoy" es determinista.** El orden de la lista de enfoque está
+   fijado en `FOCUS_PRIORITY` y **cada elemento declara por qué aparece**
+   (repaso vencido, práctica pendiente, meta próxima, continuación disponible).
+   No hay aleatoriedad ni urgencia fabricada.
+   - Implementación: `frontend/src/services/focus.ts` (`buildFocusPlan`,
+     `buildFocusSummary`).
+
+10. **La analítica del grafo describe topología, no importancia.** Grado,
+    componentes conexas, nodos poco conectados y nodos tocados recientemente se
+    calculan sobre las relaciones reales. El umbral de "bien conectado" es
+    estadístico (media + 2σ, con suelo de 4) y los rótulos son deliberadamente
+    neutros ("Más conectados", nunca "Más importantes").
+    - Implementación: `frontend/src/services/graphExploration.ts`
+      (`computeGraphAnalytics`, `buildGraphInsights`).
+
+11. **La IA declara sus fuentes.** Toda respuesta con recuperación expone las
+    fuentes usadas (con el recurso o la lección exactos a los que navegar) y el
+    proveedor + modelo que la generó. Si la recuperación no devuelve nada, la
+    interfaz lo dice ("Sin fuentes recuperadas") en lugar de insinuar un
+    fundamento inexistente.
+    - Implementación: `frontend/src/lib/localRag/contextBuilder.ts`
+      (`buildSourceCitation`, `resolveCitationNavigate`) y
+      `frontend/src/ai/aiService.ts` (`AssistantResponse.citations`,
+      `modelUsed`).
+
 ## Verificación visual (disponibilidad honesta)
 
 El contraste se verifica de forma **ejecutable** (`theme_contrast.test.ts`,
-recalculado desde los tokens en ambos temas). Lo que **no** está automatizado es
-la inspección visual del renderizado: el repositorio no incluye un navegador ni
-herramientas de automatización de navegador, y no se ha añadido un framework de
-testing visual solo por esto. Por tanto:
+recalculado desde los tokens en ambos temas). Además, el renderizado se verifica
+en un navegador real con Playwright sobre la build de producción, mediante
+`frontend/scripts/visual-qa.mjs` (`npm run qa:visual`): tres viewports
+(escritorio 1280×800, tableta 834×1112, móvil 390×844) recorren Panel, Hoy,
+Metas, Análisis, Biblioteca, detalle de recurso, espacio de trabajo práctico,
+Grafo y analítica del grafo, y comprueban propiedades **objetivas**:
 
-- **Verificado:** contraste de tokens en claro y oscuro, presencia de nombre
-  accesible en las tarjetas, información de la montaña disponible en texto, y
-  revisión del comportamiento responsive a nivel de clases/estructura.
-- **No verificado automáticamente:** colisiones de etiquetas SVG, solapamientos
-  reales de layout y legibilidad percibida en un navegador. Si se añade
-  automatización de navegador en el futuro, esta es la primera comprobación que
-  debe cubrirse.
+- desbordamiento horizontal de página (`scrollWidth` vs viewport) y elementos que
+  sobresalen sin contenedor con scroll propio;
+- errores de consola y excepciones de página;
+- presencia de los encabezados/bloques clave de cada vista;
+- apertura de la paleta (Ctrl+K) y cambio de tema sin errores.
+
+Estado de la última ejecución: **0 problemas** en los tres viewports. Las
+capturas quedan en `/tmp/crossedarts-qa` y no se versionan.
+
+- **Verificado automáticamente:** todo lo anterior, más el contraste de tokens en
+  claro y oscuro, la información de la montaña en texto y el nombre accesible de
+  las tarjetas.
+- **No verificado automáticamente:** legibilidad percibida (juicio humano),
+  colisiones de etiquetas SVG dentro del lienzo del grafo y corrección
+  tipográfica del contenido editorial.
+
+Esta herramienta encontró y permitió corregir dos defectos reales de la capa de
+render: el grafo se quedaba en blanco por un `Set` sin `Symbol.iterator` en el
+bundle `peer` de `vis-network` (se usa el build `esnext`), y el detalle de un
+libro no era alcanzable desde la Biblioteca (ahora el título abre su espacio de
+trabajo).
 
 ## Participación de cada artefacto (intencional)
 
@@ -84,6 +143,7 @@ testing visual solo por esto. Por tanto:
 | Nota | No (tiene vista propia) | Sí (nodo + aristas) | No | Sí | No (dato personal) |
 | Concepto | No (tiene vista propia) | Sí (nodo) | No | Sí | No |
 | Trabajo práctico | Sí (ficha) | Sí (nodo + aristas) | No | Sí² | Sí (propuesto) |
+| Meta | No (tiene vista propia) | No (no es un nodo del grafo) | No | Sí | No (dato personal) |
 | Sesiones / repasos | No | No | No | No | No (dato personal) |
 
 ² El trabajo práctico no tiene una vista propia: la búsqueda de la Biblioteca y la

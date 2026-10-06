@@ -1,6 +1,8 @@
 import { dbBridge } from './sqliteBridge.ts';
-import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter, PracticeWork, PracticeWorkKind, PracticeWorkStatus } from '../types/models.ts';
+import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter, PracticeWork, PracticeWorkKind, PracticeWorkStatus, PracticeChecklistItem, LearningGoal, GoalKind, GoalStatus } from '../types/models.ts';
 import { calculateBookProgress, calculateSM2, validateKnowledgeConnection, generateDailyActivitySeries } from '../services/domainLogic.ts';
+import { parsePracticeChecklist, serializePracticeChecklist } from '../services/practiceWork.ts';
+import { GOAL_KIND_LABELS } from '../services/goals.ts';
 import {
   buildCoursePackage,
   planCoursePackageImport,
@@ -31,7 +33,11 @@ const PRACTICE_WORK_ORDER_SQL = `ORDER BY CASE status
   ELSE 2 END, updated_at DESC`;
 
 const PRACTICE_WORK_COLUMNS =
-  'id, title, description, resource_id, lesson_id, concept_id, kind, status, artifact_url, notes, self_rating, completed_at, created_at, updated_at';
+  'id, title, description, resource_id, lesson_id, concept_id, kind, status, artifact_url, notes, self_rating, completed_at, created_at, updated_at, content, checklist';
+
+/* La lista de verificación se parsea/serializa con los helpers puros de
+ * services/practiceWork.ts: la base de datos guarda JSON y la lógica de
+ * conversión vive en un módulo probable, no dentro del DAO. */
 
 /** Convierte un valor de sql.js en texto nullable (o null). */
 function asNullableString(value: unknown): string | null {
@@ -62,7 +68,9 @@ function mapPracticeWorkRow(row: readonly unknown[]): PracticeWork {
     self_rating: r.optionalStr(10) === undefined ? undefined : r.num(10),
     completed_at: r.optionalStr(11),
     created_at: r.optionalStr(12),
-    updated_at: r.optionalStr(13)
+    updated_at: r.optionalStr(13),
+    content: r.optionalStr(14),
+    checklist: parsePracticeChecklist(r.optionalStr(15)) ?? undefined
   };
 }
 
@@ -919,7 +927,7 @@ export const dao = {
     }
 
     // 2. Recursos de aprendizaje (curso / libro / recurso)
-    const resRes = db.exec('SELECT id, title, description, type, category, status, source_path, created_at FROM learning_resource');
+    const resRes = db.exec('SELECT id, title, description, type, category, status, source_path, created_at, updated_at FROM learning_resource');
     if (resRes.length) {
       for (const r of resRes[0].values) {
         const rawType = String(r[3]);
@@ -933,7 +941,8 @@ export const dao = {
             category: r[4] ? String(r[4]) : undefined,
             status: r[5] ? String(r[5]) : undefined,
             source_path: r[6] ? String(r[6]) : undefined,
-            created_at: r[7] ? String(r[7]) : undefined
+            created_at: r[7] ? String(r[7]) : undefined,
+            updated_at: r[8] ? String(r[8]) : undefined
           }
         });
       }
@@ -977,14 +986,14 @@ export const dao = {
     }
 
     // 5. Notas
-    const noteRes = db.exec('SELECT id, resource_id, lesson_id, title, tags, created_at FROM note');
+    const noteRes = db.exec('SELECT id, resource_id, lesson_id, title, tags, created_at, updated_at FROM note');
     if (noteRes.length) {
       for (const r of noteRes[0].values) {
         addNode({
           id: String(r[0]),
           name: String(r[3]),
           node_type: 'note',
-          meta: { resource_id: r[1] ? String(r[1]) : undefined, lesson_id: r[2] ? String(r[2]) : undefined, tags: r[4] ? String(r[4]) : undefined, created_at: r[5] ? String(r[5]) : undefined }
+          meta: { resource_id: r[1] ? String(r[1]) : undefined, lesson_id: r[2] ? String(r[2]) : undefined, tags: r[4] ? String(r[4]) : undefined, created_at: r[5] ? String(r[5]) : undefined, updated_at: r[6] ? String(r[6]) : undefined }
         });
       }
     }
@@ -993,7 +1002,7 @@ export const dao = {
     // grafo como nodo propio porque el usuario necesita responder "¿qué trabajo
     // demuestra este concepto/lección?" sin salir del mapa de relaciones.
     const practiceRes = db.exec(
-      'SELECT id, title, resource_id, lesson_id, concept_id, kind, status, created_at FROM practice_work'
+      'SELECT id, title, resource_id, lesson_id, concept_id, kind, status, created_at, updated_at FROM practice_work'
     );
     if (practiceRes.length) {
       for (const r of practiceRes[0].values) {
@@ -1007,7 +1016,8 @@ export const dao = {
             concept_id: r[4] ? String(r[4]) : undefined,
             practice_kind: r[5] ? String(r[5]) : undefined,
             status: r[6] ? String(r[6]) : undefined,
-            created_at: r[7] ? String(r[7]) : undefined
+            created_at: r[7] ? String(r[7]) : undefined,
+            updated_at: r[8] ? String(r[8]) : undefined
           }
         });
       }
@@ -1711,6 +1721,25 @@ export const dao = {
       }
     }
 
+    // Las metas de aprendizaje son planificación personal: si la búsqueda
+    // global no las encontrara, serían inalcanzables desde la Biblioteca.
+    const goalRes = db.exec(
+      `SELECT id, title, description, kind, status FROM learning_goal
+       WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(COALESCE(description,'')) LIKE ? ESCAPE '\\'`,
+      [like, like]
+    );
+    if (goalRes.length) {
+      for (const r of goalRes[0].values) {
+        const kindLabel = GOAL_KIND_LABELS[String(r[3]) as keyof typeof GOAL_KIND_LABELS] || GOAL_KIND_LABELS.custom;
+        results.push({
+          id: String(r[0]),
+          type: 'goal',
+          title: String(r[1]),
+          subtitle: `${kindLabel} · ${String(r[4]) === 'completed' ? 'Completada' : 'Activa'}${r[2] ? ` · ${String(r[2]).slice(0, 60)}` : ''}`
+        });
+      }
+    }
+
     // Orden determinista: título ascendente, id ascendente
     results.sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
     return results.slice(0, Math.max(1, limit));
@@ -2053,8 +2082,8 @@ export const dao = {
     const title = (work.title || '').trim() || 'Trabajo práctico';
     db.run(
       `INSERT INTO practice_work
-        (id, title, description, resource_id, lesson_id, concept_id, kind, status, artifact_url, notes, self_rating, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, title, description, resource_id, lesson_id, concept_id, kind, status, artifact_url, notes, self_rating, completed_at, content, checklist)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         title,
@@ -2067,7 +2096,9 @@ export const dao = {
         work.artifact_url || null,
         work.notes || null,
         typeof work.self_rating === 'number' ? work.self_rating : null,
-        work.completed_at || null
+        work.completed_at || null,
+        work.content || null,
+        serializePracticeChecklist(work.checklist)
       ]
     );
     await dbBridge.persist();
@@ -2081,7 +2112,8 @@ export const dao = {
     const db = dbBridge.getDatabase();
     const allowed = [
       'title', 'description', 'resource_id', 'lesson_id', 'concept_id',
-      'kind', 'status', 'artifact_url', 'notes', 'self_rating', 'completed_at'
+      'kind', 'status', 'artifact_url', 'notes', 'self_rating', 'completed_at',
+      'content', 'checklist'
     ] as const;
 
     const assignments: string[] = [];
@@ -2090,7 +2122,12 @@ export const dao = {
       if (key in fields) {
         assignments.push(`${key} = ?`);
         const value = (fields as any)[key];
-        values.push(value === undefined ? null : value);
+        if (key === 'checklist') {
+          // La lista de verificación se persiste como JSON; vacía o ausente → NULL.
+          values.push(serializePracticeChecklist(Array.isArray(value) ? value : null));
+        } else {
+          values.push(value === undefined ? null : value);
+        }
       }
     }
     if (assignments.length === 0) return;
@@ -2136,6 +2173,168 @@ export const dao = {
       planned,
       completionPercent: items.length > 0 ? Math.round((done / items.length) * 100) : 0
     };
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Metas de aprendizaje (planificación personal)                        */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Lista las metas ordenadas de forma determinista: activas primero, después
+   * por fecha objetivo y finalmente por título+id. El progreso NO se lee de la
+   * base: se deriva en la capa de dominio (services/goals.ts).
+   */
+  async getGoals(): Promise<LearningGoal[]> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(
+      `SELECT id, title, description, kind, resource_id, target_value, target_date, status, completed_at, created_at, updated_at
+       FROM learning_goal
+       ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,
+                CASE WHEN target_date IS NULL OR target_date = '' THEN 1 ELSE 0 END,
+                target_date ASC, title ASC, id ASC`
+    );
+    if (!res.length) return [];
+    return res[0].values.map((row) => {
+      const r = new SqlRow(row);
+      return {
+        id: r.str(0),
+        title: r.str(1),
+        description: r.optionalStr(2),
+        kind: (r.optionalStr(3) as GoalKind) || 'custom',
+        resource_id: r.optionalStr(4),
+        target_value: r.optionalStr(5) === undefined ? undefined : r.num(5, Number.NaN),
+        target_date: r.optionalStr(6),
+        status: (r.optionalStr(7) as GoalStatus) || 'active',
+        completed_at: r.optionalStr(8),
+        created_at: r.optionalStr(9),
+        updated_at: r.optionalStr(10)
+      } satisfies LearningGoal;
+    });
+  },
+
+  async getGoalById(id: string): Promise<LearningGoal | null> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(
+      'SELECT id, title, description, kind, resource_id, target_value, target_date, status, completed_at, created_at, updated_at FROM learning_goal WHERE id = ?',
+      [id]
+    );
+    if (!res.length || !res[0].values.length) return null;
+    const r = new SqlRow(res[0].values[0]);
+    return {
+      id: r.str(0),
+      title: r.str(1),
+      description: r.optionalStr(2),
+      kind: (r.optionalStr(3) as GoalKind) || 'custom',
+      resource_id: r.optionalStr(4),
+      target_value: r.optionalStr(5) === undefined ? undefined : r.num(5, Number.NaN),
+      target_date: r.optionalStr(6),
+      status: (r.optionalStr(7) as GoalStatus) || 'active',
+      completed_at: r.optionalStr(8),
+      created_at: r.optionalStr(9),
+      updated_at: r.optionalStr(10)
+    };
+  },
+
+  async createGoal(input: {
+    title: string;
+    description?: string;
+    kind: GoalKind;
+    resource_id?: string | null;
+    target_value?: number | null;
+    target_date?: string | null;
+  }): Promise<string> {
+    const db = dbBridge.getDatabase();
+    const id = `goal_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    db.run(
+      `INSERT INTO learning_goal (id, title, description, kind, resource_id, target_value, target_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
+      [
+        id,
+        input.title.trim(),
+        input.description?.trim() || null,
+        input.kind,
+        input.resource_id || null,
+        typeof input.target_value === 'number' && Number.isFinite(input.target_value) ? input.target_value : null,
+        input.target_date || null
+      ]
+    );
+    try {
+      await dbBridge.persist();
+    } catch (err) {
+      db.run('DELETE FROM learning_goal WHERE id = ?', [id]);
+      throw err;
+    }
+    return id;
+  },
+
+  async updateGoal(
+    id: string,
+    fields: Partial<Pick<LearningGoal, 'title' | 'description' | 'kind' | 'resource_id' | 'target_value' | 'target_date' | 'status' | 'completed_at'>>
+  ): Promise<void> {
+    const db = dbBridge.getDatabase();
+    const allowed = ['title', 'description', 'kind', 'resource_id', 'target_value', 'target_date', 'status', 'completed_at'] as const;
+    const assignments: string[] = [];
+    const values: any[] = [];
+    for (const key of allowed) {
+      if (key in fields) {
+        assignments.push(`${key} = ?`);
+        const value = (fields as any)[key];
+        values.push(value === undefined ? null : value);
+      }
+    }
+    if (assignments.length === 0) return;
+
+    // Sellar o limpiar `completed_at` de forma coherente con el estado.
+    if (fields.status === 'completed' && !('completed_at' in fields)) {
+      assignments.push("completed_at = COALESCE(completed_at, datetime('now'))");
+    } else if (fields.status && fields.status !== 'completed') {
+      assignments.push('completed_at = NULL');
+    }
+
+    assignments.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    db.run(`UPDATE learning_goal SET ${assignments.join(', ')} WHERE id = ?`, values);
+    await dbBridge.persist();
+  },
+
+  async deleteGoal(id: string): Promise<boolean> {
+    const db = dbBridge.getDatabase();
+    const existing = db.exec('SELECT id FROM learning_goal WHERE id = ?', [id]);
+    if (!existing.length || !existing[0].values.length) return false;
+    db.run('DELETE FROM learning_goal WHERE id = ?', [id]);
+    await dbBridge.persist();
+    return true;
+  },
+
+  /**
+   * Minutos de estudio registrados (reales), opcionalmente desde una fecha.
+   * Se usa para medir metas de tiempo de estudio SIN duplicar persistencia.
+   */
+  async getStudyMinutesSince(sinceIso?: string): Promise<number> {
+    const db = dbBridge.getDatabase();
+    const res = sinceIso
+      ? db.exec(
+          "SELECT COALESCE(SUM(duration_minutes), 0) FROM learning_session WHERE datetime(started_at) >= datetime(?)",
+          [sinceIso]
+        )
+      : db.exec('SELECT COALESCE(SUM(duration_minutes), 0) FROM learning_session');
+    return res.length ? Number(res[0].values[0][0]) || 0 : 0;
+  },
+
+  /**
+   * Sesiones completadas para análisis. Devuelve las MISMAS filas que ya
+   * registra `learning_session` (sin estructuras paralelas): la agregación pura
+   * ocurre en services/analytics.ts.
+   */
+  async getSessionsForAnalytics(): Promise<LearningSession[]> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(
+      `${SESSION_SELECT}
+       WHERE s.status = 'completed'
+       ORDER BY datetime(s.started_at) ASC, s.id ASC`
+    );
+    if (!res.length) return [];
+    return res[0].values.map(mapLearningSessionRow);
   },
 
   /* ------------------------------------------------------------------ */

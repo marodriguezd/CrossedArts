@@ -17,17 +17,20 @@ La aplicación está diseñada para estudiantes que desean control total sobre s
 ## Capacidades
 
 - **Galería del Panel:** Punto de entrada visual y curado a tu aprendizaje: cursos, libros, documentos importados y trabajo práctico, agrupados por propósito (continuar aprendiendo, recursos importados, trabajo práctico)
+- **Hoy / Enfoque:** Una única respuesta determinista a «¿qué hago ahora?»: la próxima lección, los repasos vencidos, el trabajo práctico pendiente, las metas sin cumplir y los recursos estudiados recientemente, cada uno con el motivo por el que aparece
 - **Cursos y Lecciones:** Estructura jerárquica con módulos, lecciones y contenido Markdown editable
 - **Libros y Recursos:** Catálogo de biblioteca con progreso de lectura, documentos importados (PDF, EPUB, TXT, MD) y organización de recursos
 - **Sesiones de Estudio:** Repaso unificado de tarjetas (SM-2), preguntas de práctica y modos mixtos con seguimiento de progreso local
-- **Trabajo Práctico:** Ejercicios, proyectos, ensayos, dibujos o código que tú produces, ligados al recurso, la lección o el concepto que demuestran — en cualquier disciplina
-- **Grafo de Conocimiento:** Visualización interactiva 2D de cursos, libros, módulos, lecciones, notas, conceptos, trabajo práctico y sus relaciones
+- **Trabajo Práctico:** Ejercicios, proyectos, ensayos, dibujos o código que tú produces, ligados al recurso, la lección o el concepto que demuestran — en cualquier disciplina. Cada elemento abre un **espacio de trabajo** con contenido Markdown, lista de verificación persistida, autoevaluación y el contexto al que pertenece
+- **Metas de Aprendizaje:** Metas explícitas definidas por ti (curso, libro, práctica, hábito) con fecha objetivo; su progreso se deriva solo de progreso medido, nunca inventado
+- **Análisis:** Serie diaria de estudio, precisión, actividad por recurso, comparación por rango (7/30/90 días/todo) y racha — calculados a partir de sesiones y repasos reales
+- **Grafo de Conocimiento:** Visualización interactiva 2D de cursos, libros, módulos, lecciones, notas, conceptos, trabajo práctico y sus relaciones, más **analítica estructural** (grado, componentes, nodos poco conectados y recientes) que describe topología y nunca ordena importancia
 - **Progreso de montaña:** Indicador de recorrido, global o con ámbito de curso, con progreso medido real y los módulos del curso como hitos
 - **Paquetes de curso:** Exporta el *material educativo* de un recurso (temario y trabajo propuesto, nunca tu progreso ni tus notas) como paquete JSON portable, para compartirlo e importarlo de forma aditiva
 - **Medios Locales:** Reproducción de vídeo y audio desde carpetas locales mediante la File System Access API
 - **Búsqueda Local:** Búsqueda determinista basada en SQL en todo el contenido, más una paleta de comandos global (Ctrl+K)
 - **Ingestión de Documentos:** Análisis en el navegador de archivos PDF, EPUB, TXT y MD con deduplicación SHA-256
-- **Proveedores de IA:** Inferencia local en dispositivo (WebLLM/WebGPU), modo demo heurístico, u Ollama, o API de OpenAI
+- **Proveedores de IA:** Inferencia local en dispositivo (WebLLM/WebGPU), modo demo heurístico, u Ollama, o API de OpenAI. Las respuestas incluyen **citas de fuentes** que remiten al recurso, la lección o la nota exactos en los que se fundamentaron, además del proveedor y modelo que las generó
 - **Copia de Seguridad:** Exportación/importación binaria SQLite y respaldo JSON con validación de esquema
 - **PWA:** Capa de aplicación sin conexión con service worker
 
@@ -108,7 +111,21 @@ cd frontend
 npm test
 ```
 
-La suite de pruebas incluye 471 pruebas en 36 archivos de prueba que cubren inicialización de SQLite, algoritmo SM-2, sesiones de estudio, grafo de conocimiento, RAG, ingestión de documentos, proveedores de IA, proyección de artefactos de aprendizaje, ámbito de la montaña, conflictos de paquetes de curso, contraste WCAG del tema y legibilidad del estado deshabilitado.
+La suite de pruebas incluye 551 pruebas en 44 archivos de prueba que cubren inicialización de SQLite, algoritmo SM-2, sesiones de estudio, grafo de conocimiento (incluida la analítica estructural), RAG y procedencia de citas, ingestión de documentos, proveedores de IA, proyección de artefactos de aprendizaje, ámbito de la montaña, conflictos de paquetes de curso, metas de aprendizaje, analítica, planificación del enfoque, el espacio de trabajo práctico, contraste WCAG del tema y legibilidad del estado deshabilitado.
+
+#### QA visual y responsivo (opcional)
+
+La capa de render se verifica de forma programática con Playwright contra la build de producción — tres viewports (escritorio 1280×800, tableta 834×1112, móvil 390×844) — comprobando desbordamiento horizontal, errores de consola, encabezados esperados por vista, la paleta de comandos, el cambio de tema y el espacio de trabajo práctico:
+
+```bash
+cd frontend
+npx playwright install chromium   # una vez
+npm run build
+npm run preview -- --port 4173 --strictPort &
+QA_URL=http://localhost:4173 npm run qa:visual
+```
+
+Las capturas se escriben en `/tmp/crossedarts-qa` (nunca se versionan). El ejecutable devuelve un código distinto de cero si falla alguna comprobación objetiva.
 
 ### Compilación
 

@@ -94,4 +94,11 @@ INSERT INTO note (id, resource_id, title, content, tags)
 VALUES
   ('n1', 'c1-react', 'Patrones de Rendimiento en React 18', 'Evitar recreación de objetos inline en props cuando se usan componentes memoizados. Usar useId para accesibilidad garantizada.', 'react, performance, hooks'),
   ('n2', 'b1-deepwork', 'Las 4 Disciplinas de la Ejecución (4DX)', '1. Concentrarse en lo sumamente importante. 2. Medir las medidas de predicción. 3. Llevar un tablero de resultados convincente. 4. Crear una cadencia de rendición de cuentas.', 'enfoque, productividad, habitos');
+
+-- Meta de aprendizaje de ejemplo (los últimos INSERT van al final: sus claves
+-- foráneas apuntan a recursos que deben existir ya). El PROGRESO de la meta no
+-- se persiste: se deriva de las lecciones del curso en cada lectura.
+INSERT INTO learning_goal (id, title, description, kind, resource_id, target_value, target_date, status, created_at, updated_at)
+VALUES
+  ('g1-course', 'Terminar el curso de React 18', 'Completar todas las lecciones del máster antes de final de trimestre.', 'course', 'c1-react', NULL, date('now', '+21 days'), 'active', datetime('now', '-5 days'), datetime('now', '-5 days'));
 `;

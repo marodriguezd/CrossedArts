@@ -411,7 +411,11 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
       )}
 
       {/* Trabajo práctico: artefactos producidos por el estudiante, vinculados al recurso */}
-      <PracticeWorkPanel resourceId={resource.id} onChanged={onRefresh} />
+      <PracticeWorkPanel
+        resourceId={resource.id}
+        onChanged={onRefresh}
+        onOpenResource={onOpenResource}
+      />
 
       {/* Relacionado (solo relaciones canónicas) */}
       <section className="rounded-xl border border-line bg-surface p-5 shadow-card" aria-label="Relacionado">

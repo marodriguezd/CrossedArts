@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { ConceptNode, ConceptEdge, GraphNodeType } from '../types/models.ts';
-import { Network, type Node, type Edge, type Options } from 'vis-network';
-import { DataSet } from 'vis-data';
+// Se usan los builds `esnext` de vis-network/vis-data a propósito: los builds
+// `peer` incluyen un bundle de core-js cuyo `Set` interno no expone
+// `Symbol.iterator`, lo que rompe los campos privados transpilados de
+// vis-network (`[...this.#selection]`) y dejaba el grafo en blanco. El build
+// `esnext` usa campos privados nativos y no arrastra polyfills.
+import { Network, type Node, type Edge, type Options } from 'vis-network/esnext';
+import { DataSet } from 'vis-data/esnext';
 import {
   Share2,
   Info,
@@ -19,7 +24,9 @@ import {
   AlertCircle,
   Download,
   Search,
-  ClipboardList
+  ClipboardList,
+  BarChart3,
+  ArrowDownRight
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { dbBridge, type DbInitFailure } from '../db/sqliteBridge.ts';
@@ -36,7 +43,9 @@ import {
   applyGraphFilters,
   availableRelationTypes,
   computeConnectivityStats,
-  explainIsolation
+  explainIsolation,
+  computeGraphAnalytics,
+  buildGraphInsights
 } from '../services/graphExploration.ts';
 import { practiceWorkKindLabel } from '../services/practiceWork.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
@@ -225,6 +234,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isSavingConnection, setIsSavingConnection] = useState(false);
   const [pendingDeleteEdge, setPendingDeleteEdge] = useState<{ id: string; label: string } | null>(null);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [nodeSearchQuery, setNodeSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   // Relaciones ocultas por el usuario (vacío = todas visibles).
@@ -316,6 +326,36 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     () => explainIsolation(graphData.nodes, graphData.edges, visibleGraph.nodes, visibleGraph.edges),
     [graphData, visibleGraph]
   );
+
+  // Analítica estructural sobre el grafo COMPLETO (propiedades topológicas
+  // reales; nunca inferencias sobre la persona).
+  const analytics = useMemo(
+    () => computeGraphAnalytics(graphData.nodes, graphData.edges),
+    [graphData]
+  );
+  const insights = useMemo(() => buildGraphInsights(analytics), [analytics]);
+
+  /**
+   * Centra un nodo de la analítica. La analítica se calcula sobre el grafo
+   * completo, así que antes se restablecen los filtros para que el nodo exista
+   * en el lienzo; la selección se reaplica tras el siguiente render.
+   */
+  const handleStatsNodeClick = (nodeId: string) => {
+    setActiveTypes(new Set(FILTER_ORDER));
+    setHiddenRelations(new Set());
+    setFocusDepth(0);
+    setSelectedNodeId(nodeId);
+    window.setTimeout(() => {
+      if (networkRef.current) {
+        try {
+          networkRef.current.selectNodes([nodeId]);
+          networkRef.current.focus(nodeId, { scale: 1.1, animation: false });
+        } catch {
+          /* El nodo aún no está montado: la selección de estado ya quedó puesta. */
+        }
+      }
+    }, 80);
+  };
 
   // Construye/actualiza la red vis-network sin re-inicializarla al filtrar.
   useEffect(() => {
@@ -571,6 +611,14 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             onClick={() => { setConnectionError(null); setIsConnectionDialogOpen(true); }}
           >
             <Plus size={15} aria-hidden="true" /> Añadir conexión
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsStatsOpen(value => !value)}
+            aria-expanded={isStatsOpen}
+            aria-controls="graph-analytics-panel"
+          >
+            <BarChart3 size={14} aria-hidden="true" /> Estadísticas
           </Button>
         </div>
       </div>
@@ -834,6 +882,141 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           )}
         </div>
       </div>
+
+      {/* --- Analítica estructural del grafo (propiedades topológicas reales) --- */}
+      {isStatsOpen && (
+        <section
+          id="graph-analytics-panel"
+          aria-label="Estadísticas estructurales del grafo"
+          className="rounded-xl border border-line bg-surface p-5 shadow-card"
+        >
+          <div className="mb-4 border-b border-line pb-3">
+            <h2 className="type-section text-ink">Estadísticas del grafo</h2>
+            <p className="type-meta mt-0.5">
+              Propiedades estructurales de tus datos. Las conexiones indican relaciones, no
+              importancia ni dominio.
+            </p>
+          </div>
+
+          {/* Cifras clave */}
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="rounded-lg border border-line bg-canvas px-3 py-2.5">
+              <dt className="type-micro text-muted">Nodos</dt>
+              <dd className="text-xl font-semibold text-ink">{analytics.totalNodes}</dd>
+            </div>
+            <div className="rounded-lg border border-line bg-canvas px-3 py-2.5">
+              <dt className="type-micro text-muted">Con conexiones</dt>
+              <dd className="text-xl font-semibold text-ink">{analytics.connectedNodes}</dd>
+            </div>
+            <div className="rounded-lg border border-line bg-canvas px-3 py-2.5">
+              <dt className="type-micro text-muted">Sin ninguna relación</dt>
+              <dd className="text-xl font-semibold text-ink">{analytics.isolatedNodes}</dd>
+            </div>
+            <div className="rounded-lg border border-line bg-canvas px-3 py-2.5">
+              <dt className="type-micro text-muted">Relaciones</dt>
+              <dd className="text-xl font-semibold text-ink">{analytics.totalEdges}</dd>
+            </div>
+            <div className="rounded-lg border border-line bg-canvas px-3 py-2.5">
+              <dt className="type-micro text-muted">Grupos separados</dt>
+              <dd className="text-xl font-semibold text-ink">{analytics.components.count}</dd>
+            </div>
+          </dl>
+
+          {/* Insights accionables */}
+          <div className="mt-4">
+            <h3 className="type-micro text-muted">Lectura del grafo</h3>
+            <ul className="mt-1.5 space-y-1.5">
+              {insights.map((insight, index) => (
+                <li key={index} className="flex items-start gap-2 text-meta text-ink">
+                  <ArrowDownRight size={13} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+                  <span>{insight}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {/* Más conectados */}
+            <div>
+              <h3 className="type-micro text-muted">Más conectados</h3>
+              {analytics.topConnected.length === 0 ? (
+                <p className="mt-1.5 type-meta text-muted">Ningún nodo tiene conexiones todavía.</p>
+              ) : (
+                <ul className="mt-1.5 space-y-1">
+                  {analytics.topConnected.map(entry => (
+                    <li key={entry.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleStatsNodeClick(entry.id)}
+                        className="flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-left transition hover:border-accent/40"
+                      >
+                        <span className="min-w-0 truncate text-meta text-ink">{entry.name}</span>
+                        <span className="shrink-0 text-micro text-muted">
+                          {GRAPH_NODE_LABELS[entry.type]} · {entry.degree} conexiones
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Conectividad débil */}
+            <div>
+              <h3 className="type-micro text-muted">Poco conectados</h3>
+              {analytics.weakResources.length === 0 ? (
+                <p className="mt-1.5 type-meta text-muted">Todos los recursos tienen conexiones.</p>
+              ) : (
+                <ul className="mt-1.5 space-y-1">
+                  {analytics.weakResources.map(entry => (
+                    <li key={entry.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleStatsNodeClick(entry.id)}
+                        className="flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-left transition hover:border-accent/40"
+                      >
+                        <span className="min-w-0 truncate text-meta text-ink">{entry.name}</span>
+                        <span className="shrink-0 text-micro text-muted">
+                          {entry.degree} {entry.degree === 1 ? 'conexión' : 'conexiones'}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Actividad reciente (solo si hay fechas reales) */}
+            <div>
+              <h3 className="type-micro text-muted">Conocimiento reciente</h3>
+              {!analytics.hasDateInfo ? (
+                <p className="mt-1.5 type-meta text-muted">
+                  Tus nodos no exponen fechas de creación, así que no se muestra actividad reciente.
+                </p>
+              ) : analytics.recent.length === 0 ? (
+                <p className="mt-1.5 type-meta text-muted">Sin fechas recientes registradas.</p>
+              ) : (
+                <ul className="mt-1.5 space-y-1">
+                  {analytics.recent.map(entry => (
+                    <li key={entry.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleStatsNodeClick(entry.id)}
+                        className="flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-left transition hover:border-accent/40"
+                      >
+                        <span className="min-w-0 truncate text-meta text-ink">{entry.name}</span>
+                        <span className="shrink-0 text-micro text-muted">
+                          {GRAPH_NODE_LABELS[entry.type]} · {entry.date}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Confirmación accesible para eliminar relaciones (acción destructiva) */}
       <ConfirmDialog

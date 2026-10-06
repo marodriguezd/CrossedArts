@@ -129,11 +129,37 @@ CREATE TABLE IF NOT EXISTS practice_work (
   self_rating INTEGER,
   completed_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  content TEXT,
+  checklist TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_practice_work_resource ON practice_work(resource_id);
 CREATE INDEX IF NOT EXISTS idx_practice_work_lesson ON practice_work(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_practice_work_status ON practice_work(status);
+
+-- Metas de aprendizaje: planificación personal derivada de datos reales.
+-- El progreso NUNCA se persiste aquí: se calcula en cada lectura desde el
+-- recurso enlazado, el trabajo práctico o las sesiones de estudio. Se añade de
+-- forma ADITIVA (IF NOT EXISTS en cada apertura): las bases existentes crean la
+-- tabla solas sin tocar sus datos.
+CREATE TABLE IF NOT EXISTS learning_goal (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  kind TEXT NOT NULL DEFAULT 'course',
+  resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
+  target_value REAL,
+  target_date DATETIME,
+  status TEXT NOT NULL DEFAULT 'active',
+  completed_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_learning_goal_status ON learning_goal(status);
+CREATE INDEX IF NOT EXISTS idx_learning_goal_resource ON learning_goal(resource_id);
+-- Las columnas 'content' y 'checklist' de practice_work existen solo en bases
+-- nuevas; la migración idempotente migratePracticeWorkspace() las añade a bases
+-- creadas por versiones anteriores (ALTER TABLE ADD COLUMN).
 `;
 
 /**

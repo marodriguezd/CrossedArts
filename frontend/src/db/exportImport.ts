@@ -22,7 +22,8 @@ export function getDatabaseTables(): string[] {
     'flashcard', 
     'concept', 
     'knowledge_connection',
-    'practice_work'
+    'practice_work',
+    'learning_goal'
   ];
 }
 

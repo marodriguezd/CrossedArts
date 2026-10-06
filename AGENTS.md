@@ -63,10 +63,27 @@
 cd frontend
 npm install          # Install dependencies
 npm run dev          # Start dev server (Vite)
-npm test             # Run test suite (424 tests, 30 files)
+npm test             # Run test suite (551 tests, 44 files)
 npm run typecheck    # TypeScript type checking
 npm run build        # Production build (outputs to dist/)
 ```
+
+### Visual / responsive QA (optional, Playwright)
+
+```bash
+cd frontend
+npx playwright install chromium          # once per machine
+npm run build
+npm run preview -- --port 4173 --strictPort   # in one terminal
+QA_URL=http://localhost:4173 npm run qa:visual # in another
+```
+
+`frontend/scripts/visual-qa.mjs` walks the real views (Panel, Hoy, Metas,
+Análisis, Biblioteca, detalle de recurso, espacio de trabajo práctico, Grafo,
+estadística del grafo) at desktop/tablet/mobile, asserting page-level horizontal
+overflow, console/page errors and the presence of each view's key headings. It
+exits non-zero on any failure. Screenshots go to `/tmp/crossedarts-qa` and must
+never be committed.
 
 ### Backend
 
@@ -90,7 +107,7 @@ PYTHONPATH=. pytest backend/tests -q
 
 ## Testing Expectations
 
-The frontend test suite (424 tests, 30 files) validates:
+The frontend test suite (551 tests, 44 files) validates:
 - SQLite WASM initialization without network access
 - SM-2 algorithm accuracy
 - Study session lifecycle and persistence
@@ -99,11 +116,17 @@ The frontend test suite (424 tests, 30 files) validates:
 - Lesson-scoped study with note isolation
 - Relational integrity (foreign keys, ON DELETE behavior)
 - Binary/JSON export and import
-- Local AI providers and hybrid RAG
+- Local AI providers and hybrid RAG (including citation provenance)
 - Document ingestion (PDF, EPUB, TXT, MD)
 - Grounded study generation
 - Multi-tab coordination via BroadcastChannel
 - Local calendar day streak logic
+- Learning goals: validation, progress derivation, deadline classification, persistence
+- Analytics: range windows, accuracy, per-resource activity, daily series, streak
+- Focus plan determinism and prioritisation
+- Practice workspace: checklist parsing/serialisation and draft validation
+- Graph structural analytics: components, degree, mean+2σ thresholds, insights
+- Search and command palette integration for goals
 
 ## Safety Constraints
 
@@ -141,6 +164,10 @@ The frontend test suite (424 tests, 30 files) validates:
 
 10. **ARIA testing:** `readFileSync(...).includes('aria-controls')` only checks the string exists, not that the ARIA is valid. Test rendered output, not source code.
 
+11. **vis-network must stay on the `esnext` build:** `KnowledgeGraph.tsx` imports from `vis-network/esnext` and `vis-data/esnext` on purpose. The `peer`/`umd` builds bundle a core-js `Set` whose instances expose no `Symbol.iterator`, which makes vis-network's transpiled private-field getters throw `... is not a function or its return value is not iterable` inside `new Network()`. The `esnext` builds use native `#private` fields, need no polyfills and shrink the graph chunk. Do not "tidy" these imports back to `vis-network`.
+
+12. **Text-transform and assertion strings:** `innerText` returns rendered text, so anything styled with `type-micro` (uppercase) reads as `MÁS CONECTADOS`. Compare UI strings case-insensitively when asserting on rendered output.
+
 ## File Map
 
 ```
@@ -153,11 +180,12 @@ CrossedArts/
 │   │   │   ├── common/               # ConfirmDialog, CommandPalette.ts, ThemeToggle
 │   │   │   ├── lesson/LessonWorkspace.tsx
 │   │   │   ├── ai/                   # AIAssistantDrawer, MarkdownMessage.ts
+│   │   │   ├── practice/PracticeWorkPanel.tsx  # Practice workspace
 │   │   │   ├── ui/                   # Shared primitives (Button, Badge, Panel)
 │   │   │   └── layout/Shell.tsx      # App shell
 │   │   ├── db/
 │   │   │   ├── dao.ts                # Data access with SM-2
-│   │   │   ├── schema.ts             # DDL (11 tables)
+│   │   │   ├── schema.ts             # DDL (12 tables)
 │   │   │   ├── sqliteBridge.ts       # WASM + IndexedDB bridge
 │   │   │   ├── exportImport.ts       # Binary/JSON backup
 │   │   │   └── seedDemo.ts           # Demo data
@@ -165,13 +193,19 @@ CrossedArts/
 │   │   │   ├── localEmbeddings/      # Transformers.js embeddings
 │   │   │   ├── localLlm/             # WebLLM engine
 │   │   │   └── localRag/             # Hybrid retrieval
-│   │   ├── pages/                    # Dashboard, Library, ReviewCenter, etc.
+│   │   ├── pages/                    # Dashboard, Library, ReviewCenter, FocusToday,
+│   │   │                             # GoalsView, AnalyticsView, KnowledgeGraph, etc.
 │   │   ├── services/
 │   │   │   ├── studySession.ts       # Session state machine
 │   │   │   ├── commandPalette.ts     # Ctrl+K palette logic
+│   │   │   ├── goals.ts              # Goal validation, progress, deadlines
+│   │   │   ├── analytics.ts          # Study/review analytics + streaks
+│   │   │   ├── focus.ts              # Deterministic "what now" plan
+│   │   │   ├── graphExploration.ts   # Graph filters + structural analytics
 │   │   │   └── localMediaService.ts  # File System Access API
-│   │   └── hooks/                    # useTheme, useCommandPaletteHotkey
-│   └── tests/                        # 30 test files, 424 tests
+│   │   └── hooks/                    # useTheme, useCommandPaletteHotkey, useGoalProgress
+│   ├── scripts/visual-qa.mjs         # Playwright visual/responsive QA (optional)
+│   └── tests/                        # 44 test files, 551 tests
 ├── backend/
 │   ├── alembic/                      # Database migrations
 │   ├── app/

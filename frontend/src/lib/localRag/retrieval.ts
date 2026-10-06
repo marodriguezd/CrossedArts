@@ -14,6 +14,16 @@ export interface RetrievedDocument {
   retrievalMode?: 'lexical' | 'semantic' | 'hybrid';
   page?: number;
   chapter?: string;
+  /**
+   * Ruta de procedencia navegable, p. ej. `[Curso, Módulo, Lección]`.
+   * Solo se rellena cuando la recuperación conoce el contexto REAL del
+   * fragmento: nunca se reconstruye ni se adivina.
+   */
+  path?: string[];
+  /** Recurso propietario del fragmento (curso, libro o recurso de la nota). */
+  resourceId?: string;
+  /** Lección de origen cuando el fragmento pertenece a una. */
+  lessonId?: string;
 }
 
 export interface RetrievalResult {
@@ -239,7 +249,9 @@ export async function retrieveLocalContext(
         sourceType: 'course',
         title: course.title,
         snippet: course.description ? `${course.description} (${course.category})` : `Curso: ${course.title} [${course.category}]`,
-        score: score * 1.2
+        score: score * 1.2,
+        path: [course.title],
+        resourceId: course.id
       });
     }
   }
@@ -258,7 +270,10 @@ export async function retrieveLocalContext(
         sourceType: 'lesson',
         title: `${entry.courseTitle} › ${entry.lessonTitle}`,
         snippet: contentSnippet ? `${snippetBase} Contenido: ${contentSnippet.slice(0, 240)}` : snippetBase,
-        score: lScore
+        score: lScore,
+        path: [entry.courseTitle, entry.moduleTitle, entry.lessonTitle],
+        resourceId: entry.courseId,
+        lessonId: entry.lessonId
       });
     }
   }
@@ -273,7 +288,9 @@ export async function retrieveLocalContext(
         sourceType: 'book',
         title: book.title,
         snippet: `Libro de ${book.author || 'Autor desconocido'}: ${book.title}. Progreso: ${book.reading_percentage}%.`,
-        score
+        score,
+        path: [book.title],
+        resourceId: book.id
       });
     }
   }
@@ -295,7 +312,9 @@ export async function retrieveLocalContext(
         title: note.title,
         snippet: note.content.slice(0, 200) + (note.content.length > 200 ? '...' : ''),
         score: score * 1.3,
-        page: pageNum
+        page: pageNum,
+        resourceId: note.resource_id || undefined,
+        lessonId: note.lesson_id || undefined
       });
     }
   }
@@ -310,7 +329,9 @@ export async function retrieveLocalContext(
         sourceType: 'flashcard',
         title: `Tarjeta: ${fc.front}`,
         snippet: `Anverso: ${fc.front} | Reverso: ${fc.back}`,
-        score
+        score,
+        resourceId: fc.resource_id || undefined,
+        lessonId: fc.lesson_id || undefined
       });
     }
   }
@@ -459,7 +480,15 @@ export async function retrieveLocalContext(
           title: semantic!.entry.title,
           snippet: semantic!.entry.text.slice(0, 200),
           score: semScore,
-          retrievalMode: 'semantic'
+          retrievalMode: 'semantic',
+          // Procedencia mínima que el chunk SÍ conserva: el artefacto de origen.
+          // La ruta completa solo existe si la recuperación léxica la aportó.
+          ...(semantic!.entry.sourceType === 'lesson' ? { lessonId: semantic!.entry.sourceId } : {}),
+          ...(semantic!.entry.sourceType === 'course' || semantic!.entry.sourceType === 'book'
+            ? { resourceId: semantic!.entry.sourceId, path: [semantic!.entry.title] }
+            : {}),
+          ...(typeof semantic!.entry.page === 'number' ? { page: semantic!.entry.page } : {}),
+          ...(typeof semantic!.entry.chapter === 'string' ? { chapter: semantic!.entry.chapter } : {})
         };
 
     const hasLexical = lexicalRanks.has(key);

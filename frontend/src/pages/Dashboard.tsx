@@ -22,6 +22,8 @@ import {
   History,
   BarChart3,
   Clock,
+  CalendarCheck,
+  Target,
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { getStoredPlaybackSeconds, formatPlaybackTime } from '../services/domainLogic.ts';
@@ -188,8 +190,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     .map((item) => ({ percent: item.progress }));
 
   const shortcuts = [
+    { tab: 'focus', label: 'Hoy', hint: 'Qué hacer ahora', icon: CalendarCheck },
     { tab: 'library', label: 'Biblioteca', hint: 'Explorar recursos', icon: Library },
     { tab: 'review', label: 'Repaso SM-2', hint: 'Revisar tarjetas', icon: Brain },
+    { tab: 'goals', label: 'Metas', hint: 'Objetivos con progreso', icon: Target },
+    { tab: 'analytics', label: 'Análisis', hint: 'Tu historial real', icon: BarChart3 },
     { tab: 'graph', label: 'Grafo', hint: 'Explorar conceptos', icon: Network },
     { tab: 'notes', label: 'Notas', hint: 'Tus apuntes', icon: FileText },
   ];

@@ -13,6 +13,9 @@ import {
   Menu,
   Search,
   X,
+  CalendarCheck,
+  BarChart3,
+  Target,
 } from 'lucide-react';
 import { exportSqliteFile } from '../../db/exportImport.ts';
 import { ThemeToggle } from '../common/ThemeToggle.tsx';
@@ -42,8 +45,11 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'focus', label: 'Hoy', icon: CalendarCheck },
   { id: 'library', label: 'Biblioteca', icon: Library },
   { id: 'review', label: 'Repaso SM-2', icon: BrainCircuit },
+  { id: 'goals', label: 'Metas', icon: Target },
+  { id: 'analytics', label: 'Análisis', icon: BarChart3 },
   { id: 'graph', label: 'Grafo', icon: Network },
   { id: 'notes', label: 'Notas', icon: FileText },
   { id: 'settings', label: 'Ajustes', icon: Settings },

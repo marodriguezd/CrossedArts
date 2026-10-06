@@ -302,7 +302,13 @@ test('19.38 El contador announced en singular y en plural', () => {
   assert.ok(!uno.includes('1 resultados'), 'Nunca "1 resultados"');
 
   const varios = render(true, { items: emptyCatalog() });
-  assert.ok(varios.includes('10 resultados'), 'Debe contar todos los resultados');
+  // El total se deriva del catálogo real: añadir una acción nueva no debe
+  // romper el contador ni obligar a cuadrar un número mágico a mano.
+  const esperados = buildPaletteCatalog(emptyCatalog()).length;
+  assert.ok(
+    varios.includes(`${esperados} resultados`),
+    `Debe contar todos los resultados (${esperados})`
+  );
 });
 
 test('19.39 La leyenda de teclado se renderiza con el estilo del sistema', () => {

@@ -17,17 +17,20 @@ The application is designed for learners who want full ownership of their study 
 ## Capabilities
 
 - **Dashboard gallery:** A curated, visual entry point to your learning — courses, books, imported documents and practice work, grouped by purpose (continue learning, imported resources, practice work)
+- **Today / Focus:** A single, deterministic answer to "what should I do now?" — the next lesson, due reviews, pending practice work, unmet goals and recently studied resources, each with the reason it is listed
 - **Courses & Lessons:** Hierarchical course structure with modules, lessons, and editable Markdown content
 - **Books & Resources:** Library catalog with reading progress, imported documents (PDF, EPUB, TXT, MD), and resource organization
 - **Study Sessions:** Unified flashcard review (SM-2), practice questions, and mixed modes with local progress tracking
-- **Practice Work:** Exercises, projects, essays, drawings or code that you produce, linked to the resource, lesson or concept it demonstrates — in any discipline
-- **Knowledge Graph:** Interactive 2D visualization of courses, books, modules, lessons, notes, concepts, practice work and their relationships
+- **Practice Work:** Exercises, projects, essays, drawings or code that you produce, linked to the resource, lesson or concept it demonstrates — in any discipline. Each item opens a **practice workspace** with Markdown content, a persisted checklist, a self-rating and the context it belongs to
+- **Learning Goals:** Explicit, user-defined goals (course, book, practice, habit) with target dates; goal progress is derived from measured progress only, never invented
+- **Analytics:** Daily study series, accuracy, per-resource activity, range comparison (7/30/90 days/all) and streak — computed from real study sessions and reviews
+- **Knowledge Graph:** Interactive 2D visualization of courses, books, modules, lessons, notes, concepts, practice work and their relationships, plus **structural analytics** (degree, components, weakly connected and recently touched nodes) that describe topology and never rank importance
 - **Mountain progress:** A journey indicator, global or scoped to a course, using real measured progress and real course modules as milestones
 - **Course packages:** Export the *educational material* of a resource (syllabus and proposed work, never your progress or notes) as a portable JSON package to share and import additively
 - **Local Media:** Video and audio playback from local folders via the File System Access API
 - **Local Search:** Deterministic SQL-based search across all content, plus a global command palette (Ctrl+K)
 - **Document Ingestion:** In-browser parsing of PDF, EPUB, TXT, and MD files with SHA-256 deduplication
-- **AI Providers:** Local on-device inference (WebLLM/WebGPU), heuristic demo mode, Ollama, or OpenAI API
+- **AI Providers:** Local on-device inference (WebLLM/WebGPU), heuristic demo mode, Ollama, or OpenAI API. Answers carry **source citations** back to the exact resource, lesson or note they were grounded in, plus the provider and model that produced them
 - **Backup & Export:** Binary SQLite export/import and JSON backup with schema validation
 - **PWA:** Offline-capable app shell with service worker caching
 
@@ -108,7 +111,21 @@ cd frontend
 npm test
 ```
 
-The test suite includes 471 tests across 36 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph, RAG, document ingestion, AI providers, learning-artifact projection, mountain scoping, course-package conflicts, WCAG theme contrast and disabled-state legibility.
+The test suite includes 551 tests across 44 test files covering SQLite initialization, SM-2 algorithm, study sessions, knowledge graph (including structural analytics), RAG and citation provenance, document ingestion, AI providers, learning-artifact projection, mountain scoping, course-package conflicts, learning goals, analytics, focus planning, the practice workspace, WCAG theme contrast and disabled-state legibility.
+
+#### Visual & responsive QA (optional)
+
+The render layer is verified programmatically with Playwright against the production build — three viewports (desktop 1280×800, tablet 834×1112, mobile 390×844), checking horizontal overflow, console errors, expected headings per view, the command palette, the theme toggle and the practice workspace:
+
+```bash
+cd frontend
+npx playwright install chromium   # once
+npm run build
+npm run preview -- --port 4173 --strictPort &
+QA_URL=http://localhost:4173 npm run qa:visual
+```
+
+Screenshots are written to `/tmp/crossedarts-qa` (never committed). The runner exits non-zero if any objective check fails.
 
 ### Build
 

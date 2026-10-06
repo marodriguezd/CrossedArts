@@ -3,7 +3,7 @@ import { DEFAULT_LOCAL_MODEL_ID } from '../lib/localLlm/registry.ts';
 import { buildAssistantPrompt, buildExplainPrompt, buildSummarizePrompt } from '../lib/localLlm/prompts.ts';
 import { retrieveLocalContext } from '../lib/localRag/retrieval.ts';
 import type { RetrievalScope } from '../lib/localRag/retrieval.ts';
-import { buildRagContext } from '../lib/localRag/contextBuilder.ts';
+import { buildRagContext, type RagSourceCitation } from '../lib/localRag/contextBuilder.ts';
 import { localAiRuntime } from '../services/localAiRuntime.ts';
 
 export type AIProvider = 'demo' | 'local' | 'ollama' | 'openai';
@@ -39,6 +39,30 @@ export interface AssistantResponse {
   providerUsed: AIProvider;
   isLocalOnDevice: boolean;
   retrievalMode?: 'hybrid' | 'lexical' | 'semantic';
+  /**
+   * Citas estructuradas de las fuentes REALMENTE recuperadas para esta
+   * respuesta. Lista vacía (no ausente) cuando la respuesta no se apoyó en
+   * material recuperado: la UI lo distingue de "sin información".
+   */
+  citations?: RagSourceCitation[];
+  /** Modelo o mecanismo concreto que generó la respuesta. */
+  modelUsed?: string;
+}
+
+/** Descripción honesta del modelo que produjo una respuesta de un proveedor. */
+function describeModelForProvider(provider: AIProvider): string {
+  const settings = aiService.getSettings();
+  switch (provider) {
+    case 'local':
+      return localLlmEngine.getLoadedModelId() || settings.localModelId || 'modelo local';
+    case 'ollama':
+      return settings.ollamaModel;
+    case 'openai':
+      return settings.apiModel;
+    case 'demo':
+    default:
+      return 'demo local';
+  }
 }
 
 /** Construye un ámbito de recuperación solo cuando hay al menos un ancla válida. */
@@ -162,6 +186,24 @@ export const aiService = {
     onChunk?: (token: string) => void,
     scope?: RetrievalScope
   ): Promise<AssistantResponse> {
+    const response = await this.askTutorCore(messages, contextInfo, onChunk, scope);
+    return {
+      ...response,
+      // Toda respuesta final expone SUS citas (vacías si no hubo contexto
+      // recuperado) y el modelo que la generó: la UI distingue fuente
+      // recuperada, respuesta generada y proveedor sin ambigüedad.
+      citations: response.citations ?? [],
+      modelUsed: response.modelUsed ?? describeModelForProvider(response.providerUsed)
+    };
+  },
+
+  /** Implementación interna de `askTutor` (envuelta para enriquecer la respuesta). */
+  async askTutorCore(
+    messages: AIChatMessage[],
+    contextInfo: string = '',
+    onChunk?: (token: string) => void,
+    scope?: RetrievalScope
+  ): Promise<AssistantResponse> {
     const settings = this.getSettings();
     const lastUserQuery = messages[messages.length - 1]?.content || '';
 
@@ -180,7 +222,7 @@ export const aiService = {
       if (readiness.stage === 'consent-required') {
         return {
           answer: `Para activar la IA local necesitamos descargar aproximadamente ${readiness.downloadSize || 'los recursos necesarios'}. Después podrás usarla sin conexión. Abre el tutor o Ajustes para activarla.`,
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'local',
           isLocalOnDevice: true,
           retrievalMode: retrieval.retrievalMode
@@ -189,7 +231,7 @@ export const aiService = {
       if (readiness.stage !== 'ready') {
         return {
           answer: `⚠️ ${readiness.message}${readiness.errorAction ? ` ${readiness.errorAction}` : ''}`,
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'local',
           isLocalOnDevice: true,
           retrievalMode: retrieval.retrievalMode
@@ -211,7 +253,7 @@ export const aiService = {
 
         return {
           answer,
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'local',
           isLocalOnDevice: true,
           retrievalMode: retrieval.retrievalMode
@@ -219,7 +261,7 @@ export const aiService = {
       } catch (err: any) {
         return {
           answer: `⚠️ La IA local no pudo completar la respuesta. ${err?.message || 'Fallo desconocido'}`,
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'local',
           isLocalOnDevice: true,
           retrievalMode: retrieval.retrievalMode
@@ -246,7 +288,7 @@ export const aiService = {
         if (onChunk) onChunk(reply);
         return {
           answer: reply,
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'ollama',
           isLocalOnDevice: false,
           retrievalMode: retrieval.retrievalMode
@@ -254,7 +296,7 @@ export const aiService = {
       } catch (err: any) {
         return {
           answer: `⚠️ Error conectando a Ollama en ${settings.ollamaUrl}. Asegúrate de que Ollama esté iniciado con CORS permitido (OLLAMA_ORIGINS="*"). Detalle: ${err.message}`,
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'ollama',
           isLocalOnDevice: false,
           retrievalMode: retrieval.retrievalMode
@@ -267,7 +309,7 @@ export const aiService = {
       if (!settings.apiKey) {
         return {
           answer: 'OpenAI está seleccionado pero no hay una clave de API configurada. Introduce una clave en Ajustes o selecciona otro proveedor.',
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'openai',
           isLocalOnDevice: false,
           retrievalMode: retrieval.retrievalMode
@@ -299,7 +341,7 @@ export const aiService = {
         if (onChunk) onChunk(reply);
         return {
           answer: reply,
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'openai',
           isLocalOnDevice: false,
           retrievalMode: retrieval.retrievalMode
@@ -308,7 +350,7 @@ export const aiService = {
         // Se muestra el motivo de la petición fallida, nunca la clave.
         return {
           answer: `Error OpenAI: ${String(err?.message || 'fallo de red').split(openAiKey).join('[clave]')}`,
-          sources: rag.sourceTitles,
+          sources: rag.sourceTitles, citations: rag.citations,
           providerUsed: 'openai',
           isLocalOnDevice: false,
           retrievalMode: retrieval.retrievalMode
@@ -332,7 +374,7 @@ export const aiService = {
     if (onChunk) onChunk(reply);
     return {
       answer: reply,
-      sources: rag.sourceTitles,
+      sources: rag.sourceTitles, citations: rag.citations,
       providerUsed: 'demo',
       isLocalOnDevice: true,
       retrievalMode: retrieval.retrievalMode
@@ -366,6 +408,7 @@ export const aiService = {
       return {
         answer: `⚠️ El contexto local de CrossedArts no contiene suficiente información sobre "${resourceTitle}" para generar una explicación fundamentada sin inventar detalles.`,
         sources: [],
+        citations: [],
         providerUsed: this.getSettings().provider,
         isLocalOnDevice: this.getSettings().provider === 'demo' || this.getSettings().provider === 'local',
         retrievalMode: retrieval.retrievalMode

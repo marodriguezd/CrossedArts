@@ -129,6 +129,13 @@ export interface Note {
 export type PracticeWorkKind = 'exercise' | 'project' | 'essay' | 'drawing' | 'code' | 'other';
 export type PracticeWorkStatus = 'PLANNED' | 'IN_PROGRESS' | 'DONE';
 
+/** Ítem de lista de verificación del espacio de trabajo de un trabajo práctico. */
+export interface PracticeChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export interface PracticeWork {
   id: string;
   title: string;
@@ -146,6 +153,10 @@ export interface PracticeWork {
   completed_at?: string;
   created_at?: string;
   updated_at?: string;
+  /** Contenido de trabajo en Markdown (tratado como datos, nunca como HTML). */
+  content?: string;
+  /** Lista de verificación persistida como JSON (derivable, editable por el usuario). */
+  checklist?: PracticeChecklistItem[];
 }
 
 export interface Flashcard {
@@ -200,6 +211,7 @@ export interface GraphNodeMetaCommon {
   category?: string;
   status?: string;
   created_at?: string;
+  updated_at?: string;
   source_path?: string;
 }
 
@@ -323,7 +335,8 @@ export interface KnowledgeConnection {
 /** Resultado de búsqueda local determinista (sin embeddings). */
 export interface SearchResult {
   id: string;
-  type: GraphNodeType;
+  /** Tipo de entidad. `goal` (meta) no es un nodo del grafo: tiene vista propia. */
+  type: GraphNodeType | 'goal';
   title: string;
   subtitle?: string;
   resourceId?: string;
@@ -387,9 +400,10 @@ export type ResourceDestination =
   | { tab: 'note'; noteId: string }
   | { tab: 'resource'; resourceId: string }
   | { tab: 'concept'; conceptId: string }
+  | { tab: 'goals'; goalId?: string }
   | { tab: 'library' };
 
-export type TimeRangeFilter = '7d' | '30d' | 'all';
+export type TimeRangeFilter = '7d' | '30d' | '90d' | 'all';
 
 /** Punto diario de actividad para gráficos deterministas sin bibliotecas externas. */
 export interface DailyActivityPoint {
@@ -397,6 +411,35 @@ export interface DailyActivityPoint {
   label: string;      // ej. 'Lun 04', '04 Oct'
   minutes: number;    // Minutos de estudio
   reviews: number;    // Ítems repasados (tarjetas + preguntas)
+}
+
+/**
+ * Meta de aprendizaje: planificación personal ligada a datos reales.
+ *
+ * El PROGRESO nunca se persiste: se deriva en cada lectura a partir del recurso
+ * enlazado (curso/libro), del trabajo práctico registrado o de las sesiones de
+ * estudio. La tabla solo guarda lo que el usuario define: intención, objetivo,
+ * fecha y estado.
+ */
+export type GoalKind = 'course' | 'book' | 'practice' | 'study_time' | 'custom';
+export type GoalStatus = 'active' | 'completed';
+
+export interface LearningGoal {
+  id: string;
+  title: string;
+  description?: string;
+  /** Tipo de meta: determina cómo se mide el progreso. */
+  kind: GoalKind;
+  /** Recurso enlazado (curso o libro). Opcional en práctica/estudio/personalizadas. */
+  resource_id?: string;
+  /** Valor objetivo numérico (minutos de estudio, nº de piezas de práctica…). */
+  target_value?: number;
+  /** Fecha objetivo opcional (YYYY-MM-DD o ISO). */
+  target_date?: string;
+  status: GoalStatus;
+  completed_at?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface KPIMetrics {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle } from 'lucide-react';
-import { aiService, AIChatMessage, AssistantResponse, type AISettings } from '../../ai/aiService.ts';
+import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { aiService, AIChatMessage, AssistantResponse, type AISettings, type AIProvider } from '../../ai/aiService.ts';
+import type { RagSourceCitation } from '../../lib/localRag/contextBuilder.ts';
 import { localLlmEngine } from '../../lib/localLlm/engine.ts';
 import { cn, Button, ProgressBar } from '../ui/index.tsx';
 import { MessageBody, SourceTitle } from './MarkdownMessage.ts';
@@ -10,6 +11,12 @@ interface MessageItem extends AIChatMessage {
   sources?: string[];
   isLocalOnDevice?: boolean;
   retrievalMode?: 'hybrid' | 'lexical' | 'semantic';
+  /** Citas estructuradas de la respuesta final (ausente en streaming/saludos). */
+  citations?: RagSourceCitation[];
+  /** Modelo concreto que generó la respuesta final. */
+  modelUsed?: string;
+  /** Proveedor que generó la respuesta final. */
+  provider?: AIProvider;
 }
 
 interface AIAssistantDrawerProps {
@@ -20,14 +27,33 @@ interface AIAssistantDrawerProps {
   activeResourceId?: string;
   /** Lección activa: extiende el ámbito determinista de recuperación a la lección. */
   activeLessonId?: string;
+  /** Abre la fuente de una cita en su vista de origen (navegación determinista). */
+  onOpenCitation?: (citation: RagSourceCitation) => void;
 }
+
+/** Etiquetas de tipo para las rutas de procedencia de las citas. */
+const CITATION_TYPE_LABELS: Record<RagSourceCitation['sourceType'], string> = {
+  course: 'Curso',
+  lesson: 'Lección',
+  book: 'Libro',
+  note: 'Nota',
+  concept: 'Concepto',
+  flashcard: 'Tarjeta'
+};
+
+const PROVIDER_LABELS: Record<AIProvider, string> = {
+  demo: 'Modo demo local',
+  local: 'IA local en tu dispositivo',
+  ollama: 'Ollama local',
+  openai: 'OpenAI'
+};
 
 /**
  * Cajón del tutor pedagógico. Mantiene visible el contexto activo, las fuentes
  * RAG recuperadas de SQLite y el PROVEEDOR real: nunca sugiere que una
  * interacción con proveedor remoto ocurre en el dispositivo.
  */
-export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, onClose, activeContext, activeResourceId, activeLessonId }) => {
+export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, onClose, activeContext, activeResourceId, activeLessonId, onOpenCitation }) => {
   const retrievalScope = (activeResourceId || activeLessonId)
     ? { resourceId: activeResourceId, lessonId: activeLessonId }
     : undefined;
@@ -131,7 +157,10 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
           content: response.answer || streamingText,
           sources: response.sources,
           isLocalOnDevice: response.isLocalOnDevice,
-          retrievalMode: response.retrievalMode
+          retrievalMode: response.retrievalMode,
+          citations: response.citations,
+          modelUsed: response.modelUsed,
+          provider: response.providerUsed
         }
       ]);
     } catch (err: any) {
@@ -229,12 +258,13 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
                 {/* El asistente renderiza Markdown seguro; el usuario conserva texto plano. */}
                 <MessageBody role={m.role} content={m.content} />
 
-                {/* Fuentes RAG recuperadas de SQLite */}
-                {m.sources && m.sources.length > 0 && (
+                {/* Fuentes RAG recuperadas de SQLite, con procedencia navegable */}
+                {m.citations !== undefined && (
                   <div className="mt-2.5 border-t border-line pt-2 text-micro">
                     <span className="mb-1 flex items-center justify-between gap-1 font-semibold">
                       <span className="flex items-center gap-1 text-muted">
-                        <Database size={11} className="text-accent" aria-hidden="true" /> Fuentes locales consultadas:
+                        <Database size={11} className="text-accent" aria-hidden="true" />
+                        {m.citations.length > 0 ? 'Fuentes recuperadas:' : 'Sin fuentes recuperadas'}
                       </span>
                       {m.retrievalMode && (
                         <span
@@ -250,6 +280,61 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
                           {m.retrievalMode === 'hybrid' ? '⚡ Híbrido' : m.retrievalMode === 'semantic' ? 'Semántico' : 'Léxico'}
                         </span>
                       )}
+                    </span>
+                    {m.citations.length === 0 ? (
+                      <p className="text-muted">
+                        Esta respuesta no se apoyó en material recuperado de tu biblioteca: no hay
+                        fuentes que citar.
+                      </p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {m.citations.map(citation => {
+                          const breadcrumb = citation.path && citation.path.length > 0
+                            ? citation.path.join(' › ')
+                            : CITATION_TYPE_LABELS[citation.sourceType];
+                          const canNavigate = Boolean(citation.navigate) && Boolean(onOpenCitation);
+                          return (
+                            <li key={citation.key} className="flex flex-col gap-0.5">
+                              {canNavigate ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenCitation?.(citation)}
+                                  className="text-left font-semibold text-accent hover:underline focus-visible:underline"
+                                  title={`Abrir ${CITATION_TYPE_LABELS[citation.sourceType].toLowerCase()} de origen`}
+                                >
+                                  <SourceTitle title={citation.title} />
+                                  <ArrowUpRight size={10} className="ml-0.5 inline align-baseline" aria-hidden="true" />
+                                </button>
+                              ) : (
+                                <span className="font-semibold text-ink">
+                                  <SourceTitle title={citation.title} />
+                                </span>
+                              )}
+                              <span className="text-faint">
+                                Fuente: {breadcrumb}
+                                {citation.chapter ? ` › ${citation.chapter}` : ''}
+                                {citation.page ? ` · pág. ${citation.page}` : ''}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    {/* Proveniencia explícita: qué modelo generó la respuesta. */}
+                    {m.modelUsed && m.provider && (
+                      <p className="mt-1.5 border-t border-line pt-1.5 text-faint">
+                        Respuesta generada por {PROVIDER_LABELS[m.provider]} · {m.modelUsed}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {/* Compatibilidad: respuestas antiguas solo con títulos. */}
+                {m.citations === undefined && m.sources && m.sources.length > 0 && (
+                  <div className="mt-2.5 border-t border-line pt-2 text-micro">
+                    <span className="mb-1 flex items-center justify-between gap-1 font-semibold">
+                      <span className="flex items-center gap-1 text-muted">
+                        <Database size={11} className="text-accent" aria-hidden="true" /> Fuentes locales consultadas:
+                      </span>
                     </span>
                     <ul className="list-inside list-disc space-y-0.5 text-muted">
                       {m.sources.map((s, sIdx) => (
@@ -398,7 +483,10 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
                     content: response.answer,
                     sources: response.sources,
                     isLocalOnDevice: response.isLocalOnDevice,
-                    retrievalMode: response.retrievalMode
+                    retrievalMode: response.retrievalMode,
+                    citations: response.citations,
+                    modelUsed: response.modelUsed,
+                    provider: response.providerUsed
                   }
                 ]);
               } catch (err: any) {

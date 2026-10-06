@@ -4,7 +4,7 @@
  * Lógica pura y agnóstica al dominio (sin React, sin SQLite) para poder probarla
  * con node:test. La interfaz y el DAO solo la consumen.
  */
-import type { PracticeWork, PracticeWorkKind, PracticeWorkStatus } from '../types/models.ts';
+import type { PracticeChecklistItem, PracticeWork, PracticeWorkKind, PracticeWorkStatus } from '../types/models.ts';
 
 /** Etiquetas en español de los tipos de artefacto. */
 export const PRACTICE_WORK_KIND_LABELS: Record<PracticeWorkKind, string> = {
@@ -55,6 +55,10 @@ export interface PracticeWorkDraft {
   lesson_id?: string | null;
   concept_id?: string | null;
   self_rating?: number | null;
+  /** Contenido de trabajo en Markdown (espacio de trabajo). */
+  content?: string | null;
+  /** Lista de verificación del espacio de trabajo. */
+  checklist?: PracticeChecklistItem[] | null;
 }
 
 export interface PracticeWorkValidation {
@@ -98,7 +102,84 @@ export function validatePracticeWorkDraft(draft: PracticeWorkDraft): PracticeWor
     return { ok: false, error: 'No se pueden guardar URLs temporales (blob:) como artefacto.' };
   }
 
+  // Espacio de trabajo: la lista de verificación debe ser utilizable.
+  if (draft.checklist !== undefined && draft.checklist !== null) {
+    if (!Array.isArray(draft.checklist)) {
+      return { ok: false, error: 'La lista de verificación no tiene un formato válido.' };
+    }
+    if (draft.checklist.length > MAX_CHECKLIST_ITEMS) {
+      return { ok: false, error: `La lista de verificación no puede superar ${MAX_CHECKLIST_ITEMS} elementos.` };
+    }
+    for (const item of draft.checklist) {
+      if (!item || typeof item.text !== 'string' || !item.text.trim()) {
+        return { ok: false, error: 'Los elementos de la lista deben tener texto.' };
+      }
+    }
+  }
+
+  if (draft.content !== undefined && draft.content !== null && typeof draft.content !== 'string') {
+    return { ok: false, error: 'El contenido del espacio de trabajo no es texto válido.' };
+  }
+
   return { ok: true };
+}
+
+/** Tope de elementos de lista de verificación por trabajo práctico. */
+export const MAX_CHECKLIST_ITEMS = 100;
+
+/**
+ * Convierte la lista de verificación persistida (JSON de texto) en ítems
+ * tipados. Devuelve `null` cuando el valor no es utilizable: la fila no se
+ * descarta ni se inventa una lista, se trata como «sin lista».
+ */
+export function parsePracticeChecklist(raw: unknown): PracticeChecklistItem[] | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(parsed)) return null;
+
+  const items: PracticeChecklistItem[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== 'object') continue;
+    const text = (entry as { text?: unknown }).text;
+    if (typeof text !== 'string' || !text.trim()) continue;
+    const id = (entry as { id?: unknown }).id;
+    items.push({
+      id: typeof id === 'string' && id ? id : `chk_${items.length}_${Math.random().toString(36).slice(2, 8)}`,
+      text: String(text),
+      done: Boolean((entry as { done?: unknown }).done)
+    });
+  }
+  return items;
+}
+
+/** Serializa la lista para su columna TEXT. Lista vacía o nula → NULL. */
+export function serializePracticeChecklist(items: PracticeChecklistItem[] | null | undefined): string | null {
+  if (!items || items.length === 0) return null;
+  return JSON.stringify(items);
+}
+
+export interface ChecklistSummary {
+  total: number;
+  done: number;
+  percent: number;
+}
+
+/** Avance de la lista de verificación. Sin elementos → 0 % (nunca NaN). */
+export function summarizeChecklist(items: PracticeChecklistItem[] | null | undefined): ChecklistSummary {
+  const list = items ?? [];
+  const done = list.filter(item => item.done).length;
+  return {
+    total: list.length,
+    done,
+    percent: list.length > 0 ? Math.round((done / list.length) * 100) : 0
+  };
 }
 
 export interface PracticeWorkSummary {

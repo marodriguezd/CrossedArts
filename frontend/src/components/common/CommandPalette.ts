@@ -23,6 +23,7 @@ import {
   Search,
   SearchX,
   StickyNote,
+  Target,
   X,
   Zap,
 } from 'lucide-react';
@@ -90,6 +91,7 @@ interface CommandPaletteProps {
 
 const GROUP_ICONS: Record<PaletteGroup, ComponentType<{ size?: number }>> = {
   accion: Zap,
+  meta: Target,
   curso: GraduationCap,
   libro: BookOpen,
   recurso: FileDown,

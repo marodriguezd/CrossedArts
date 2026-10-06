@@ -321,6 +321,9 @@ export function resolveSearchResultDestination(result: SearchResult): ResourceDe
         resourceId: result.resourceId,
         lessonId: result.lessonId
       });
+    case 'goal':
+      // La meta no tiene nodo en el grafo: su vista propia es su destino.
+      return { tab: 'goals', goalId: result.id };
     default:
       return { tab: 'library' };
   }
@@ -645,7 +648,7 @@ export function generateDailyActivitySeries(
   range: TimeRangeFilter,
   todayStr: string
 ): DailyActivityPoint[] {
-  const daysCount = range === '7d' ? 7 : range === '30d' ? 30 : 0;
+  const daysCount = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 0;
   const historyMap = new Map<string, { minutes: number; reviews: number }>();
   for (const h of history) {
     const existing = historyMap.get(h.date) || { minutes: 0, reviews: 0 };

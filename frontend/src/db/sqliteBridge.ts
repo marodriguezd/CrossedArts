@@ -383,7 +383,8 @@ class SQLiteBridge {
           const migratedLesson = this.migrateLessonContent(this.db);
           const migratedGraph = this.migrateKnowledgeConnectionIndex(this.db);
           const migratedFlashcard = this.migrateFlashcardLessonId(this.db);
-          migrated = migratedSession || migratedLesson || migratedGraph || migratedFlashcard;
+          const migratedPractice = this.migratePracticeWorkspace(this.db);
+          migrated = migratedSession || migratedLesson || migratedGraph || migratedFlashcard || migratedPractice;
           this.validateDatabaseSchema(this.db);
         } catch (e: any) {
           try { this.db?.close(); } catch { /* cierre defensivo */ }
@@ -512,6 +513,7 @@ class SQLiteBridge {
     try { this.migrateLessonContent(reloaded); } catch { /* idem */ }
     try { this.migrateKnowledgeConnectionIndex(reloaded); } catch { /* idem */ }
     try { this.migrateFlashcardLessonId(reloaded); } catch { /* idem */ }
+    try { this.migratePracticeWorkspace(reloaded); } catch { /* idem */ }
 
     if (this.db) {
       try { this.db.close(); } catch { /* ya cerrado */ }
@@ -715,6 +717,7 @@ class SQLiteBridge {
       this.migrateLessonContent(tempDb);
       this.migrateKnowledgeConnectionIndex(tempDb);
       this.migrateFlashcardLessonId(tempDb);
+      this.migratePracticeWorkspace(tempDb);
       this.validateDatabaseSchema(tempDb);
 
       const persistedBytes = tempDb.export();
@@ -736,6 +739,29 @@ class SQLiteBridge {
       throw new Error(err?.message || 'No se pudo importar la base de datos SQLite.');
     }
   }
+  /**
+   * Migración idempotente del espacio de trabajo del trabajo práctico.
+   * Añade las columnas `content` (Markdown) y `checklist` (JSON de ítems) a
+   * bases creadas por versiones anteriores, sin reconstruir la tabla ni tocar
+   * filas existentes. En bases ya al día no hace nada.
+   * @returns true si la tabla fue migrada y debe persistirse.
+   */
+  private migratePracticeWorkspace(db: Database): boolean {
+    const info = db.exec('PRAGMA table_info(practice_work)');
+    if (!info.length || !info[0].values.length) return false;
+    const present = new Set(info[0].values.map((row) => String(row[1])));
+    let migrated = false;
+    if (!present.has('content')) {
+      db.run('ALTER TABLE practice_work ADD COLUMN content TEXT;');
+      migrated = true;
+    }
+    if (!present.has('checklist')) {
+      db.run('ALTER TABLE practice_work ADD COLUMN checklist TEXT;');
+      migrated = true;
+    }
+    return migrated;
+  }
+
   private validateDatabaseSchema(db: Database, strict = true): void {
     const requiredColumns: Record<string, string[]> = {
       learning_resource: ['id', 'title', 'description', 'cover_path', 'category', 'status', 'source_path', 'type', 'created_at', 'updated_at'],

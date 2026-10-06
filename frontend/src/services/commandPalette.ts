@@ -2,10 +2,12 @@ import type {
   Book,
   Course,
   GraphNodeType,
+  LearningGoal,
   Note,
   ResourceDestination,
 } from '../types/models.ts';
 import { practiceWorkKindLabel, practiceWorkStatusLabel } from './practiceWork.ts';
+import { GOAL_KIND_LABELS } from './goals.ts';
 import { resolveArtifactContextDestination } from './domainLogic.ts';
 
 /**
@@ -36,6 +38,7 @@ import { resolveArtifactContextDestination } from './domainLogic.ts';
 /** Agrupación visual y semántica de un elemento de la paleta. */
 export type PaletteGroup =
   | 'accion'
+  | 'meta'
   | 'curso'
   | 'libro'
   | 'recurso'
@@ -122,6 +125,8 @@ export interface PaletteCatalogInput {
   resources: ResourceIndexRow[];
   /** Trabajo práctico del usuario: evidencia que no tiene vista propia. */
   practiceWork: PracticeWorkIndexRow[];
+  /** Metas de aprendizaje del usuario (opcional: los catálogos antiguos no las traen). */
+  goals?: readonly LearningGoal[];
   /** Tarjetas pendientes de repaso, para etiquetar la acción de repaso. */
   pendingReviews: number;
   /** Continuación: siguiente lección pendiente, o null si no hay ninguna. */
@@ -414,6 +419,7 @@ export function bodySnippet(body: string, normalizedQuery: string, maxLength = 8
 /** Etiqueta humana de cada agrupación, reutilizada por la interfaz. */
 export const PALETTE_GROUP_LABELS: Record<PaletteGroup, string> = {
   accion: 'Acciones',
+  meta: 'Metas',
   curso: 'Cursos',
   libro: 'Libros',
   recurso: 'Recursos',
@@ -426,6 +432,7 @@ export const PALETTE_GROUP_LABELS: Record<PaletteGroup, string> = {
 /** Orden fijo de los grupos en la paleta: vista predecible de un vistazo. */
 const GROUP_ORDER: PaletteGroup[] = [
   'accion',
+  'meta',
   'curso',
   'libro',
   'recurso',
@@ -452,6 +459,12 @@ export function resolveActionTab(actionId: string): string | null {
   switch (actionId) {
     case 'accion:dashboard':
       return 'dashboard';
+    case 'accion:focus':
+      return 'focus';
+    case 'accion:analytics':
+      return 'analytics';
+    case 'accion:goals':
+      return 'goals';
     case 'accion:library':
       return 'library';
     case 'accion:graph':
@@ -475,6 +488,33 @@ const NAVIGATION_ACTIONS: PaletteItem[] = [
     icon: 'accion',
     destination: null,
     keywords: ['inicio', 'home', 'kpi', 'racha', 'metricas', 'resumen']
+  },
+  {
+    id: 'accion:focus',
+    group: 'accion',
+    title: 'Ir a Hoy',
+    subtitle: 'Qué hacer ahora, derivado de tus datos',
+    icon: 'accion',
+    destination: null,
+    keywords: ['hoy', 'focus', 'enfoque', 'siguiente', 'recomendar', 'pendiente', 'dia']
+  },
+  {
+    id: 'accion:analytics',
+    group: 'accion',
+    title: 'Ir a Análisis',
+    subtitle: 'Tiempo, constancia y progreso real',
+    icon: 'accion',
+    destination: null,
+    keywords: ['analitica', 'estadisticas', 'metricas', 'grafico', 'tendencia', 'progreso']
+  },
+  {
+    id: 'accion:goals',
+    group: 'accion',
+    title: 'Ir a Metas',
+    subtitle: 'Objetivos de aprendizaje con progreso medido',
+    icon: 'accion',
+    destination: null,
+    keywords: ['metas', 'objetivos', 'goals', 'planificacion', 'fecha', 'cumplir']
   },
   {
     id: 'accion:library',
@@ -750,6 +790,26 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
     });
   }
 
+  // Metas de aprendizaje: se buscan por título, descripción y tipo, y su destino
+  // es la vista de Metas con la meta concreta seleccionada (destino determinista
+  // para una entidad sin página propia).
+  const byGoal = byTextThenId<LearningGoal>(goal => goal.title, goal => goal.id);
+  for (const goal of [...(input.goals ?? [])].sort(byGoal)) {
+    const kindLabel = GOAL_KIND_LABELS[goal.kind] ?? GOAL_KIND_LABELS.custom;
+    items.push({
+      id: `meta:${goal.id}`,
+      group: 'meta',
+      title: goal.title,
+      subtitle: goal.status === 'completed'
+        ? `${kindLabel} · Completada`
+        : `${kindLabel} · Activa${goal.target_date ? ` · objetivo ${goal.target_date.slice(0, 10)}` : ''}`,
+      icon: 'accion',
+      destination: { tab: 'goals', goalId: goal.id },
+      keywords: ['meta', 'objetivo', 'goal', 'planificacion', kindLabel, goal.kind, goal.status],
+      ...buildBody(goal.description)
+    });
+  }
+
   return items;
 }
 
@@ -942,6 +1002,8 @@ export interface PaletteNavigation {
   openConcept: (conceptId: string) => void;
   openResource: (resourceId: string) => void;
   openLibrary: () => void;
+  /** Abre la vista de Metas, opcionalmente con una meta concreta seleccionada. */
+  openGoals?: (goalId?: string) => void;
 }
 
 /**
@@ -966,6 +1028,9 @@ export function navigateToDestination(destination: ResourceDestination, navigati
       return;
     case 'resource':
       navigation.openResource(destination.resourceId);
+      return;
+    case 'goals':
+      navigation.openGoals?.(destination.goalId);
       return;
     case 'library':
       navigation.openLibrary();
