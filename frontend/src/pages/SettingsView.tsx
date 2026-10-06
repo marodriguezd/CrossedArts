@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, RotateCcw, Bot, ShieldCheck, Database, HardDrive, Check, Cpu, AlertTriangle, RefreshCw, Trash2, Info, Palette } from 'lucide-react';
 import { exportSqliteFile, importSqliteFile, exportJsonBackup, importJsonBackup } from '../db/exportImport.ts';
+import { describeImportResult, validateCoursePackage } from '../services/coursePackage.ts';
 import { dbBridge } from '../db/sqliteBridge.ts';
 import { aiService, AISettings } from '../ai/aiService.ts';
 import { detectWebGPUCapability, WebGPUCapabilityReport } from '../lib/localLlm/capabilities.ts';
@@ -188,6 +189,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const [dbFeedback, setDbFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [pendingImport, setPendingImport] = useState<File | null>(null);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [packageFeedback, setPackageFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     const unsubStorage = dbBridge.subscribeStorage((rep) => {
@@ -214,6 +216,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     if (!file) return;
     setDbFeedback(null);
     setPendingImport(file);
+  };
+
+  /**
+   * Importa un paquete de curso (profesor → alumno).
+   *
+   * A diferencia del respaldo, esta operación es ADITIVA e idempotente: nunca
+   * borra ni sobrescribe, así que no requiere confirmación destructiva. Se valida
+   * el paquete completo ANTES de escribir nada.
+   */
+  const handlePackageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPackageFeedback(null);
+    try {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error('El archivo no contiene un JSON sintácticamente válido.');
+      }
+
+      const validation = validateCoursePackage(parsed);
+      if (!validation.valid || !validation.package) {
+        setPackageFeedback({ type: 'error', text: validation.error || 'El paquete no es válido.' });
+        return;
+      }
+
+      const { created, skipped } = await dao.importCoursePackage(validation.package);
+      setPackageFeedback({ type: 'success', text: describeImportResult(created, skipped) });
+      onDataReset();
+    } catch (err: any) {
+      setPackageFeedback({ type: 'error', text: 'Error importando el paquete: ' + (err?.message || 'desconocido') });
+    }
   };
 
   const executeImport = async () => {
@@ -331,6 +368,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
               <Upload size={15} aria-hidden="true" /> Importar respaldo
               <input type="file" accept=".sqlite,.db,.json" onChange={handleFileUpload} className="hidden" />
             </label>
+          </div>
+
+          {/* Paquetes de curso (profesor → alumno): importación aditiva. */}
+          <div className="rounded-lg border border-line bg-canvas p-3">
+            <p className="type-micro mb-2">Paquete de curso</p>
+            <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-secondary font-medium text-ink transition-colors hover:bg-accent-soft/60">
+              <Upload size={15} aria-hidden="true" /> Importar paquete (.json)
+              <input type="file" accept=".json" onChange={handlePackageUpload} className="hidden" />
+            </label>
+            <p className="type-meta mt-2 text-muted">
+              Importar un paquete de curso AÑADE el material (recurso, módulos, lecciones y trabajo
+              práctico) sin borrar ni sobrescribir nada de lo que ya tienes. Exporta un paquete desde
+              el detalle de cualquier recurso.
+            </p>
+            {packageFeedback && (
+              <InlineStatus tone={packageFeedback.type === 'success' ? 'success' : 'error'}>
+                {packageFeedback.type === 'success'
+                  ? <Check size={14} className="shrink-0" aria-hidden="true" />
+                  : <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />}
+                <span>{packageFeedback.text}</span>
+              </InlineStatus>
+            )}
           </div>
 
           {lastExported && (

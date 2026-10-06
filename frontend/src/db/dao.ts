@@ -1,6 +1,11 @@
 import { dbBridge } from './sqliteBridge.ts';
-import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, Module, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter } from '../types/models.ts';
+import type { Course, Book, LearningResource, KPIMetrics, Flashcard, Note, ConceptNode, ConceptEdge, Lesson, Module, LearningSession, TodayStudySummary, StudySessionMode, StudySessionStatus, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter, PracticeWork, PracticeWorkKind, PracticeWorkStatus } from '../types/models.ts';
 import { calculateBookProgress, calculateSM2, validateKnowledgeConnection, generateDailyActivitySeries } from '../services/domainLogic.ts';
+import {
+  buildCoursePackage,
+  planCoursePackageImport,
+  type CoursePackage
+} from '../services/coursePackage.ts';
 import { resolveLocalDay, computeActiveStreak } from '../services/localDate.ts';
 import type { SM2Result } from '../services/domainLogic.ts';
 
@@ -8,6 +13,51 @@ const SESSION_LIVE_DURATION_SQL = `duration_minutes = CASE
   WHEN (cards_reviewed + questions_answered) > 0
   THEN MAX(1, CAST(ROUND((strftime('%s','now') - strftime('%s', started_at)) / 60.0) AS INTEGER))
   ELSE 0 END`;
+
+/**
+ * Orden de atención del trabajo práctico: lo que está en marcha primero, lo
+ * planificado después y lo terminado al final. Se expresa en SQL (CASE) para que
+ * el orden sea determinista sin cargar todas las filas en memoria.
+ */
+const PRACTICE_WORK_ORDER_SQL = `ORDER BY CASE status
+  WHEN 'IN_PROGRESS' THEN 0
+  WHEN 'PLANNED' THEN 1
+  ELSE 2 END, updated_at DESC`;
+
+const PRACTICE_WORK_COLUMNS =
+  'id, title, description, resource_id, lesson_id, concept_id, kind, status, artifact_url, notes, self_rating, completed_at, created_at, updated_at';
+
+/** Convierte un valor de sql.js en texto nullable (o null). */
+function asNullableString(value: unknown): string | null {
+  return value === null || value === undefined ? null : String(value);
+}
+
+/** Convierte un valor de sql.js en número nullable, rechazando lo no numérico. */
+function asNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+/** Mapea una fila cruda de `practice_work` a un objeto de dominio tipado. */
+function mapPracticeWorkRow(row: any[]): PracticeWork {
+  return {
+    id: row[0],
+    title: row[1],
+    description: row[2] ?? undefined,
+    resource_id: row[3] ?? undefined,
+    lesson_id: row[4] ?? undefined,
+    concept_id: row[5] ?? undefined,
+    kind: (row[6] || 'exercise') as PracticeWorkKind,
+    status: (row[7] || 'PLANNED') as PracticeWorkStatus,
+    artifact_url: row[8] ?? undefined,
+    notes: row[9] ?? undefined,
+    self_rating: row[10] === null || row[10] === undefined ? undefined : Number(row[10]),
+    completed_at: row[11] ?? undefined,
+    created_at: row[12] ?? undefined,
+    updated_at: row[13] ?? undefined
+  };
+}
 
 /**
  * Fila SQL cruda de `learning_session` (frontera de datos no confiables).
@@ -1805,6 +1855,354 @@ export const dao = {
       [id, resourceId, lessonId, title, content, tags]
     );
     await dbBridge.persist();
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Trabajo práctico (artefactos producidos por el estudiante)          */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Trabajo práctico de un recurso. Con `lessonId` incluye las tareas de esa
+   * lección MÁS las del recurso completo (ámbito compartido), nunca las de otras
+   * lecciones: mismo criterio de aislamiento que las notas.
+   */
+  async getPracticeWorkForResource(resourceId: string, lessonId?: string): Promise<PracticeWork[]> {
+    const db = dbBridge.getDatabase();
+    if (!resourceId) return [];
+    const res = lessonId
+      ? db.exec(
+          `SELECT ${PRACTICE_WORK_COLUMNS} FROM practice_work
+           WHERE resource_id = ? AND (lesson_id = ? OR lesson_id IS NULL)
+           ${PRACTICE_WORK_ORDER_SQL}`,
+          [resourceId, lessonId]
+        )
+      : db.exec(
+          `SELECT ${PRACTICE_WORK_COLUMNS} FROM practice_work
+           WHERE resource_id = ? ${PRACTICE_WORK_ORDER_SQL}`,
+          [resourceId]
+        );
+    if (!res.length) return [];
+    return res[0].values.map(mapPracticeWorkRow);
+  },
+
+  async getAllPracticeWork(): Promise<PracticeWork[]> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(`SELECT ${PRACTICE_WORK_COLUMNS} FROM practice_work ${PRACTICE_WORK_ORDER_SQL}`);
+    if (!res.length) return [];
+    return res[0].values.map(mapPracticeWorkRow);
+  },
+
+  async getPracticeWorkById(id: string): Promise<PracticeWork | null> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(`SELECT ${PRACTICE_WORK_COLUMNS} FROM practice_work WHERE id = ?`, [id]);
+    if (!res.length || !res[0].values.length) return null;
+    return mapPracticeWorkRow(res[0].values[0]);
+  },
+
+  async addPracticeWork(work: Partial<PracticeWork>): Promise<string> {
+    const db = dbBridge.getDatabase();
+    const id = work.id || 'pw-' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const title = (work.title || '').trim() || 'Trabajo práctico';
+    db.run(
+      `INSERT INTO practice_work
+        (id, title, description, resource_id, lesson_id, concept_id, kind, status, artifact_url, notes, self_rating, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        title,
+        work.description || null,
+        work.resource_id || null,
+        work.lesson_id || null,
+        work.concept_id || null,
+        work.kind || 'exercise',
+        work.status || 'PLANNED',
+        work.artifact_url || null,
+        work.notes || null,
+        typeof work.self_rating === 'number' ? work.self_rating : null,
+        work.completed_at || null
+      ]
+    );
+    await dbBridge.persist();
+    return id;
+  },
+
+  async updatePracticeWork(
+    id: string,
+    fields: Partial<Omit<PracticeWork, 'id' | 'created_at'>>
+  ): Promise<void> {
+    const db = dbBridge.getDatabase();
+    const allowed = [
+      'title', 'description', 'resource_id', 'lesson_id', 'concept_id',
+      'kind', 'status', 'artifact_url', 'notes', 'self_rating', 'completed_at'
+    ] as const;
+
+    const assignments: string[] = [];
+    const values: any[] = [];
+    for (const key of allowed) {
+      if (key in fields) {
+        assignments.push(`${key} = ?`);
+        const value = (fields as any)[key];
+        values.push(value === undefined ? null : value);
+      }
+    }
+    if (assignments.length === 0) return;
+
+    // Transición determinista: marcar DONE sella `completed_at` si no venía dado.
+    if (fields.status === 'DONE' && !('completed_at' in fields)) {
+      assignments.push('completed_at = COALESCE(completed_at, datetime(\'now\'))');
+    } else if (fields.status && fields.status !== 'DONE') {
+      assignments.push('completed_at = NULL');
+    }
+
+    assignments.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    db.run(`UPDATE practice_work SET ${assignments.join(', ')} WHERE id = ?`, values);
+    await dbBridge.persist();
+  },
+
+  async deletePracticeWork(id: string): Promise<boolean> {
+    const db = dbBridge.getDatabase();
+    const existing = db.exec('SELECT id FROM practice_work WHERE id = ?', [id]);
+    if (!existing.length || !existing[0].values.length) return false;
+    db.run('DELETE FROM practice_work WHERE id = ?', [id]);
+    await dbBridge.persist();
+    return true;
+  },
+
+  /** Conteo por estado del trabajo práctico visible (sin inventar progreso). */
+  async getPracticeWorkStats(): Promise<{
+    total: number;
+    done: number;
+    inProgress: number;
+    planned: number;
+    completionPercent: number;
+  }> {
+    const items = await this.getAllPracticeWork();
+    const done = items.filter((item) => item.status === 'DONE').length;
+    const inProgress = items.filter((item) => item.status === 'IN_PROGRESS').length;
+    const planned = items.filter((item) => item.status === 'PLANNED').length;
+    return {
+      total: items.length,
+      done,
+      inProgress,
+      planned,
+      completionPercent: items.length > 0 ? Math.round((done / items.length) * 100) : 0
+    };
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Paquetes de curso (profesor → alumno)                               */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Exporta el MATERIAL de un recurso como paquete portable.
+   *
+   * Incluye el recurso, su estructura (módulos y lecciones), el trabajo práctico
+   * propuesto y los metadatos de curso/libro. Deliberadamente NO incluye notas,
+   * sesiones ni progreso: son datos personales del alumno, no material docente.
+   */
+  async exportCoursePackage(resourceId: string): Promise<CoursePackage | null> {
+    const db = dbBridge.getDatabase();
+    const res = db.exec(
+      'SELECT id, title, description, category, cover_path, type FROM learning_resource WHERE id = ?',
+      [resourceId]
+    );
+    if (!res.length || !res[0].values.length) return null;
+    const row = res[0].values[0];
+
+    const resource = {
+      id: String(row[0]),
+      title: String(row[1]),
+      description: asNullableString(row[2]),
+      category: asNullableString(row[3]),
+      cover_path: asNullableString(row[4]),
+      type: String(row[5])
+    };
+
+    let course = null;
+    let book = null;
+    let modules: any[] = [];
+    let lessons: any[] = [];
+
+    if (resource.type === 'course') {
+      const c = db.exec(
+        'SELECT instructor, difficulty, total_duration_minutes, total_lessons FROM course WHERE id = ?',
+        [resourceId]
+      );
+      if (c.length && c[0].values.length) {
+        const r = c[0].values[0];
+        course = {
+          instructor: asNullableString(r[0]),
+          difficulty: asNullableString(r[1]),
+          total_duration_minutes: asNullableNumber(r[2]),
+          total_lessons: asNullableNumber(r[3])
+        };
+      }
+
+      const m = db.exec('SELECT id, title, order_index FROM module WHERE course_id = ? ORDER BY order_index', [resourceId]);
+      modules = m.length
+        ? m[0].values.map(r => ({ id: String(r[0]), title: String(r[1]), order_index: Number(r[2]) || 0 }))
+        : [];
+
+      if (modules.length) {
+        const placeholders = modules.map(() => '?').join(',');
+        const l = db.exec(
+          `SELECT id, module_id, title, content, order_index, duration_minutes, lesson_type, media_url
+           FROM lesson WHERE module_id IN (${placeholders}) ORDER BY order_index`,
+          modules.map(x => x.id)
+        );
+        lessons = l.length
+          ? l[0].values.map(r => ({
+              id: String(r[0]),
+              module_id: String(r[1]),
+              title: String(r[2]),
+              content: asNullableString(r[3]),
+              order_index: Number(r[4]) || 0,
+              duration_minutes: Number(r[5]) || 0,
+              lesson_type: String(r[6] || 'VIDEO'),
+              media_url: asNullableString(r[7])
+            }))
+          : [];
+      }
+    } else if (resource.type === 'book') {
+      const b = db.exec('SELECT author, isbn, page_count FROM book WHERE id = ?', [resourceId]);
+      if (b.length && b[0].values.length) {
+        const r = b[0].values[0];
+        book = {
+          author: asNullableString(r[0]),
+          isbn: asNullableString(r[1]),
+          page_count: asNullableNumber(r[2])
+        };
+      }
+    }
+
+    const work = await this.getPracticeWorkForResource(resourceId);
+    const practiceWork = work.map(item => ({
+      id: item.id,
+      title: item.title,
+      description: item.description ?? null,
+      lesson_id: item.lesson_id ?? null,
+      kind: item.kind,
+      status: item.status,
+      notes: item.notes ?? null
+    }));
+
+    return buildCoursePackage({ resource, course, book, modules, lessons, practiceWork });
+  },
+
+  /**
+   * Importa un paquete validado de forma ADITIVA e IDEMPOTENTE.
+   *
+   * Nunca borra ni sobrescribe: cada fila cuyo id ya exista se omite. Devuelve el
+   * recuento de elementos creados y omitidos para poder informar al usuario.
+   */
+  async importCoursePackage(pkg: CoursePackage): Promise<{ created: number; skipped: number }> {
+    const db = dbBridge.getDatabase();
+
+    const allIds = [
+      pkg.resource.id,
+      ...(pkg.modules || []).map(m => m.id),
+      ...(pkg.lessons || []).map(l => l.id),
+      ...(pkg.practiceWork || []).map(w => w.id)
+    ];
+    if (allIds.length === 0) return { created: 0, skipped: 0 };
+
+    const placeholders = allIds.map(() => '?').join(',');
+    const existing = new Set<string>();
+    for (const sql of [
+      `SELECT id FROM learning_resource WHERE id IN (${placeholders})`,
+      `SELECT id FROM module WHERE id IN (${placeholders})`,
+      `SELECT id FROM lesson WHERE id IN (${placeholders})`,
+      `SELECT id FROM practice_work WHERE id IN (${placeholders})`
+    ]) {
+      try {
+        const found = db.exec(sql, allIds);
+        if (found.length) {
+          for (const r of found[0].values) existing.add(String(r[0]));
+        }
+      } catch {
+        // Tabla ausente en una base antigua: la migración de esquema la creará.
+      }
+    }
+
+    const plan = planCoursePackageImport(pkg, existing);
+
+    if (!existing.has(pkg.resource.id)) {
+      db.run(
+        'INSERT INTO learning_resource (id, title, description, cover_path, category, status, type) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [
+          pkg.resource.id,
+          pkg.resource.title,
+          pkg.resource.description ?? null,
+          pkg.resource.cover_path ?? null,
+          pkg.resource.category ?? 'General',
+          'NOT_STARTED',
+          pkg.resource.type
+        ]
+      );
+
+      if (pkg.course) {
+        db.run(
+          'INSERT INTO course (id, instructor, difficulty, total_duration_minutes, total_lessons, completed_lessons) VALUES (?, ?, ?, ?, ?, 0)',
+          [
+            pkg.resource.id,
+            pkg.course.instructor ?? null,
+            pkg.course.difficulty ?? 'BEGINNER',
+            pkg.course.total_duration_minutes ?? 0,
+            pkg.course.total_lessons ?? (pkg.lessons || []).length
+          ]
+        );
+      } else if (pkg.book) {
+        db.run(
+          'INSERT INTO book (id, author, isbn, page_count, current_page, reading_percentage) VALUES (?, ?, ?, ?, 0, 0)',
+          [pkg.resource.id, pkg.book.author ?? null, pkg.book.isbn ?? null, pkg.book.page_count ?? null]
+        );
+      }
+    }
+
+    for (const module of pkg.modules || []) {
+      if (existing.has(module.id)) continue;
+      db.run('INSERT INTO module (id, course_id, title, order_index) VALUES (?, ?, ?, ?)', [
+        module.id, pkg.resource.id, module.title, module.order_index ?? 0
+      ]);
+    }
+
+    for (const lesson of pkg.lessons || []) {
+      if (existing.has(lesson.id)) continue;
+      db.run(
+        'INSERT INTO lesson (id, module_id, title, content, order_index, duration_minutes, lesson_type, media_url, is_completed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)',
+        [
+          lesson.id,
+          lesson.module_id,
+          lesson.title,
+          lesson.content ?? null,
+          lesson.order_index ?? 0,
+          lesson.duration_minutes ?? 0,
+          lesson.lesson_type || 'VIDEO',
+          lesson.media_url ?? null
+        ]
+      );
+    }
+
+    for (const work of pkg.practiceWork || []) {
+      if (existing.has(work.id)) continue;
+      db.run(
+        'INSERT INTO practice_work (id, title, description, resource_id, lesson_id, kind, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          work.id,
+          work.title,
+          work.description ?? null,
+          pkg.resource.id,
+          work.lesson_id ?? null,
+          work.kind || 'exercise',
+          work.status || 'PLANNED',
+          work.notes ?? null
+        ]
+      );
+    }
+
+    await dbBridge.persist();
+    return { created: plan.toCreate.length, skipped: plan.existing.length };
   },
 
   async getAllLearningResources() {

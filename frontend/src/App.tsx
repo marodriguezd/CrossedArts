@@ -473,6 +473,7 @@ export const App: React.FC = () => {
             recentSessions={recentSessions}
             onSelectCourse={handleSelectCourse}
             onOpenLesson={handleOpenLesson}
+            onOpenResource={handleOpenResource}
             onNavigate={handleNavigateTab}
           />
         )}

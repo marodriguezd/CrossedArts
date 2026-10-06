@@ -78,6 +78,17 @@ VALUES
   ('kc3', 'cp5', 'cp6', 'contains', 1.0),
   ('kc4', 'cp4', 'cp3', 'related_to', 0.7);
 
+-- Trabajo práctico (artefactos producidos por el estudiante, ligados a recursos
+-- y conceptos). Se inserta AL FINAL: sus claves foráneas apuntan a recursos,
+-- lecciones y conceptos que deben existir ya (foreign_keys=ON). Incluye los tres
+-- estados para poder probar la interfaz desde el primer arranque sin inventar
+-- métricas.
+INSERT INTO practice_work (id, title, description, resource_id, lesson_id, concept_id, kind, status, artifact_url, notes, self_rating, completed_at)
+VALUES
+  ('pw1', 'Refactorizar un componente a custom hooks', 'Extrae la lógica de estado de un componente de clase a un custom hook tipado.', 'c1-react', 'l4', 'cp3', 'code', 'DONE', NULL, 'Me costó tipar el retorno como tupla const.', 4, datetime('now', '-3 days')),
+  ('pw2', 'Implementar una consulta con índice B-Tree', 'Escribe una consulta que aproveche un índice y compara el plan antes y después.', 'c3-sqlite', NULL, 'cp4', 'exercise', 'IN_PROGRESS', NULL, 'Pendiente de medir tiempos con EXPLAIN QUERY PLAN.', NULL, NULL),
+  ('pw3', 'Ensayo: atención y trabajo profundo', 'Relaciona el drenaje de atención con tus propias rutinas de estudio.', 'b1-deepwork', NULL, 'cp5', 'essay', 'PLANNED', NULL, 'Bosquejo de 300 palabras.', NULL, NULL);
+
 -- Notas de Estudio
 INSERT INTO note (id, resource_id, title, content, tags)
 VALUES

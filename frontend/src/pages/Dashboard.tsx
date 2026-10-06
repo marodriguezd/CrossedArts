@@ -19,6 +19,9 @@ import { dao } from '../db/dao.ts';
 import { resolveLocalDay } from '../services/localDate.ts';
 import { getStoredPlaybackSeconds, formatPlaybackTime } from '../services/domainLogic.ts';
 import { Button, ProgressBar, Panel, SectionHeading, EmptyState, Chip, Badge, cn } from '../components/ui/index.tsx';
+import { ResourceGallery, type GalleryEntry } from '../components/dashboard/ResourceGallery.tsx';
+import { MountainProgress } from '../components/dashboard/MountainProgress.tsx';
+import { buildGalleryItems } from '../services/galleryItems.ts';
 
 interface DashboardProps {
   kpis: KPIMetrics | null;
@@ -27,6 +30,8 @@ interface DashboardProps {
   recentSessions: LearningSession[];
   onSelectCourse: (id: string) => void;
   onOpenLesson?: (lessonId: string) => void;
+  /** Abre cualquier recurso (libro, documento importado, concepto…) en su detalle. */
+  onOpenResource?: (resourceId: string) => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -51,6 +56,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   recentSessions,
   onSelectCourse,
   onOpenLesson,
+  onOpenResource,
   onNavigate,
 }) => {
   const today = kpis?.today;
@@ -111,6 +117,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const coursePct = (c: Course) =>
     c.total_lessons ? Math.round(((c.completed_lessons || 0) / c.total_lessons) * 100) : 0;
+
+  // Los libros y documentos no son cursos: deben abrirse en su vista de detalle.
+  // Si la página no recibe `onOpenResource` (uso embebido), se degrada a la
+  // selección de curso en lugar de fallar silenciosamente.
+  const openResourceOrCourse = (id: string) => {
+    if (onOpenResource) onOpenResource(id);
+    else onSelectCourse(id);
+  };
+
+  // Galería visual unificada y agnóstica al dominio: `buildGalleryItems`
+  // normaliza cursos y libros a la MISMA forma (ver services/galleryItems.ts).
+  const galleryItems: GalleryEntry[] = buildGalleryItems(courses, books).map((item) => ({
+    ...item,
+    onOpen: () =>
+      item.id.startsWith('course:')
+        ? onSelectCourse(item.id.slice('course:'.length))
+        : openResourceOrCourse(item.id.slice('book:'.length))
+  }));
+
+  const mountainSources = galleryItems.map((item) => ({ percent: item.progress }));
 
   const shortcuts = [
     { tab: 'library', label: 'Biblioteca', hint: 'Explorar recursos', icon: Library },
@@ -252,6 +278,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="mt-1 text-xl font-semibold text-ink">{kpis?.active_streak_days ?? 0} días</p>
         </div>
       </div>
+
+      {/* --- Galería visual de recursos (agnóstica al dominio) --- */}
+      <ResourceGallery
+        items={galleryItems}
+        onSeeAll={() => onNavigate('library')}
+        limit={6}
+      />
 
       {/* --- Gráfico de actividad diaria interactivo con selector de rango y métrica --- */}
       <Panel className="p-5 sm:p-6">
@@ -488,8 +521,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* --- Columna lateral: accesos y lecturas --- */}
+        {/* --- Columna lateral: progreso global, accesos y lecturas --- */}
         <div className="space-y-8">
+          <MountainProgress resources={mountainSources} />
+
           <div>
             <SectionHeading title="Accesos rápidos" />
             <div className="grid grid-cols-2 gap-2">

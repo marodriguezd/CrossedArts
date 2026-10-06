@@ -118,6 +118,36 @@ export interface Note {
   updated_at: string;
 }
 
+/**
+ * Trabajo práctico: un artefacto que el estudiante PRODUCE (ejercicio, proyecto,
+ * ensayo, dibujo, código…) ligado a un recurso, una lección o un concepto.
+ *
+ * Es intencionadamente agnóstico al dominio: sirve igual para resolver
+ * ejercicios de matemáticas, escribir un ensayo o entregar un proyecto. Se
+ * guarda en la tabla relacional `practice_work`, nunca en almacenes paralelos.
+ */
+export type PracticeWorkKind = 'exercise' | 'project' | 'essay' | 'drawing' | 'code' | 'other';
+export type PracticeWorkStatus = 'PLANNED' | 'IN_PROGRESS' | 'DONE';
+
+export interface PracticeWork {
+  id: string;
+  title: string;
+  description?: string;
+  resource_id?: string;
+  lesson_id?: string;
+  concept_id?: string;
+  kind: PracticeWorkKind;
+  status: PracticeWorkStatus;
+  /** Referencia a un artefacto local (nunca un `blob:` ni un handle persistido). */
+  artifact_url?: string;
+  notes?: string;
+  /** Autoevaluación 0..5 (misma escala que SM-2), opcional. */
+  self_rating?: number;
+  completed_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Flashcard {
   id: string;
   resource_id?: string;

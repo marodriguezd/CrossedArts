@@ -21,11 +21,14 @@ import {
   Calendar,
   User,
   Hash,
-  Layers
+  Layers,
+  Download
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { GRAPH_NODE_LABELS, GRAPH_RELATION_LABELS } from '../services/domainLogic.ts';
 import { FlashcardGenerationModal } from '../components/study/FlashcardGenerationModal.tsx';
+import { PracticeWorkPanel } from '../components/practice/PracticeWorkPanel.tsx';
+import { downloadJsonFile, slugifyForFilename } from '../db/exportImport.ts';
 import { Button, Badge, InlineStatus, cn } from '../components/ui/index.tsx';
 
 interface ResourceDetailProps {
@@ -68,6 +71,26 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
   const [isEditingBook, setIsEditingBook] = useState(false);
   const [bookForm, setBookForm] = useState({ author: '', pageCount: '', currentPage: '' });
   const [metaFeedback, setMetaFeedback] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [packageFeedback, setPackageFeedback] = useState<string | null>(null);
+
+  /**
+   * Exporta el MATERIAL del recurso (estructura, contenido y trabajo práctico)
+   * como paquete JSON. Nunca incluye notas, sesiones ni progreso del alumno.
+   */
+  const handleExportPackage = async () => {
+    try {
+      const pkg = await dao.exportCoursePackage(resourceId);
+      if (!pkg) {
+        setPackageFeedback('No se pudo preparar el paquete: el recurso ya no existe.');
+        return;
+      }
+      downloadJsonFile(pkg, `crossedarts-paquete-${slugifyForFilename(pkg.resource.title)}.json`);
+      setPackageFeedback('Paquete exportado. Compártelo para que otra persona lo importe.');
+    } catch (err) {
+      console.warn('No se pudo exportar el paquete:', err);
+      setPackageFeedback('No se pudo exportar el paquete del recurso.');
+    }
+  };
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -191,6 +214,15 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
             )}
             <Button size="sm" variant="outline" onClick={() => onExplainResource(resource.id, resource.title)}>
               <Sparkles size={13} aria-hidden="true" /> Explicar
+            </Button>
+            {/* Paquete portable: material del recurso para compartir con un alumno. */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportPackage}
+              title="Exportar el material de este recurso como paquete JSON (sin tus datos personales)"
+            >
+              <Download size={13} aria-hidden="true" /> Paquete
             </Button>
           </div>
         </div>
@@ -327,6 +359,12 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
                 {metaFeedback.text}
               </div>
             )}
+            {packageFeedback && (
+              <div className="mt-2 flex items-center gap-1 text-meta text-success" role="status" aria-live="polite">
+                <CheckCircle size={12} aria-hidden="true" />
+                {packageFeedback}
+              </div>
+            )}
           </div>
         )}
       </header>
@@ -365,6 +403,9 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
           </ul>
         </section>
       )}
+
+      {/* Trabajo práctico: artefactos producidos por el estudiante, vinculados al recurso */}
+      <PracticeWorkPanel resourceId={resource.id} onChanged={onRefresh} />
 
       {/* Relacionado (solo relaciones canónicas) */}
       <section className="rounded-xl border border-line bg-surface p-5 shadow-card" aria-label="Relacionado">

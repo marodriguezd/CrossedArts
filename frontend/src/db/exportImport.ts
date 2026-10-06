@@ -21,7 +21,8 @@ export function getDatabaseTables(): string[] {
     'note', 
     'flashcard', 
     'concept', 
-    'knowledge_connection'
+    'knowledge_connection',
+    'practice_work'
   ];
 }
 
@@ -234,14 +235,35 @@ export async function importSqliteFile(file: File): Promise<void> {
 
 export async function exportJsonBackup(): Promise<void> {
   const dump = generateJsonBackup();
+  downloadJsonFile(dump, `crossedarts-data-${new Date().toISOString().slice(0, 10)}.json`);
+}
+
+/**
+ * Descarga un objeto JSON como archivo. Se usa tanto para respaldos completos
+ * como para paquetes de curso; comparte el mismo patrón seguro de creación y
+ * revocación del object URL (nunca se filtra el `blob:`).
+ */
+export function downloadJsonFile(payload: unknown, filename: string): void {
   if (typeof document === 'undefined') return;
-  const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `crossedarts-data-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/** Nombre de archivo estable y sin caracteres problemáticos a partir de un título. */
+export function slugifyForFilename(title: string, fallback = 'recurso'): string {
+  const slug = title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return slug || fallback;
 }

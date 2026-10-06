@@ -110,6 +110,30 @@ CREATE TABLE IF NOT EXISTS knowledge_connection (
 -- aceleran el podado de conexiones huérfanas.
 CREATE INDEX IF NOT EXISTS idx_knowledge_connection_source ON knowledge_connection(source_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_connection_target ON knowledge_connection(target_id);
+
+-- Trabajo práctico: artefactos producidos por el estudiante y ligados al
+-- aprendizaje (recurso, lección o concepto). Se añade de forma ADITIVA: el DDL
+-- usa IF NOT EXISTS y se ejecuta en cada apertura, así que las bases existentes
+-- se migran solas sin perder datos.
+CREATE TABLE IF NOT EXISTS practice_work (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  resource_id TEXT REFERENCES learning_resource(id) ON DELETE CASCADE,
+  lesson_id TEXT REFERENCES lesson(id) ON DELETE CASCADE,
+  concept_id TEXT REFERENCES concept(id) ON DELETE SET NULL,
+  kind TEXT DEFAULT 'exercise',
+  status TEXT DEFAULT 'PLANNED',
+  artifact_url TEXT,
+  notes TEXT,
+  self_rating INTEGER,
+  completed_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_practice_work_resource ON practice_work(resource_id);
+CREATE INDEX IF NOT EXISTS idx_practice_work_lesson ON practice_work(lesson_id);
+CREATE INDEX IF NOT EXISTS idx_practice_work_status ON practice_work(status);
 `;
 
 /**

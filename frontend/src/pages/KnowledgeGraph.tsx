@@ -31,6 +31,11 @@ import {
   searchGraphNodes,
   exportCanvasAsImage
 } from '../services/domainLogic.ts';
+import {
+  applyGraphFilters,
+  availableRelationTypes,
+  computeConnectivityStats
+} from '../services/graphExploration.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { Button, Chip, cn } from '../components/ui/index.tsx';
 
@@ -215,6 +220,10 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
   const [pendingDeleteEdge, setPendingDeleteEdge] = useState<{ id: string; label: string } | null>(null);
   const [nodeSearchQuery, setNodeSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // Relaciones ocultas por el usuario (vacío = todas visibles).
+  const [hiddenRelations, setHiddenRelations] = useState<Set<string>>(new Set());
+  // Enfoque de vecindario: 0 = grafo completo, 1/2 = saltos alrededor del nodo.
+  const [focusDepth, setFocusDepth] = useState(0);
   const [theme, setTheme] = useState<ThemeMode>(() =>
     typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
   );
@@ -265,12 +274,34 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     return map;
   }, [graphData.nodes]);
 
-  const visibleGraph = useMemo(() => {
-    const nodes = graphData.nodes.filter(n => activeTypes.has(n.node_type || 'resource'));
-    const visibleIds = new Set(nodes.map(n => n.id));
-    const edges = graphData.edges.filter(e => visibleIds.has(e.source_id) && visibleIds.has(e.target_id));
-    return { nodes, edges };
-  }, [graphData, activeTypes]);
+  // Tipos de relación realmente presentes: la barra de filtros solo ofrece lo
+  // que existe, en lugar de una lista fija que puede quedar vacía.
+  const relationTypes = useMemo(() => availableRelationTypes(graphData.edges), [graphData.edges]);
+
+  const activeRelations = useMemo<Set<string> | null>(() => {
+    if (hiddenRelations.size === 0) return null;
+    const remaining = new Set(relationTypes);
+    for (const relation of hiddenRelations) remaining.delete(relation);
+    return remaining;
+  }, [hiddenRelations, relationTypes]);
+
+  const visibleGraph = useMemo(
+    () =>
+      applyGraphFilters(graphData.nodes, graphData.edges, {
+        activeTypes,
+        activeRelations,
+        focusNodeId: focusDepth > 0 ? selectedNodeId : null,
+        focusDepth
+      }),
+    [graphData, activeTypes, activeRelations, focusDepth, selectedNodeId]
+  );
+
+  // Conectividad sobre el grafo COMPLETO (no el filtrado): sirve de pista de
+  // exploración ("cuántos nodos siguen sin relación") y no cambia al filtrar.
+  const connectivity = useMemo(
+    () => computeConnectivityStats(graphData.nodes, graphData.edges),
+    [graphData]
+  );
 
   // Construye/actualiza la red vis-network sin re-inicializarla al filtrar.
   useEffect(() => {
@@ -366,6 +397,15 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       const next = new Set(prev);
       if (next.has(type)) next.delete(type);
       else next.add(type);
+      return next;
+    });
+  };
+
+  const toggleRelation = (relation: string) => {
+    setHiddenRelations(prev => {
+      const next = new Set(prev);
+      if (next.has(relation)) next.delete(relation);
+      else next.add(relation);
       return next;
     });
   };
@@ -523,23 +563,44 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
 
       {/* Barra de filtros y buscador interactivo de nodos */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* Filtros por tipo de nodo */}
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtros de nodos del grafo">
-          <Chip
-            active={activeTypes.size === FILTER_ORDER.length}
-            onClick={() => setActiveTypes(new Set(FILTER_ORDER))}
-          >
-            Todos
-          </Chip>
-          {FILTER_ORDER.map(type => {
-            const Icon = NODE_ICONS[type];
-            const active = activeTypes.has(type);
-            return (
-              <Chip key={type} active={active} onClick={() => toggleType(type)}>
-                <Icon size={13} aria-hidden="true" /> {GRAPH_NODE_LABELS[type]}
+        <div className="flex flex-col gap-2">
+          {/* Filtros por tipo de nodo */}
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtros de nodos del grafo">
+            <Chip
+              active={activeTypes.size === FILTER_ORDER.length}
+              onClick={() => setActiveTypes(new Set(FILTER_ORDER))}
+            >
+              Todos
+            </Chip>
+            {FILTER_ORDER.map(type => {
+              const Icon = NODE_ICONS[type];
+              const active = activeTypes.has(type);
+              return (
+                <Chip key={type} active={active} onClick={() => toggleType(type)}>
+                  <Icon size={13} aria-hidden="true" /> {GRAPH_NODE_LABELS[type]}
+                </Chip>
+              );
+            })}
+          </div>
+
+          {/* Filtros por tipo de relación: solo se ofrecen las que existen. */}
+          {relationTypes.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtros de relaciones del grafo">
+              <span className="type-micro text-faint">Relaciones</span>
+              <Chip active={hiddenRelations.size === 0} onClick={() => setHiddenRelations(new Set())}>
+                Todas
               </Chip>
-            );
-          })}
+              {relationTypes.map(relation => (
+                <Chip
+                  key={relation}
+                  active={!hiddenRelations.has(relation)}
+                  onClick={() => toggleRelation(relation)}
+                >
+                  {(GRAPH_RELATION_LABELS as Record<string, string>)[relation] || relation}
+                </Chip>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Buscador de nodos con centrado animado */}
@@ -618,12 +679,18 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             <div ref={containerRef} className="h-full w-full" />
           )}
           {/* Leyenda de relaciones (accesible y discreta) */}
-          <div className="pointer-events-none absolute bottom-4 left-4 flex items-center gap-2 rounded-lg border border-line bg-raised/90 px-3 py-2 text-meta text-muted backdrop-blur-sm">
-            <Info size={14} className="text-accent" aria-hidden="true" />
-            <span>
-              Arrastra y haz zoom. Las aristas discontinuas son estructurales; las sólidas son
-              conexiones tuyas.
-            </span>
+          <div className="pointer-events-none absolute bottom-4 left-4 flex max-w-[calc(100%-2rem)] items-start gap-2 rounded-lg border border-line bg-raised/90 px-3 py-2 text-meta text-muted backdrop-blur-sm">
+            <Info size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+            <div>
+              <p>
+                Arrastra y haz zoom. Las aristas discontinuas son estructurales; las sólidas son
+                conexiones tuyas.
+              </p>
+              <p className="mt-0.5 text-faint">
+                {connectivity.connected}/{connectivity.total} nodos con conexiones
+                {connectivity.isolated > 0 ? ` · ${connectivity.isolated} sin ninguna` : ''}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -639,6 +706,23 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
                   <h2 className="type-item break-words text-ink">{selectedNode.name}</h2>
                   <p className="type-meta">{GRAPH_NODE_LABELS[(selectedNode.node_type || 'resource')]}</p>
                 </div>
+              </div>
+
+              {/* Enfoque de vecindario: aísla el nodo y sus N saltos. */}
+              <div
+                className="flex flex-wrap items-center gap-1.5"
+                role="group"
+                aria-label="Enfoque del vecindario del nodo seleccionado"
+              >
+                <Chip active={focusDepth === 0} onClick={() => setFocusDepth(0)}>
+                  Grafo completo
+                </Chip>
+                <Chip active={focusDepth === 1} onClick={() => setFocusDepth(1)}>
+                  Solo vecinos
+                </Chip>
+                <Chip active={focusDepth === 2} onClick={() => setFocusDepth(2)}>
+                  2 saltos
+                </Chip>
               </div>
 
               {selectedNode.description && (
