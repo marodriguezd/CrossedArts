@@ -214,9 +214,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="type-micro">Continúa aprendizaje</p>
           {continueTarget ? (
             <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="type-title text-ink truncate">{continueTarget.course.title}</h2>
+                  <h2 className="type-title text-ink break-words line-clamp-2">{continueTarget.course.title}</h2>
                   {continueTarget.savedSeconds && continueTarget.savedSeconds > 5 && (
                     <Badge tone="accent">
                       <Clock size={11} aria-hidden="true" />
@@ -224,28 +224,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </Badge>
                   )}
                 </div>
-                <p className="type-secondary mt-1 truncate">
+                <p className="type-secondary mt-1.5 break-words line-clamp-2">
                   {continueTarget.lessonTitle
                     ? `Próxima: ${continueTarget.lessonTitle}${continueTarget.moduleTitle ? ` (${continueTarget.moduleTitle})` : ''}`
                     : 'Curso completo. Vuelve a repasar cuando quieras.'}
                 </p>
-                <div className="mt-3 flex items-center gap-3">
+                <div className="mt-3.5 space-y-1.5 max-w-md">
+                  <div className="flex items-center justify-between text-meta font-mono text-muted">
+                    <span className="font-semibold text-ink">{coursePct(continueTarget.course)}%</span>
+                    <span>
+                      {continueTarget.course.completed_lessons || 0}/{continueTarget.course.total_lessons} lecciones
+                    </span>
+                  </div>
                   <ProgressBar
                     value={coursePct(continueTarget.course)}
                     label={`Progreso de ${continueTarget.course.title}`}
-                    className="max-w-56"
+                    className="w-full"
                   />
-                  <span className="text-meta font-mono font-semibold text-muted">
-                    {coursePct(continueTarget.course)}%
-                  </span>
-                  <span className="text-meta font-mono text-muted">
-                    {continueTarget.course.completed_lessons || 0}/{continueTarget.course.total_lessons} lecciones
-                  </span>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <div className="mt-2 sm:mt-0 flex shrink-0 flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <Button
                   variant="solid"
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     if (continueTarget.lessonId && onOpenLesson) {
                       onOpenLesson(continueTarget.lessonId);
@@ -264,6 +265,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </Button>
                 <Button
                   variant="outline"
+                  className="w-full sm:w-auto"
                   onClick={() => onSelectCourse(continueTarget.course.id)}
                   title="Ver temario del curso"
                 >

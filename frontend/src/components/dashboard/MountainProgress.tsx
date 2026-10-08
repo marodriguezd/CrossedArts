@@ -79,20 +79,19 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
 
       <svg
         viewBox="0 0 100 100"
-        className="mt-3 h-40 w-full text-accent"
+        className="mt-3 h-44 w-full text-accent"
         role="img"
         aria-label={`Progreso de ${scopeLabel}: ${progress} por ciento del camino a la cumbre`}
-        preserveAspectRatio="none"
       >
-        {/* Silueta de la montaña (relleno tenue con tokens semánticos). */}
+        {/* Silueta de la montaña alineada con la cumbre (82, 12) y el sendero ascendente */}
         <path
-          d="M0 100 L20 74 L34 84 L56 40 L70 56 L84 12 L100 44 L100 100 Z"
+          d="M0 100 L8 92 L24 78 L34 82 L50 48 L64 42 L82 12 L92 48 L100 70 L100 100 Z"
           className="fill-accent-soft"
         />
 
-        {/* Sombra de la cumbre. */}
+        {/* Arista/sombra de la cumbre. */}
         <polyline
-          points={toPolylinePoints([{ x: 84, y: 12 }, { x: 72, y: 24 }])}
+          points={toPolylinePoints([{ x: 82, y: 12 }, { x: 74, y: 32 }])}
           className="stroke-line"
           fill="none"
           strokeWidth="1.2"
@@ -134,23 +133,25 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
       {/* Hitos en texto: accesible y legible sin depender del SVG. */}
       <ol className="mt-3 space-y-1.5" aria-label="Hitos del camino">
         {milestones.map((milestone) => (
-          <li key={milestone.percent} className="flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className={cn(
-                'h-1.5 w-1.5 shrink-0 rounded-full',
-                milestone.reached ? 'bg-success' : 'bg-line'
-              )}
-            />
-            <span
-              className={cn(
-                'type-meta',
-                milestone.reached ? 'font-semibold text-ink' : 'text-muted'
-              )}
-            >
-              {milestone.label}
-            </span>
-            <span className="type-meta ml-auto text-faint">{milestone.percent}%</span>
+          <li key={milestone.percent} className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full',
+                  milestone.reached ? 'bg-success' : 'bg-line'
+                )}
+              />
+              <span
+                className={cn(
+                  'type-meta break-words',
+                  milestone.reached ? 'font-semibold text-ink' : 'text-muted'
+                )}
+              >
+                {milestone.label}
+              </span>
+            </div>
+            <span className="type-meta shrink-0 text-faint">{milestone.percent}%</span>
           </li>
         ))}
       </ol>

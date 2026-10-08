@@ -206,7 +206,8 @@ export const Shell: React.FC<ShellProps> = ({
   const aiButton = (
     <button
       onClick={onOpenAI}
-      className="inline-flex h-10 items-center gap-2 rounded-lg bg-accent px-3 text-on-accent text-secondary font-medium shadow-card hover:opacity-90 transition-all duration-fast active:scale-[0.97]"
+      className="inline-flex h-9 sm:h-10 items-center gap-2 rounded-lg bg-accent px-2.5 sm:px-3 text-on-accent text-secondary font-medium shadow-card hover:opacity-90 transition-all duration-fast active:scale-[0.97]"
+      aria-label="Tutor IA"
     >
       <Bot size={16} aria-hidden="true" />
       <span className="hidden sm:inline">Tutor IA</span>
@@ -229,16 +230,11 @@ export const Shell: React.FC<ShellProps> = ({
         setIsMobileNavOpen(false);
       }}
       aria-keyshortcuts={isAppleLike ? 'Meta+K' : 'Control+K'}
-      // SIN aria-label a propósito (WCAG 2.5.3 "Label in Name"): el nombre
-      // accesible debe contener el texto visible. Un `aria-label` como "Abrir la
-      // paleta de comandos" lo reemplazaría y rompería el control por voz de
-      // quien dijera "clic en Buscar o ir a". El atajo ya se anuncia con
-      // `aria-keyshortcuts`.
-      className="flex h-9 w-full items-center gap-2 rounded-lg border border-line bg-surface px-3 text-meta text-faint transition-all duration-fast hover:border-accent/50 hover:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus active:scale-[0.99]"
+      className="flex h-9 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 sm:px-3 text-meta text-faint transition-all duration-fast hover:border-accent/50 hover:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus active:scale-[0.99]"
     >
       <Search size={15} aria-hidden="true" className="shrink-0" />
       <span className="min-w-0 flex-1 truncate text-left">Buscar o ir a…</span>
-      <Kbd className="shrink-0">{isAppleLike ? '⌘K' : 'Ctrl K'}</Kbd>
+      <Kbd className="shrink-0 hidden md:inline-flex">{isAppleLike ? '⌘K' : 'Ctrl K'}</Kbd>
     </button>
   );
 
@@ -291,7 +287,13 @@ export const Shell: React.FC<ShellProps> = ({
                 <X size={18} aria-hidden="true" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-3 pb-4">{navList('drawer')}</div>
+            <div className="flex-1 overflow-y-auto px-3 pb-4">
+              <div className="mb-3 block sm:hidden px-1">
+                <p className="type-micro mb-1.5 text-faint">Temporizador de estudio</p>
+                <PomodoroTimer />
+              </div>
+              {navList('drawer')}
+            </div>
             <div className="border-t border-line p-3">{backupButton}</div>
           </div>
         </div>
@@ -300,14 +302,14 @@ export const Shell: React.FC<ShellProps> = ({
       {/* --- Columna de contenido --- */}
       <div className="flex min-h-screen flex-col lg:pl-60">
         <header className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur-sm">
-          <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-2 sm:gap-3 px-3 sm:px-6 lg:px-8">
             <button
               ref={mobileNavTriggerRef}
               onClick={() => setIsMobileNavOpen(true)}
               aria-label="Abrir navegación"
               aria-expanded={isMobileNavOpen}
               aria-controls="mobile-nav"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line text-muted hover:text-ink lg:hidden"
+              className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg border border-line text-muted hover:text-ink lg:hidden"
             >
               <Menu size={18} aria-hidden="true" />
             </button>
@@ -316,8 +318,10 @@ export const Shell: React.FC<ShellProps> = ({
 
             <div className="min-w-0 flex-1">{paletteTrigger}</div>
 
-            <div className="flex shrink-0 items-center gap-2">
-              <PomodoroTimer />
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <div className="hidden sm:block">
+                <PomodoroTimer />
+              </div>
               <span className="hidden sm:block">{backupButton}</span>
               {aiButton}
               <ThemeToggle compact />
