@@ -1,0 +1,18 @@
+{
+  "name": "CrossedArts — Learning Operating System",
+  "short_name": "CrossedArts",
+  "description": "Sistema operativo de aprendizaje personal, local-first y offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F3EEE3",
+  "theme_color": "#F3EEE3",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

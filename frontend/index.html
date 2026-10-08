@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="theme-color" content="#F3EEE3" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CrossedArts — Learning Operating System</title>
+    <script>
+      // Aplica el tema persistido ANTES del primer pintado para evitar el
+      // destello del tema por defecto (claro/crema).
+      (function () {
+        var mode = 'light';
+        try {
+          mode = localStorage.getItem('crossedarts-theme') === 'dark' ? 'dark' : 'light';
+        } catch (e) {
+          mode = 'light';
+        }
+        document.documentElement.setAttribute('data-theme', mode);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', mode === 'dark' ? '#1A1918' : '#F3EEE3');
+      })();
+    </script>
+  </head>
+  <body class="min-h-screen antialiased">
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

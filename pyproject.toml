@@ -1,0 +1,33 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["."]
+addopts = "--tb=short -q"
+filterwarnings = [
+    "ignore::DeprecationWarning:httpx.*:",
+    "ignore::DeprecationWarning:starlette.*:",
+    "ignore::pytest.PytestUnraisableExceptionWarning:",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/tests/*", "backend/alembic/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501", "E712", "F821"]
+
+[tool.mypy]
+python_version = "3.11"
+explicit_package_bases = true
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_unused_ignores = false
+disable_error_code = ["name-defined", "assignment", "return-value", "call-arg", "arg-type", "var-annotated", "misc", "truthy-function", "union-attr"]

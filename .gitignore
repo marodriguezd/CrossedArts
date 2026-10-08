@@ -1,0 +1,147 @@
+# =============================================================================
+# CrossedArts — .gitignore
+# =============================================================================
+
+# --- Python & Virtual Environments ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+# Anclados a la raíz: protegen los artefactos de empaquetado de Python sin
+# tragarse fuentes reales como frontend/src/lib/ (reglas heredadas de plantilla
+# Python que antes ignoraban el motor local RAG/LLM/embeddings completo).
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.spec
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pdm-python
+.pdm-build/
+.pixi/
+
+# Testing & Coverage
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+cover/
+
+# Linters & Typing
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# --- Node.js & Frontend ---
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+pnpm-lock.yaml
+pnpm-workspace.yaml
+frontend/pnpm-lock.yaml
+frontend/pnpm-workspace.yaml
+
+# Node logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Databases & Local Storage ---
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+domestik.db
+crossedarts.db
+backend/domestik.db
+backend/crossedarts.db
+
+# Ensure WASM binary is never ignored
+!frontend/public/sql-wasm.wasm
+
+# --- Environment & Credentials ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.envrc
+*.pem
+*.key
+
+# --- Operating Systems ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# --- IDEs & Editors ---
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*.swn
+*~
+
+# --- Agent & Automation Framework Artifacts ---
+.agents/
+.omg/
+.opencode/
+scratch/
+.agent/
+.claude/
+.gemini/
+.freebuff/
+freebuff-chat-*.md
+
+# --- Auditorías y planes (artefactos, no fuente) ---
+AUDIT.md
+PLAN.md
+
+# --- General Logs & Temp ---
+*.log
+logs/
+temp/
+tmp/

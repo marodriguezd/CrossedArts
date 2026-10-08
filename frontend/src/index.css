@@ -1,0 +1,269 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+   CrossedArts — Sistema de diseño semántico
+   -----------------------------------------------------------------------------
+   Todos los colores viven aquí como variables CSS (tripletas RGB para poder
+   usar modificadores de opacidad de Tailwind). El tema claro/crema es el
+   predeterminado; el tema oscuro/carbón se define de forma explícita (nunca
+   como una inversión del claro). Los componentes usan únicamente los tokens
+   semánticos: canvas, surface, raised, line, ink, muted, faint, accent...
+   ============================================================================= */
+
+:root {
+  color-scheme: light;
+
+  /* --- Superficies (claro: crema/pergamino) --- */
+  --c-canvas: 243 238 227;      /* fondo de página, cálido pergaminoso */
+  --c-surface: 250 247 240;     /* superficie de contenido (paneles, tarjetas) */
+  --c-raised: 255 253 248;      /* superficie elevada (diálogos, menús) */
+  --c-line: 227 220 204;        /* separadores suaves gris-beige */
+  --c-line-strong: 205 196 176; /* bordes con más presencia */
+
+  /* --- Tinta ---
+   * Valores ajustados para cumplir WCAG 2.1 AA (≥4.5:1) sobre las tres
+   * superficies claras (canvas/surface/raised). El metadato (`faint`) es texto
+   * normal de 12px, así que también necesita 4.5:1 y no puede ser meramente
+   * "decorativo". Ver `frontend/tests/theme_contrast.test.ts`, que recalcula el
+   * contraste real desde estos tokens y falla si alguna pareja baja de umbral. */
+  --c-ink: 37 34 32;            /* texto principal, carbón cálido */
+  --c-muted: 93 88 80;          /* texto secundario gris cálido */
+  --c-faint: 112 106 96;        /* metadatos y micro-etiquetas */
+
+  /* --- Acento (ciruela contenida, herencia morada del producto) --- */
+  --c-accent: 94 75 139;
+  --c-accent-soft: 236 230 244;
+  --c-on-accent: 255 255 255;
+
+  /* --- Semánticos (uso funcional, nunca decorativo) --- */
+  --c-success: 74 117 86;
+  --c-success-soft: 227 238 229;
+  --c-warning: 133 101 44;
+  --c-warning-soft: 245 234 213;
+  --c-error: 163 80 61;
+  --c-error-soft: 246 227 221;
+  --c-info: 71 107 135;
+  --c-info-soft: 225 235 242;
+  --c-focus: 94 75 139;
+
+  /* --- Sombras (restricciones, cálidas) --- */
+  --shadow-card: 0 1px 2px 0 rgb(37 34 32 / 0.05);
+  --shadow-pop: 0 16px 40px -18px rgb(37 34 32 / 0.28);
+  --shadow-header: 0 1px 0 0 rgb(37 34 32 / 0.06);
+
+  /* --- Tipografía --- */
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-editorial: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, 'Times New Roman', serif;
+
+  /* --- Radio (escala) --- */
+  --r-sm: 0.375rem;
+  --r-md: 0.5rem;
+  --r-lg: 0.75rem;
+  --r-xl: 1rem;
+
+  /* --- Movimiento (orientación, no entretenimiento) --- */
+  --motion-fast: 140ms;
+  --motion-base: 220ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* --- Medida de lectura (editorial) --- */
+  --measure: 68ch;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* --- Superficies (oscuro: carbón cálido, nunca negro puro) --- */
+  --c-canvas: 26 25 24;
+  --c-surface: 34 33 31;
+  --c-raised: 44 42 40;
+  --c-line: 57 55 52;
+  --c-line-strong: 76 73 69;
+
+  /* --- Tinta (cálida, contraste suave) ---
+   * Igual que en claro: muted/faint cumplen AA sobre canvas/surface/raised. */
+  --c-ink: 231 226 217;
+  --c-muted: 178 171 161;
+  --c-faint: 155 149 140;
+
+  /* --- Acento en oscuro ---
+   * Un único acento no puede servir a la vez de color de TEXTO (necesita ≥4.5:1
+   * sobre el carbón) y de RELLENO con texto blanco (exigiría un púrpura mucho más
+   * oscuro). En oscuro se elige el acento legible sobre la superficie y un
+   * `on-accent` oscuro para los botones sólidos: así ambos usos cumplen AA con los
+   * tokens existentes, sin añadir una segunda paleta. */
+  --c-accent: 158 128 226;      /* #9e80e2: legible como texto sobre fondos oscuros */
+  --c-accent-soft: 46 38 62;    /* #2e263e: superficie ciruela oscura para badges y fondos tenues */
+  --c-on-accent: 26 25 24;      /* texto oscuro sobre el relleno de acento brillante */
+
+  /* --- Semánticos (baja saturación, sin glare) --- */
+  --c-success: 133 180 143;
+  --c-success-soft: 36 49 40;
+  --c-warning: 210 172 102;
+  --c-warning-soft: 56 47 32;
+  --c-error: 215 139 119;
+  --c-error-soft: 59 40 35;
+  --c-info: 143 179 204;
+  --c-info-soft: 37 48 57;
+  --c-focus: 158 128 226;
+
+  /* --- Sombras discretas: en oscuro mandan los bordes --- */
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.25);
+  --shadow-pop: 0 16px 40px -18px rgb(0 0 0 / 0.6);
+  --shadow-header: 0 1px 0 0 rgb(0 0 0 / 0.3);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-ui);
+    background-color: rgb(var(--c-canvas));
+    color: rgb(var(--c-ink));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Sin desbordamiento horizontal en ningún dispositivo. */
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: rgb(var(--c-accent) / 0.22);
+    color: rgb(var(--c-ink));
+  }
+
+  /* Indicador de foco visible y consistente para navegación por teclado. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-focus));
+    outline-offset: 2px;
+    border-radius: var(--r-sm);
+  }
+
+  /* Barras de scroll discretas y coherentes con el tema. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--c-line-strong)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--c-line-strong));
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Cabecera de documento: títulos editoriales cuando se piden. */
+  h1, h2, h3 {
+    font-family: var(--font-editorial);
+    color: rgb(var(--c-ink));
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  /* Jerarquía tipográfica compartida: niveles semánticos reutilizables. */
+  .type-display {
+    font-family: var(--font-editorial);
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .type-title {
+    font-family: var(--font-editorial);
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  .type-section {
+    font-family: var(--font-ui);
+    font-size: 1.0625rem;
+    line-height: 1.5rem;
+    font-weight: 600;
+  }
+  .type-item {
+    font-family: var(--font-ui);
+    font-size: 0.9375rem;
+    line-height: 1.375rem;
+    font-weight: 600;
+  }
+  .type-body {
+    font-family: var(--font-ui);
+    font-size: 0.9375rem;
+    line-height: 1.65;
+  }
+  .type-secondary {
+    font-family: var(--font-ui);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: rgb(var(--c-muted));
+  }
+  .type-meta {
+    font-family: var(--font-ui);
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+    color: rgb(var(--c-faint));
+  }
+  .type-micro {
+    font-family: var(--font-ui);
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgb(var(--c-faint));
+  }
+
+  /*
+   * Tipografía de lectura larga (contenido de lección, cuerpo de nota).
+   * Una sola definición para medida, ritmo y tamaño: el texto es el objeto
+   * principal del producto, no un bloque decorativo dentro de una tarjeta.
+   */
+  .type-prose {
+    font-family: var(--font-ui);
+    font-size: 1rem;
+    line-height: 1.75;
+    color: rgb(var(--c-ink));
+    /* Medida cómoda para lectura sostenida. */
+    max-width: var(--measure, 68ch);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--motion-base) var(--ease-out) forwards;
+}
+
+.animate-slide-left {
+  animation: slideLeft var(--motion-base) var(--ease-out) forwards;
+}
+
+/* Respeto por la preferencia de movimiento reducido del sistema. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-left {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}

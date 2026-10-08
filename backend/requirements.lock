@@ -1,0 +1,40 @@
+# =============================================================================
+# CrossedArts — Backend Pinned Constraints (Reproducible Environment)
+# Generated for Python 3.11+ / CI & Local deterministic builds.
+# Update with: pip-compile or manual update from verified releases.
+# =============================================================================
+
+alembic==1.13.3
+defusedxml==0.7.1
+# fastapi 0.115.0 fijaba starlette<0.39 (0.38.6), anterior al soporte de
+# peticiones Range (HTTP 206) en FileResponse. El endpoint
+# `GET /media/{id}/stream` anuncia `Accept-Ranges: bytes`, así que el entorno
+# fijado debe resolver una starlette con Range: fastapi 0.142.2 → starlette 1.7.0.
+# Verificado: la suite de backend pasa con este pin.
+fastapi==0.142.2
+httpx==0.27.2
+langchain==0.3.30
+langchain-community==0.3.31
+langchain-core==0.3.86
+langchain-huggingface==0.3.1
+langchain-ollama==0.3.10
+langchain-openai==0.3.35
+pydantic==2.9.2
+pydantic-settings==2.15.0
+pypdf==6.19.0
+pytest==8.3.3
+pytest-asyncio==0.24.0
+python-dotenv==1.0.1
+python-multipart==0.0.20
+pyyaml==6.0.2
+sentence-transformers==3.1.1
+sqlalchemy==2.0.35
+
+# --- Herramientas de calidad (CI) ---
+# El job de backend ejecuta `python -m ruff check` y `python -m mypy`, que
+# requieren ruff/mypy IMPORTABLES en el mismo intérprete. No deben depender de
+# binarios preinstalados en la imagen del runner (ubuntu-latest solo trae
+# pipx: yamllint y ansible-core). Se fijan aquí para que el entorno de CI sea
+# reproducible desde requirements.lock.
+mypy==2.4.0
+ruff==0.16.10
