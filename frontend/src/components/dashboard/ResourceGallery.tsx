@@ -139,7 +139,7 @@ export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
                     ) : (
                       <span
                         aria-hidden="true"
-                        className="flex h-full w-full items-center justify-center font-serif text-2xl font-semibold text-accent"
+                        className="flex h-full w-full items-center justify-center font-sans tracking-tight text-2xl font-bold text-accent"
                       >
                         {resourceInitials(item.title)}
                       </span>
@@ -165,7 +165,7 @@ export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
                           <ProgressBar value={progress} label={`Progreso de ${item.title}`} />
                           <span className="mt-1 flex items-center justify-between">
                             <span className="type-meta truncate text-faint">{item.meta ?? ''}</span>
-                            <span className="type-meta font-semibold text-muted">{progress}%</span>
+                            <span className="type-meta font-mono font-semibold text-muted">{progress}%</span>
                           </span>
                         </>
                       ) : (

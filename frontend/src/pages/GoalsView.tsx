@@ -447,7 +447,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                             />
                           </div>
                           <div className="flex flex-wrap items-center gap-2 text-meta">
-                            <strong className="text-ink">{progress.percent}%</strong>
+                            <strong className="text-ink font-mono">{progress.percent}%</strong>
                             <span className="text-muted">{progressLine(progress)}</span>
                           </div>
                         </>

@@ -53,7 +53,7 @@ const BUTTON_DISABLED: Record<ButtonVariant, string> = {
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-meta rounded-md gap-1.5',
+  sm: 'h-8 px-3 text-meta rounded-lg gap-1.5',
   md: 'h-9 px-4 text-secondary rounded-lg gap-2',
 };
 
@@ -105,7 +105,7 @@ const BADGE_TONES: Record<BadgeTone, string> = {
 export const Badge: React.FC<BadgeProps> = ({ tone = 'neutral', children, className }) => (
   <span
     className={cn(
-      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-meta font-medium',
+      'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-meta font-medium',
       BADGE_TONES[tone],
       className
     )}

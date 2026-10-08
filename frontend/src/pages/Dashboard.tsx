@@ -235,10 +235,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     label={`Progreso de ${continueTarget.course.title}`}
                     className="max-w-56"
                   />
-                  <span className="text-meta font-semibold text-muted">
+                  <span className="text-meta font-mono font-semibold text-muted">
                     {coursePct(continueTarget.course)}%
                   </span>
-                  <span className="text-meta">
+                  <span className="text-meta font-mono text-muted">
                     {continueTarget.course.completed_lessons || 0}/{continueTarget.course.total_lessons} lecciones
                   </span>
                 </div>
@@ -289,26 +289,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="type-micro">Estudio de hoy</p>
           <div className="mt-3 space-y-2">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-semibold text-ink">{today?.items_reviewed ?? 0}</span>
+              <span className="text-2xl font-mono font-semibold text-ink">{today?.items_reviewed ?? 0}</span>
               <span className="type-meta">ítems repasados</span>
             </div>
             <div className="border-t border-line pt-2 flex items-baseline justify-between">
-              <span className="text-item font-semibold text-ink">{today?.flashcards_reviewed ?? 0}</span>
+              <span className="text-item font-mono font-semibold text-ink">{today?.flashcards_reviewed ?? 0}</span>
               <span className="type-meta">tarjetas</span>
             </div>
             <div className="border-t border-line pt-2 flex items-baseline justify-between">
-              <span className="text-item font-semibold text-ink">{today?.questions_answered ?? 0}</span>
+              <span className="text-item font-mono font-semibold text-ink">{today?.questions_answered ?? 0}</span>
               <span className="type-meta">preguntas</span>
             </div>
             <div className="border-t border-line pt-2 flex items-baseline justify-between">
-              <span className="text-item font-semibold text-success">{today?.correct_answers ?? 0}</span>
+              <span className="text-item font-mono font-semibold text-success">{today?.correct_answers ?? 0}</span>
               <span className="type-meta">aciertos</span>
             </div>
           </div>
           <div className="mt-4 flex items-center gap-2 border-t border-line pt-3">
             <Flame size={15} className="text-warning" aria-hidden="true" />
             <span className="text-meta text-muted">
-              Racha activa: <strong className="text-ink">{kpis?.active_streak_days ?? 0} días</strong>
+              Racha activa: <strong className="text-ink font-mono">{kpis?.active_streak_days ?? 0} días</strong>
             </span>
           </div>
         </Panel>
@@ -368,19 +368,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <div className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
         <div className="px-5 py-4">
           <p className="type-micro">Recursos totales</p>
-          <p className="mt-1 text-xl font-semibold text-ink">{kpis?.total_resources ?? 0}</p>
+          <p className="mt-1 text-xl font-mono font-semibold text-ink">{kpis?.total_resources ?? 0}</p>
         </div>
         <div className="border-line px-5 py-4 md:border-0">
           <p className="type-micro">Completados</p>
-          <p className="mt-1 text-xl font-semibold text-ink">{kpis?.completed_resources ?? 0}</p>
+          <p className="mt-1 text-xl font-mono font-semibold text-ink">{kpis?.completed_resources ?? 0}</p>
         </div>
         <div className="border-t border-line px-5 py-4 md:border-0">
           <p className="type-micro">Horas de estudio</p>
-          <p className="mt-1 text-xl font-semibold text-ink">{kpis?.total_study_hours ?? 0} h</p>
+          <p className="mt-1 text-xl font-mono font-semibold text-ink">{kpis?.total_study_hours ?? 0} h</p>
         </div>
         <div className="border-t border-line px-5 py-4 md:border-0">
           <p className="type-micro">Racha activa</p>
-          <p className="mt-1 text-xl font-semibold text-ink">{kpis?.active_streak_days ?? 0} días</p>
+          <p className="mt-1 text-xl font-mono font-semibold text-ink">{kpis?.active_streak_days ?? 0} días</p>
         </div>
       </div>
 
@@ -558,7 +558,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         label={`Progreso de ${course.title}`}
                       />
                     </span>
-                    <span className="text-meta font-semibold text-muted w-10 text-right">
+                    <span className="text-meta font-mono font-semibold text-muted w-10 text-right">
                       {coursePct(course)}%
                     </span>
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line text-muted transition-colors group-hover:border-accent group-hover:bg-accent group-hover:text-on-accent">
@@ -609,10 +609,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                       )}
                       <p className="type-meta mt-0.5">
-                        {session.cards_reviewed} tarjetas · {session.questions_answered} preguntas
+                        <span className="font-mono">{session.cards_reviewed}</span> tarjetas · <span className="font-mono">{session.questions_answered}</span> preguntas
                       </p>
                     </div>
-                    <span className="shrink-0 text-meta font-semibold text-muted">
+                    <span className="shrink-0 text-meta font-mono font-semibold text-muted">
                       {session.duration_minutes} min
                     </span>
                   </li>
@@ -675,11 +675,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           label={`Lectura de ${book.title}`}
                           className="flex-1"
                         />
-                        <span className="text-meta font-semibold text-muted">
+                        <span className="text-meta font-mono font-semibold text-muted">
                           {book.reading_percentage || 0}%
                         </span>
                       </div>
-                      <p className="type-meta mt-1">
+                      <p className="type-meta font-mono mt-1">
                         Pág. {book.current_page}/{book.page_count}
                       </p>
                     </div>

@@ -194,7 +194,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
           <section aria-label="Resumen del periodo" className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
             <div className="px-4 py-3.5">
               <p className="type-micro flex items-center gap-1.5"><Clock size={12} aria-hidden="true" /> Tiempo de estudio</p>
-              <p className="mt-1 text-xl font-semibold text-ink">{formatMinutes(overview.studyMinutes)}</p>
+              <p className="mt-1 text-xl font-mono font-semibold text-ink">{formatMinutes(overview.studyMinutes)}</p>
               <p className="text-micro text-faint">
                 {comparison?.deltaMinutes !== null && comparison?.deltaMinutes !== undefined
                   ? comparison.deltaMinutes >= 0
@@ -205,19 +205,19 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
             </div>
             <div className="border-line px-4 py-3.5 md:border-0">
               <p className="type-micro flex items-center gap-1.5"><CalendarDays size={12} aria-hidden="true" /> Días activos</p>
-              <p className="mt-1 text-xl font-semibold text-ink">{overview.activeDays}</p>
+              <p className="mt-1 text-xl font-mono font-semibold text-ink">{overview.activeDays}</p>
               <p className="text-micro text-faint">
                 {overview.daysInRange ? `de ${overview.daysInRange} días del rango` : 'de todo el historial'}
               </p>
             </div>
             <div className="border-t border-line px-4 py-3.5 md:border-0">
               <p className="type-micro flex items-center gap-1.5"><ListChecks size={12} aria-hidden="true" /> Sesiones completadas</p>
-              <p className="mt-1 text-xl font-semibold text-ink">{overview.sessionsCompleted}</p>
+              <p className="mt-1 text-xl font-mono font-semibold text-ink">{overview.sessionsCompleted}</p>
               <p className="text-micro text-faint">{formatMinutes(overview.avgMinutesPerActiveDay)} por día activo</p>
             </div>
             <div className="border-t border-line px-4 py-3.5 md:border-0">
               <p className="type-micro flex items-center gap-1.5"><Flame size={12} aria-hidden="true" /> Racha actual</p>
-              <p className="mt-1 text-xl font-semibold text-ink">{overview.streakDays} días</p>
+              <p className="mt-1 text-xl font-mono font-semibold text-ink">{overview.streakDays} días</p>
               <p className="text-micro text-faint">días consecutivos con estudio</p>
             </div>
           </section>
@@ -225,17 +225,17 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <Panel className="p-4">
               <p className="type-micro flex items-center gap-1.5"><Brain size={12} aria-hidden="true" /> Tarjetas repasadas</p>
-              <p className="mt-1 text-xl font-semibold text-ink">{overview.flashcardsReviewed}</p>
+              <p className="mt-1 text-xl font-mono font-semibold text-ink">{overview.flashcardsReviewed}</p>
               <p className="text-micro text-faint">repasos SM-2 en el rango</p>
             </Panel>
             <Panel className="p-4">
               <p className="type-micro flex items-center gap-1.5"><ClipboardCheck size={12} aria-hidden="true" /> Preguntas contestadas</p>
-              <p className="mt-1 text-xl font-semibold text-ink">{overview.questionsAnswered}</p>
+              <p className="mt-1 text-xl font-mono font-semibold text-ink">{overview.questionsAnswered}</p>
               <p className="text-micro text-faint">{overview.correctAnswers} correctas</p>
             </Panel>
             <Panel className="p-4">
               <p className="type-micro flex items-center gap-1.5"><Target size={12} aria-hidden="true" /> Precisión</p>
-              <p className="mt-1 text-xl font-semibold text-ink">
+              <p className="mt-1 text-xl font-mono font-semibold text-ink">
                 {overview.accuracyPercent === null ? '-' : `${overview.accuracyPercent}%`}
               </p>
               <p className="text-micro text-faint">

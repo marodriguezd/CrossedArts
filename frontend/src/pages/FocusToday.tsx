@@ -214,12 +214,12 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Panel className="p-4">
           <p className="type-micro">Estudio de hoy</p>
-          <p className="mt-1 text-xl font-semibold text-ink">{minutesToday} min</p>
-          <p className="text-micro text-faint">{summary.reviewsToday} ítems repasados</p>
+          <p className="mt-1 text-xl font-mono font-semibold text-ink">{minutesToday} min</p>
+          <p className="text-micro text-faint"><span className="font-mono">{summary.reviewsToday}</span> ítems repasados</p>
         </Panel>
         <Panel className="p-4">
           <p className="type-micro">Racha activa</p>
-          <p className="mt-1 flex items-center gap-1.5 text-xl font-semibold text-ink">
+          <p className="mt-1 flex items-center gap-1.5 text-xl font-mono font-semibold text-ink">
             <Flame size={16} className="text-warning" aria-hidden="true" />
             {summary.streakDays} días
           </p>
@@ -227,7 +227,7 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
         </Panel>
         <Panel className="p-4">
           <p className="type-micro">Pendiente de repaso</p>
-          <p className="mt-1 text-xl font-semibold text-ink">{summary.pendingReviews}</p>
+          <p className="mt-1 text-xl font-mono font-semibold text-ink">{summary.pendingReviews}</p>
           <p className="text-micro text-faint">tarjetas vencidas (SM-2)</p>
         </Panel>
         <Panel className="p-4">

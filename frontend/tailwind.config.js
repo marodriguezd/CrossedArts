@@ -55,8 +55,9 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['system-ui', '-apple-system', "'Segoe UI'", 'Roboto', "'Helvetica Neue'", 'Arial', 'sans-serif'],
+        sans: ['system-ui', '-apple-system', "'SF Pro Display'", "'Segoe UI'", 'Roboto', "'Helvetica Neue'", 'Arial', 'sans-serif'],
         serif: ["'Iowan Old Style'", "'Palatino Linotype'", 'Palatino', 'Georgia', 'Cambria', "'Times New Roman'", 'serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', "'Liberation Mono'", "'Courier New'", 'monospace'],
       },
       fontSize: {
         // Escala tipográfica semántica: display, título de página, sección,

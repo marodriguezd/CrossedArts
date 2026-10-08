@@ -15,55 +15,53 @@
 :root {
   color-scheme: light;
 
-  /* --- Superficies (claro: crema/pergamino) --- */
-  --c-canvas: 243 238 227;      /* fondo de página, cálido pergaminoso */
-  --c-surface: 250 247 240;     /* superficie de contenido (paneles, tarjetas) */
-  --c-raised: 255 253 248;      /* superficie elevada (diálogos, menús) */
-  --c-line: 227 220 204;        /* separadores suaves gris-beige */
-  --c-line-strong: 205 196 176; /* bordes con más presencia */
+  /* --- Superficies (claro: off-white arquitectónico contemporáneo) --- */
+  --c-canvas: 246 247 249;      /* fondo de página, gris suave puro y limpio */
+  --c-surface: 255 255 255;     /* superficie de contenido (tarjetas, módulos) */
+  --c-raised: 255 255 255;      /* superficie elevada (diálogos, menús flotantes) */
+  --c-line: 226 230 238;        /* separadores sutiles de 1px */
+  --c-line-strong: 203 209 220; /* bordes estructurados y foco */
 
   /* --- Tinta ---
-   * Valores ajustados para cumplir WCAG 2.1 AA (≥4.5:1) sobre las tres
-   * superficies claras (canvas/surface/raised). El metadato (`faint`) es texto
-   * normal de 12px, así que también necesita 4.5:1 y no puede ser meramente
-   * "decorativo". Ver `frontend/tests/theme_contrast.test.ts`, que recalcula el
-   * contraste real desde estos tokens y falla si alguna pareja baja de umbral. */
-  --c-ink: 37 34 32;            /* texto principal, carbón cálido */
-  --c-muted: 93 88 80;          /* texto secundario gris cálido */
-  --c-faint: 112 106 96;        /* metadatos y micro-etiquetas */
+   * Valores ajustados para cumplir WCAG 2.1 AA (≥4.5:1) y AAA (≥7:1) sobre las tres
+   * superficies claras (canvas/surface/raised). Ver `frontend/tests/theme_contrast.test.ts`. */
+  --c-ink: 24 28 36;            /* texto principal, carbón arquitectónico profundo */
+  --c-muted: 85 93 108;         /* texto secundario gris pizarra */
+  --c-faint: 105 114 130;       /* metadatos y micro-etiquetas */
 
-  /* --- Acento (ciruela contenida, herencia morada del producto) --- */
-  --c-accent: 94 75 139;
-  --c-accent-soft: 236 230 244;
-  --c-on-accent: 255 255 255;
+  /* --- Acento (Índigo Eléctrico / Iris de precisión editorial) --- */
+  --c-accent: 67 56 202;        /* #4338CA: índigo profundo con ≥4.5:1 como texto y enlace */
+  --c-accent-soft: 238 242 255; /* #EEF2FF: superficie tenue para chips y selecciones */
+  --c-on-accent: 255 255 255;   /* blanco puro sobre botón de acento sólido */
 
-  /* --- Semánticos (uso funcional, nunca decorativo) --- */
-  --c-success: 74 117 86;
-  --c-success-soft: 227 238 229;
-  --c-warning: 133 101 44;
-  --c-warning-soft: 245 234 213;
-  --c-error: 163 80 61;
-  --c-error-soft: 246 227 221;
-  --c-info: 71 107 135;
-  --c-info-soft: 225 235 242;
-  --c-focus: 94 75 139;
+  /* --- Semánticos (uso funcional, alta nitidez) --- */
+  --c-success: 22 101 52;
+  --c-success-soft: 235 247 238;
+  --c-warning: 146 64 14;
+  --c-warning-soft: 254 243 199;
+  --c-error: 153 27 27;
+  --c-error-soft: 254 242 242;
+  --c-info: 30 64 175;
+  --c-info-soft: 239 246 255;
+  --c-focus: 67 56 202;
 
-  /* --- Sombras (restricciones, cálidas) --- */
-  --shadow-card: 0 1px 2px 0 rgb(37 34 32 / 0.05);
-  --shadow-pop: 0 16px 40px -18px rgb(37 34 32 / 0.28);
-  --shadow-header: 0 1px 0 0 rgb(37 34 32 / 0.06);
+  /* --- Sombras (arquitectónicas, nítidas y suaves) --- */
+  --shadow-card: 0 1px 3px 0 rgb(24 28 36 / 0.04), 0 1px 2px -1px rgb(24 28 36 / 0.04);
+  --shadow-pop: 0 12px 32px -12px rgb(24 28 36 / 0.18);
+  --shadow-header: 0 1px 0 0 rgb(24 28 36 / 0.06);
 
   /* --- Tipografía --- */
-  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-editorial: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, 'Times New Roman', serif;
+  --font-ui: system-ui, -apple-system, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-editorial: system-ui, -apple-system, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
-  /* --- Radio (escala) --- */
+  /* --- Radio (escala armónica) --- */
   --r-sm: 0.375rem;
   --r-md: 0.5rem;
   --r-lg: 0.75rem;
   --r-xl: 1rem;
 
-  /* --- Movimiento (orientación, no entretenimiento) --- */
+  /* --- Movimiento (háptico y preciso) --- */
   --motion-fast: 140ms;
   --motion-base: 220ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -75,44 +73,38 @@
 [data-theme='dark'] {
   color-scheme: dark;
 
-  /* --- Superficies (oscuro: carbón cálido, nunca negro puro) --- */
-  --c-canvas: 26 25 24;
-  --c-surface: 34 33 31;
-  --c-raised: 44 42 40;
-  --c-line: 57 55 52;
-  --c-line-strong: 76 73 69;
+  /* --- Superficies (oscuro: carbón arquitectónico profundo, nunca negro puro) --- */
+  --c-canvas: 18 20 24;
+  --c-surface: 26 29 36;
+  --c-raised: 36 40 50;
+  --c-line: 48 54 67;
+  --c-line-strong: 68 76 94;
 
-  /* --- Tinta (cálida, contraste suave) ---
-   * Igual que en claro: muted/faint cumplen AA sobre canvas/surface/raised. */
-  --c-ink: 231 226 217;
-  --c-muted: 178 171 161;
-  --c-faint: 155 149 140;
+  /* --- Tinta (cálida, contraste suave) --- */
+  --c-ink: 241 243 249;
+  --c-muted: 175 182 198;
+  --c-faint: 150 158 175;
 
-  /* --- Acento en oscuro ---
-   * Un único acento no puede servir a la vez de color de TEXTO (necesita ≥4.5:1
-   * sobre el carbón) y de RELLENO con texto blanco (exigiría un púrpura mucho más
-   * oscuro). En oscuro se elige el acento legible sobre la superficie y un
-   * `on-accent` oscuro para los botones sólidos: así ambos usos cumplen AA con los
-   * tokens existentes, sin añadir una segunda paleta. */
-  --c-accent: 158 128 226;      /* #9e80e2: legible como texto sobre fondos oscuros */
-  --c-accent-soft: 46 38 62;    /* #2e263e: superficie ciruela oscura para badges y fondos tenues */
-  --c-on-accent: 26 25 24;      /* texto oscuro sobre el relleno de acento brillante */
+  /* --- Acento en oscuro --- */
+  --c-accent: 147 151 255;      /* iris eléctrico luminoso para texto y bordes */
+  --c-accent-soft: 33 36 67;    /* superficie sutil para chips */
+  --c-on-accent: 18 20 24;      /* texto oscuro sobre el relleno de acento brillante */
 
-  /* --- Semánticos (baja saturación, sin glare) --- */
-  --c-success: 133 180 143;
-  --c-success-soft: 36 49 40;
-  --c-warning: 210 172 102;
-  --c-warning-soft: 56 47 32;
-  --c-error: 215 139 119;
-  --c-error-soft: 59 40 35;
-  --c-info: 143 179 204;
-  --c-info-soft: 37 48 57;
-  --c-focus: 158 128 226;
+  /* --- Semánticos (baja saturación, sin deslumbramiento) --- */
+  --c-success: 134 239 172;
+  --c-success-soft: 20 45 30;
+  --c-warning: 252 211 77;
+  --c-warning-soft: 48 40 20;
+  --c-error: 248 113 113;
+  --c-error-soft: 50 25 25;
+  --c-info: 147 197 253;
+  --c-info-soft: 25 38 55;
+  --c-focus: 147 151 255;
 
-  /* --- Sombras discretas: en oscuro mandan los bordes --- */
-  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.25);
-  --shadow-pop: 0 16px 40px -18px rgb(0 0 0 / 0.6);
-  --shadow-header: 0 1px 0 0 rgb(0 0 0 / 0.3);
+  /* --- Sombras en oscuro: dominancia de bordes --- */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.35);
+  --shadow-pop: 0 16px 40px -16px rgb(0 0 0 / 0.7);
+  --shadow-header: 0 1px 0 0 rgb(0 0 0 / 0.4);
 }
 
 @layer base {

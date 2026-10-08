@@ -186,7 +186,7 @@ export const Shell: React.FC<ShellProps> = ({
         <Landmark size={18} aria-hidden="true" />
       </span>
       <span className="leading-tight">
-        <span className="block font-serif text-item font-bold text-ink">CrossedArts</span>
+        <span className="block font-sans tracking-tight text-item font-bold text-ink">CrossedArts</span>
         <span className="block text-micro text-faint">Sistema de aprendizaje</span>
       </span>
     </button>
