@@ -708,6 +708,10 @@ export const App: React.FC = () => {
             // paleta: `handleOpenResource` identifica el tipo y abre su vista.
             if (citation.navigate) void handleOpenResource(citation.navigate.id);
           }}
+          onOpenSettings={() => {
+            setIsAIOpen(false);
+            handleNavigateTab('settings');
+          }}
         />
       </Suspense>
 

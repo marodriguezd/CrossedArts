@@ -46,7 +46,13 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
       };
     }
 
-    const adapter = await gpu.requestAdapter();
+    let adapter = null;
+    try {
+      adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    } catch {}
+    if (!adapter) {
+      adapter = await gpu.requestAdapter();
+    }
     if (!adapter) {
       return {
         state: 'unsupported',

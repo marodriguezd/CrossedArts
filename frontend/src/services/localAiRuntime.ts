@@ -435,7 +435,7 @@ export class LocalAiRuntime {
       this.setLlmStatus({
         stage: 'preparing',
         progress: 0,
-        message: isFallback ? 'Ajustando automáticamente la IA…' : 'Preparando tu IA…',
+        message: isFallback ? `Ajustando a ${candidate.name} por límites de memoria GPU…` : 'Preparando tu IA…',
         modelId: candidate.id,
         modelName: candidate.name
       });
@@ -446,7 +446,7 @@ export class LocalAiRuntime {
           this.setLlmStatus({
             stage: mapped.stage,
             progress: Math.max(0, Math.min(100, progress.progress || 0)),
-            message: isFallback ? `Ajustando automáticamente la IA… ${progress.progress || 0}%` : mapped.message,
+            message: isFallback ? `Descargando ${candidate.name} (${progress.progress || 0}%) por límites de VRAM…` : mapped.message,
             modelId: candidate.id,
             modelName: candidate.name
           });
@@ -456,7 +456,7 @@ export class LocalAiRuntime {
         return this.setLlmStatus({
           stage: 'ready',
           progress: 100,
-          message: isFallback ? 'Listo con una configuración más ligera' : 'Listo',
+          message: isFallback ? `Listo con ${candidate.name} (configuración más ligera adaptada a tu hardware)` : 'Listo',
           modelId: candidate.id,
           modelName: candidate.name,
           errorCategory: undefined,

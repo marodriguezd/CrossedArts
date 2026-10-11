@@ -17,7 +17,7 @@ export async function detectEmbeddingCapabilities(): Promise<EmbeddingCapabiliti
       const gpu = (navigator as any).gpu;
       if (gpu && typeof gpu.requestAdapter === 'function') {
         const adapter = await Promise.race([
-          gpu.requestAdapter(),
+          gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => gpu.requestAdapter()),
           new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 1500))
         ]);
         if (adapter) {

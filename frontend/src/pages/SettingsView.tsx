@@ -11,12 +11,13 @@ import { LOCAL_MODELS_REGISTRY, getLocalModelById, DEFAULT_WASM_MODEL_ID } from 
 import { localEmbeddingEngine, EmbeddingEngineStatus } from '../lib/localEmbeddings/engine.ts';
 import { embeddingCache } from '../lib/localEmbeddings/cache.ts';
 import { createSemanticChunksFromResourcesAsync } from '../lib/localEmbeddings/chunking.ts';
-import { EMBEDDING_MODELS_REGISTRY } from '../lib/localEmbeddings/registry.ts';
+import { EMBEDDING_MODELS_REGISTRY, DEFAULT_EMBEDDING_MODEL_ID, getEmbeddingModelById } from '../lib/localEmbeddings/registry.ts';
 import { localAiRuntime, type LocalAiStatus } from '../services/localAiRuntime.ts';
 import { dao } from '../db/dao.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { ThemeToggle } from '../components/common/ThemeToggle.tsx';
 import { Button, Badge, InlineStatus, ProgressBar, SectionHeading, cn } from '../components/ui/index.tsx';
+import { WebGpuDiagnosticGuide } from '../components/ai/WebGpuDiagnosticGuide.tsx';
 
 interface SettingsViewProps {
   onDataReset: () => void;
@@ -43,15 +44,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const [embCount, setEmbCount] = useState<number>(0);
   const [indexingText, setIndexingText] = useState<string | null>(null);
   const [embError, setEmbError] = useState<string | null>(null);
+  const [selectedEmbeddingModelId, setSelectedEmbeddingModelId] = useState<string>(
+    localEmbeddingEngine.getLoadedModelId() || DEFAULT_EMBEDDING_MODEL_ID
+  );
+  const selectedEmbeddingModelDef = getEmbeddingModelById(selectedEmbeddingModelId);
 
   // Speech & Voice state
   const [speechConfig, setSpeechConfig] = useState<SpeechSettings>(speechService.getSettings());
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>(speechService.getAvailableVoices());
   const [isTestingVoice, setIsTestingVoice] = useState(false);
 
-  const refreshEmbeddingCount = async () => {
+  const refreshEmbeddingCount = async (modelIdToCount?: string) => {
     try {
-      const activeModel = localEmbeddingEngine.getLoadedModelId() || EMBEDDING_MODELS_REGISTRY[0].id;
+      const activeModel = modelIdToCount || localEmbeddingEngine.getLoadedModelId() || selectedEmbeddingModelId || EMBEDDING_MODELS_REGISTRY[0].id;
       const entries = await embeddingCache.getAllEntriesForModel(activeModel);
       setEmbCount(entries.length);
     } catch {}
@@ -61,15 +66,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     detectWebGPUCapability().then((rep) => {
       setGpuReport(rep);
       if (rep.state !== 'supported' && rep.hasWasmFallback) {
-        setAiConfig((prev) => {
-          const currentModel = getLocalModelById(prev.localModelId);
-          if (currentModel && currentModel.runtimeBackend === 'webgpu') {
-            const updated = { ...prev, localModelId: DEFAULT_WASM_MODEL_ID };
-            aiService.saveSettings(updated);
-            return updated;
-          }
-          return prev;
-        });
+        const current = aiService.getSettings();
+        const currentModel = getLocalModelById(current.localModelId);
+        if (currentModel && currentModel.runtimeBackend === 'webgpu') {
+          const updated = { ...current, localModelId: DEFAULT_WASM_MODEL_ID };
+          aiService.saveSettings(updated);
+          setAiConfig(updated);
+        }
       }
     });
     refreshEmbeddingCount();
@@ -86,7 +89,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       setEmbError(localEmbeddingEngine.getLastError());
     });
 
-    const unsubscribeRuntime = localAiRuntime.subscribe(setRuntimeStatus);
+    const unsubscribeRuntime = localAiRuntime.subscribe((status) => {
+      setRuntimeStatus(status);
+      if (status.modelId && (status.stage === 'ready' || status.stage === 'downloading' || status.stage === 'compiling')) {
+        setAiConfig((prev) => {
+          if (prev.localModelId !== status.modelId) {
+            return { ...prev, localModelId: status.modelId! };
+          }
+          return prev;
+        });
+      }
+    });
 
     const unsubscribeSpeech = speechService.subscribe(() => {
       setSpeechConfig(speechService.getSettings());
@@ -119,8 +132,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     setEmbError(null);
     setIndexingText('Cargando motor de embeddings...');
     try {
-      if (localEmbeddingEngine.getStatus() !== 'ready') {
-        await localEmbeddingEngine.loadModel();
+      if (localEmbeddingEngine.getStatus() !== 'ready' || localEmbeddingEngine.getLoadedModelId() !== selectedEmbeddingModelId) {
+        await localEmbeddingEngine.loadModel(selectedEmbeddingModelId);
       }
       setIndexingText('Extrayendo contenidos y generando hashes SHA-256...');
       const resources = await dao.getAllLearningResources();
@@ -175,15 +188,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   const handleActivateLocalAi = () => {
     localAiRuntime.grantConsent();
-    void localAiRuntime.prepareForTutor('local');
+    void localAiRuntime.prepareForTutor('local', aiConfig.localModelId);
   };
 
   const handleLoadLocalModel = async () => {
     setLoadingError(null);
     try {
-      // Advanced control: force preparation through the same coordinator.
+      if (!localAiRuntime.hasConsent()) {
+        localAiRuntime.grantConsent();
+      }
       const status = await localAiRuntime.prepareForTutor('local', aiConfig.localModelId);
-      if (status.stage !== 'ready' && status.stage !== 'preparing' && status.stage !== 'downloading' && status.stage !== 'compiling') {
+      if (status.stage === 'error' || status.stage === 'unsupported') {
         setLoadingError(status.message);
       }
     } catch (err: any) {
@@ -201,8 +216,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     aiService.saveSettings(updated);
     setLoadingError(null);
     try {
+      if (!localAiRuntime.hasConsent()) {
+        localAiRuntime.grantConsent();
+      }
       const status = await localAiRuntime.prepareForTutor('local', newModelId);
-      if (status.stage !== 'ready' && status.stage !== 'preparing' && status.stage !== 'downloading' && status.stage !== 'compiling') {
+      if (status.stage === 'error' || status.stage === 'unsupported') {
         setLoadingError(status.message);
       }
     } catch (err: any) {
@@ -668,50 +686,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                 )}
               </div>
 
-              <p className="border-t border-line pt-3 text-micro font-semibold uppercase tracking-wide text-faint">
-                Opciones avanzadas
-              </p>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 text-meta font-semibold text-ink">
-                  <Cpu size={14} aria-hidden="true" /> Motor de aceleración:
-                </span>
-                {gpuReport.state === 'supported' ? (
-                  <Badge tone="success">WebGPU Activo ({gpuReport.adapterInfo || 'GPU'})</Badge>
-                ) : gpuReport.hasWasmFallback ? (
-                  <Badge tone="neutral">Modo CPU / WASM activo (Sin WebGPU)</Badge>
-                ) : gpuReport.state === 'checking' ? (
-                  <Badge tone="neutral">Comprobando soporte…</Badge>
-                ) : (
-                  <Badge tone="error"><AlertTriangle size={10} aria-hidden="true" /> Sin soporte local</Badge>
-                )}
-              </div>
+              {/* Guía y diagnóstico interactivo de WebGPU */}
+              <WebGpuDiagnosticGuide
+                initialReport={gpuReport}
+                onCapabilityChange={setGpuReport}
+                className="mt-2"
+              />
 
-              {gpuReport.state === 'unsupported' && !gpuReport.hasWasmFallback && (
-                <InlineStatus tone="error">
-                  <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  <span>
-                    <strong>Inferencia local no disponible en este dispositivo.</strong>
-                    <span className="mt-0.5 block">
-                      {gpuReport.reason || 'El navegador no soporta ni WebGPU ni WebAssembly para ejecución local.'}
-                    </span>
-                  </span>
-                </InlineStatus>
-              )}
-
-              {gpuReport.state === 'unsupported' && gpuReport.hasWasmFallback && (
-                <InlineStatus tone="info">
-                  <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  <span>
-                    <strong>WebGPU no detectada: se utilizará la CPU y memoria RAM (WASM).</strong>
-                    <span className="mt-0.5 block">
-                      Los modelos optimizados para CPU se ejecutarán de forma completamente local y privada sin requerir GPU dedicada.
-                    </span>
-                  </span>
-                </InlineStatus>
-              )}
-
-              <div>
-                <label className={LABEL_CLS} htmlFor="local-model">Modelo local seleccionado</label>
+              <div className="space-y-2">
+                <label className={LABEL_CLS} htmlFor="local-model">
+                  Modelo de lenguaje seleccionado
+                </label>
                 <select
                   id="local-model"
                   value={aiConfig.localModelId}
@@ -719,20 +704,63 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                   disabled={gpuReport.state !== 'supported' && !gpuReport.hasWasmFallback}
                   className={INPUT_CLS}
                 >
-                  {LOCAL_MODELS_REGISTRY.map(m => {
-                    const isGpuOnly = m.runtimeBackend === 'webgpu';
-                    const isDisabled = isGpuOnly && gpuReport.state !== 'supported';
-                    return (
-                      <option key={m.id} value={m.id} disabled={isDisabled}>
-                        {m.name} - {m.downloadSizeApprox} ({m.runtimeBackend === 'wasm' ? 'CPU / RAM' : `${m.vramRequiredMB} MB VRAM`})
-                        {isDisabled ? ' [Requiere WebGPU]' : ''}
-                        {m.recommended ? ' ★ Recomendado' : ''}
+                  <optgroup label="🌐 Multilingüe Recomendado (Español, Francés, Portugués, Inglés)">
+                    {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'multilingual').map(m => {
+                      const isDisabled = m.runtimeBackend === 'webgpu' && gpuReport.state !== 'supported';
+                      return (
+                        <option key={m.id} value={m.id} disabled={isDisabled}>
+                          {m.name} · {m.downloadSizeApprox} ({m.vramRequiredMB} MB VRAM)
+                          {isDisabled ? ' [Requiere WebGPU]' : ''}
+                          {m.recommended ? ' ★ Recomendado' : ''}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                  <optgroup label="⚡ Ultraligero WebGPU (Baja VRAM)">
+                    {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'ultralight').map(m => {
+                      const isDisabled = m.runtimeBackend === 'webgpu' && gpuReport.state !== 'supported';
+                      return (
+                        <option key={m.id} value={m.id} disabled={isDisabled}>
+                          {m.name} · {m.downloadSizeApprox} ({m.vramRequiredMB} MB VRAM)
+                          {isDisabled ? ' [Requiere WebGPU]' : ''}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                  <optgroup label="🧠 CPU / RAM (WebAssembly, sin GPU requerida)">
+                    {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'cpu_wasm').map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} · {m.downloadSizeApprox} (100% CPU / RAM)
                       </option>
-                    );
-                  })}
+                    ))}
+                  </optgroup>
+                  <optgroup label="🚀 Avanzado (Equipos potentes con GPU dedicada)">
+                    {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'advanced').map(m => {
+                      const isDisabled = m.runtimeBackend === 'webgpu' && gpuReport.state !== 'supported';
+                      return (
+                        <option key={m.id} value={m.id} disabled={isDisabled}>
+                          {m.name} · {m.downloadSizeApprox} ({m.vramRequiredMB} MB VRAM)
+                          {isDisabled ? ' [Requiere WebGPU]' : ''}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
                 </select>
+
                 {selectedModelDef && (
-                  <p className="type-meta mt-1">{selectedModelDef.description}</p>
+                  <div className="rounded-lg border border-line bg-canvas p-3 text-meta">
+                    <p className="text-ink">{selectedModelDef.description}</p>
+                    {selectedModelDef.languages && selectedModelDef.languages.length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-micro text-muted">
+                        <span className="font-medium text-ink">Idiomas optimizados:</span>
+                        {selectedModelDef.languages.map(lang => (
+                          <Badge key={lang} tone="neutral" className="uppercase px-1.5 py-0 text-[10px]">
+                            {lang}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -912,6 +940,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
               <Badge tone={embCount > 0 ? 'success' : 'neutral'}>
                 <span className="font-mono">{embCount}</span> fragmentos en caché
               </Badge>
+            </div>
+
+            <div className="space-y-2">
+              <label className={LABEL_CLS} htmlFor="embedding-model">
+                Modelo de embeddings para búsqueda semántica
+              </label>
+              <select
+                id="embedding-model"
+                value={selectedEmbeddingModelId}
+                onChange={async (e) => {
+                  const newId = e.target.value;
+                  setSelectedEmbeddingModelId(newId);
+                  try {
+                    await localEmbeddingEngine.loadModel(newId);
+                    await refreshEmbeddingCount(newId);
+                  } catch {}
+                }}
+                className={INPUT_CLS}
+              >
+                <optgroup label="⚡ Recomendado (Ligero / Alta velocidad en CPU y WebGPU)">
+                  {EMBEDDING_MODELS_REGISTRY.filter(m => m.tier === 'light' || m.recommended).map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {m.downloadSizeApprox} ({m.dimensions || m.dimension}d) ★ Recomendado
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🚀 Avanzado (Multimodal / Equipos potentes)">
+                  {EMBEDDING_MODELS_REGISTRY.filter(m => m.tier === 'advanced').map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {m.downloadSizeApprox} ({m.dimensions || m.dimension}d)
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Otros modelos de embeddings">
+                  {EMBEDDING_MODELS_REGISTRY.filter(m => !m.recommended && m.tier !== 'advanced').map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {m.downloadSizeApprox} ({m.dimensions || m.dimension}d)
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              {selectedEmbeddingModelDef && (
+                <div className="rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
+                  <p className="text-ink">{selectedEmbeddingModelDef.description}</p>
+                  <p className="mt-1 text-micro text-faint">
+                    Dimensión vectorial: {selectedEmbeddingModelDef.dimensions || selectedEmbeddingModelDef.dimension}d · Idiomas: {selectedEmbeddingModelDef.languages} · Licencia: {selectedEmbeddingModelDef.license}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">

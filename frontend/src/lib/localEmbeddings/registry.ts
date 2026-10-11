@@ -16,15 +16,11 @@ export interface EmbeddingModelDefinition {
   preferredBackend?: 'webgpu' | 'wasm';
   preferredDtype?: 'fp32' | 'q8' | 'q4';
   multimodal?: boolean;
+  tier?: 'light' | 'advanced' | 'standard';
 }
 
 /**
  * Modelos de embeddings verificados para ejecución local con Transformers.js.
- *
- * EmbeddingGemma 2 (740M, multimodal) no dispone todavía de un export
- * ONNX/Transformers.js verificado para este frontend. No se declara falsamente
- * como integrado. Se integra EmbeddingGemma 300M, que sí tiene un export ONNX
- * documentado para Transformers.js en navegador.
  */
 export const LOCAL_EMBEDDING_MODELS: EmbeddingModelDefinition[] = [
   {
@@ -34,7 +30,7 @@ export const LOCAL_EMBEDDING_MODELS: EmbeddingModelDefinition[] = [
     dimension: 768,
     dimensions: 256,
     outputDimension: 256,
-    downloadSizeApprox: 'ONNX q8 (descarga bajo demanda)',
+    downloadSizeApprox: '~280 MB (ONNX q8)',
     onnxArtifact: 'onnx/model_quantized.onnx',
     languages: '100+ idiomas',
     license: 'Gemma Terms of Use',
@@ -44,7 +40,28 @@ export const LOCAL_EMBEDDING_MODELS: EmbeddingModelDefinition[] = [
     preferredBackend: 'wasm',
     preferredDtype: 'q8',
     multimodal: false,
-    recommended: true
+    recommended: true,
+    tier: 'light'
+  },
+  {
+    id: 'onnx-community/embeddinggemma-2-ONNX',
+    name: 'EmbeddingGemma 2 (ONNX - Avanzado)',
+    description: 'Modelo multimodal avanzado de Google en formato ONNX (768 dimensiones). Máxima capacidad semántica para equipos potentes con amplia memoria RAM.',
+    dimension: 768,
+    dimensions: 768,
+    outputDimension: 768,
+    downloadSizeApprox: '~1.5 GB (ONNX q8)',
+    onnxArtifact: 'onnx/model_quantized.onnx',
+    languages: '100+ idiomas',
+    license: 'Gemma Terms of Use',
+    quantization: 'q8',
+    queryPrefix: 'task: search result | query: ',
+    documentPrefix: 'title: none | text: ',
+    preferredBackend: 'wasm',
+    preferredDtype: 'q8',
+    multimodal: true,
+    recommended: false,
+    tier: 'advanced'
   },
   {
     id: 'Xenova/multilingual-e5-small',

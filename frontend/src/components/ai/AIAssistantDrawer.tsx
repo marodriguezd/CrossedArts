@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle, ArrowUpRight, Settings } from 'lucide-react';
 import { aiService, AIChatMessage, AssistantResponse, type AISettings, type AIProvider } from '../../ai/aiService.ts';
 import type { RagSourceCitation } from '../../lib/localRag/contextBuilder.ts';
 import { localLlmEngine } from '../../lib/localLlm/engine.ts';
 import { cn, Button, ProgressBar } from '../ui/index.tsx';
 import { MessageBody, SourceTitle } from './MarkdownMessage.ts';
 import { localAiRuntime, type LocalAiStatus } from '../../services/localAiRuntime.ts';
+import { detectWebGPUCapability, type WebGPUCapabilityReport } from '../../lib/localLlm/capabilities.ts';
 
 interface MessageItem extends AIChatMessage {
   sources?: string[];
@@ -31,6 +32,8 @@ interface AIAssistantDrawerProps {
   activeLessonId?: string;
   /** Abre la fuente de una cita en su vista de origen (navegación determinista). */
   onOpenCitation?: (citation: RagSourceCitation) => void;
+  /** Navega directamente a la vista de configuración para activar WebGPU o cambiar de modelo. */
+  onOpenSettings?: () => void;
 }
 
 /** Etiquetas de tipo para las rutas de procedencia de las citas. */
@@ -56,7 +59,15 @@ const PROVIDER_LABELS: Record<AIProvider, string> = {
  * RAG recuperadas de SQLite y el PROVEEDOR real: nunca sugiere que una
  * interacción con proveedor remoto ocurre en el dispositivo.
  */
-export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, onClose, activeContext, activeResourceId, activeLessonId, onOpenCitation }) => {
+export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
+  isOpen,
+  onClose,
+  activeContext,
+  activeResourceId,
+  activeLessonId,
+  onOpenCitation,
+  onOpenSettings
+}) => {
   const retrievalScope = (activeResourceId || activeLessonId)
     ? { resourceId: activeResourceId, lessonId: activeLessonId }
     : undefined;
@@ -71,10 +82,17 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
   const [runtimeStatus, setRuntimeStatus] = useState<LocalAiStatus>(localAiRuntime.getStatus());
   const [consentDismissed, setConsentDismissed] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<AISettings>(aiService.getSettings());
+  const [gpuReport, setGpuReport] = useState<WebGPUCapabilityReport | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Sincronizar ajustes en tiempo real cuando el usuario cambie de proveedor
   useEffect(() => aiService.subscribeSettings(setCurrentSettings), []);
+
+  // Diagnóstico de capacidades al abrir el cajón
+  useEffect(() => {
+    if (!isOpen) return;
+    void detectWebGPUCapability().then(setGpuReport);
+  }, [isOpen]);
 
   // Accesibilidad del cajón: Escape cierra el cajón, pero primero permite
   // descartar el consentimiento cuando el modal de activación está abierto.
@@ -239,6 +257,28 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
           <X size={18} aria-hidden="true" />
         </button>
       </div>
+
+      {/* Aviso diagnóstico WebGPU / Fallback */}
+      {currentSettings.provider === 'local' && gpuReport && gpuReport.state !== 'supported' && (
+        <div
+          data-testid="ai-drawer-webgpu-notice"
+          className="flex items-center justify-between gap-2 border-b border-line bg-canvas px-4 py-2 text-micro"
+        >
+          <div className="flex items-center gap-1.5 text-muted">
+            <Cpu size={12} className="shrink-0 text-accent" aria-hidden="true" />
+            <span>WebGPU inactivo · Inferencia en CPU (WASM)</span>
+          </div>
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="shrink-0 font-medium text-accent hover:underline focus-visible:underline"
+            >
+              Activar WebGPU
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Hilos de mensajes */}
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
