@@ -138,7 +138,10 @@ async function gotoTab(page, label) {
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: VIEWPORTS[0] });
+  // Every expectation below asserts Spanish copy: pin the context locale so
+  // the app resolves 'es' on any machine (local es-ES dev boxes and C-locale
+  // CI runners alike) instead of inheriting the OS/browser language.
+  const context = await browser.newContext({ viewport: VIEWPORTS[0], locale: 'es-ES' });
   const page = await context.newPage();
 
   page.on('pageerror', err => record('runtime', `excepción de página: ${err.message}`));
