@@ -16,6 +16,8 @@ import { localAiRuntime, type LocalAiStatus } from '../services/localAiRuntime.t
 import { dao } from '../db/dao.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { ThemeToggle } from '../components/common/ThemeToggle.tsx';
+import { useLanguage } from '../hooks/useLanguage.ts';
+import { AUTO_LANGUAGE, SUPPORTED_LANGUAGES } from '../i18n/languages.ts';
 import { Button, Badge, InlineStatus, ProgressBar, SectionHeading, cn } from '../components/ui/index.tsx';
 import { WebGpuDiagnosticGuide } from '../components/ai/WebGpuDiagnosticGuide.tsx';
 
@@ -24,6 +26,7 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
+  const { t, effective, language, setLanguage } = useLanguage();
   const [aiConfig, setAiConfig] = useState<AISettings>(aiService.getSettings());
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -280,22 +283,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       try {
         parsed = JSON.parse(text);
       } catch {
-        throw new Error('El archivo no contiene un JSON sintácticamente válido.');
+        throw new Error(t('settings.jsonInvalid'));
       }
 
-      const validation = validateCoursePackage(parsed);
+      const validation = validateCoursePackage(parsed, effective);
       if (!validation.valid || !validation.package) {
-        setPackageFeedback({ type: 'error', text: validation.error || 'El paquete no es válido.' });
+        setPackageFeedback({ type: 'error', text: validation.error || t('settings.pkgInvalid') });
         return;
       }
 
       const { created, skipped, conflicts } = await dao.importCoursePackage(validation.package);
       // El conflicto no es un error: la importación es aditiva y conserva la
       // versión local. Se informa aparte para que el usuario entienda el resultado.
-      const conflictNote = describeConflicts(conflicts);
+      const conflictNote = describeConflicts(conflicts, effective);
       setPackageFeedback({
         type: 'success',
-        text: conflictNote ? `${describeImportResult(created, skipped)} ${conflictNote}` : describeImportResult(created, skipped)
+        text: conflictNote ? `${describeImportResult(created, skipped, effective)} ${conflictNote}` : describeImportResult(created, skipped, effective)
       });
       onDataReset();
     } catch (err: any) {
@@ -315,12 +318,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         try {
           parsed = JSON.parse(text);
         } catch {
-          throw new Error('El archivo no contiene un JSON sintácticamente válido.');
+          throw new Error(t('settings.jsonInvalid'));
         }
-        await importJsonBackup(parsed as Record<string, any[]>);
+        await importJsonBackup(parsed as Record<string, any[]>, effective);
         setDbFeedback({ type: 'success', text: `Respaldo JSON restaurado correctamente desde "${file.name}".` });
       } else {
-        await importSqliteFile(file);
+        await importSqliteFile(file, effective);
         setDbFeedback({ type: 'success', text: `Base de datos restaurada desde "${file.name}".` });
       }
       onDataReset();
@@ -520,6 +523,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </div>
           </div>
           <ThemeToggle />
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------
+          Idioma
+      --------------------------------------------------------------- */}
+      <section aria-labelledby="settings-language" className="space-y-4">
+        <SectionHeading
+          title={t('settings.language.title')}
+          description={t('settings.language.desc')}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-surface p-5 shadow-card">
+          <label className="text-item text-ink" htmlFor="app-language">
+            {t('settings.language.title')}
+          </label>
+          <select
+            id="app-language"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value as typeof language)}
+            className="rounded-lg border border-line bg-canvas px-3 py-2 text-secondary text-ink"
+          >
+            <option value={AUTO_LANGUAGE}>{t('settings.language.auto')}</option>
+            {SUPPORTED_LANGUAGES.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.nativeName}
+              </option>
+            ))}
+          </select>
         </div>
       </section>
 

@@ -21,6 +21,7 @@ import { exportSqliteFile } from '../../db/exportImport.ts';
 import { ThemeToggle } from '../common/ThemeToggle.tsx';
 import { PomodoroTimer } from '../common/PomodoroTimer.tsx';
 import { Kbd, cn } from '../ui/index.tsx';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 
 interface ShellProps {
   currentTab: string;
@@ -39,20 +40,20 @@ interface ShellProps {
 
 interface NavItem {
   id: string;
-  label: string;
+  labelKey: string;
   icon: LucideIcon;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'focus', label: 'Hoy', icon: CalendarCheck },
-  { id: 'library', label: 'Biblioteca', icon: Library },
-  { id: 'review', label: 'Repaso SM-2', icon: BrainCircuit },
-  { id: 'goals', label: 'Metas', icon: Target },
-  { id: 'analytics', label: 'Análisis', icon: BarChart3 },
-  { id: 'graph', label: 'Grafo', icon: Network },
-  { id: 'notes', label: 'Notas', icon: FileText },
-  { id: 'settings', label: 'Ajustes', icon: Settings },
+  { id: 'dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { id: 'focus', labelKey: 'nav.today', icon: CalendarCheck },
+  { id: 'library', labelKey: 'nav.library', icon: Library },
+  { id: 'review', labelKey: 'nav.review', icon: BrainCircuit },
+  { id: 'goals', labelKey: 'nav.goals', icon: Target },
+  { id: 'analytics', labelKey: 'nav.analytics', icon: BarChart3 },
+  { id: 'graph', labelKey: 'nav.graph', icon: Network },
+  { id: 'notes', labelKey: 'nav.notes', icon: FileText },
+  { id: 'settings', labelKey: 'nav.settings', icon: Settings },
 ];
 
 /**
@@ -69,6 +70,7 @@ export const Shell: React.FC<ShellProps> = ({
   paletteOpen,
   children,
 }) => {
+  const { t } = useLanguage();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const mobileNavRef = useRef<HTMLDivElement | null>(null);
   /** Disparador del cajón: destino del retorno de foco al cerrarse. */
@@ -141,7 +143,7 @@ export const Shell: React.FC<ShellProps> = ({
     (id === 'notes' && currentTab === 'note_detail');
 
   const navList = (idPrefix: string) => (
-    <nav aria-label="Navegación principal" className="flex flex-col gap-0.5">
+    <nav aria-label={t('shell.mainNav')} className="flex flex-col gap-0.5">
       {NAV_ITEMS.map((item) => {
         const Icon = item.icon;
         const active = isActive(item.id);
@@ -169,7 +171,7 @@ export const Shell: React.FC<ShellProps> = ({
               )}
             />
             <Icon size={17} aria-hidden="true" />
-            {item.label}
+            {t(item.labelKey)}
           </button>
         );
       })}
@@ -180,14 +182,14 @@ export const Shell: React.FC<ShellProps> = ({
     <button
       onClick={() => onNavigate('dashboard')}
       className="flex items-center gap-2.5 text-left transition-transform duration-fast active:scale-[0.98]"
-      aria-label="CrossedArts - ir al Dashboard"
+      aria-label={t('shell.brandHome')}
     >
       <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-on-accent shadow-card">
         <Landmark size={18} aria-hidden="true" />
       </span>
       <span className="leading-tight">
         <span className="block font-sans tracking-tight text-item font-bold text-ink">CrossedArts</span>
-        <span className="block text-micro text-faint">Sistema de aprendizaje</span>
+        <span className="block text-micro text-faint">{t('shell.tagline')}</span>
       </span>
     </button>
   );
@@ -195,8 +197,8 @@ export const Shell: React.FC<ShellProps> = ({
   const backupButton = (
     <button
       onClick={() => exportSqliteFile()}
-      title="Exportar base de datos SQLite (.sqlite)"
-      aria-label="Exportar base de datos SQLite (.sqlite)"
+      title={t('shell.exportDb')}
+      aria-label={t('shell.exportDb')}
       className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-line text-muted hover:text-ink hover:bg-accent-soft/60 transition-all duration-fast active:scale-[0.96]"
     >
       <Download size={16} aria-hidden="true" />
@@ -207,10 +209,10 @@ export const Shell: React.FC<ShellProps> = ({
     <button
       onClick={onOpenAI}
       className="inline-flex h-9 sm:h-10 items-center gap-2 rounded-lg bg-accent px-2.5 sm:px-3 text-on-accent text-secondary font-medium shadow-card hover:opacity-90 transition-all duration-fast active:scale-[0.97]"
-      aria-label="Tutor IA"
+      aria-label={t('shell.aiTutor')}
     >
       <Bot size={16} aria-hidden="true" />
-      <span className="hidden sm:inline">Tutor IA</span>
+      <span className="hidden sm:inline">{t('shell.aiTutor')}</span>
     </button>
   );
 
@@ -233,7 +235,7 @@ export const Shell: React.FC<ShellProps> = ({
       className="flex h-9 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 sm:px-3 text-meta text-faint transition-all duration-fast hover:border-accent/50 hover:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus active:scale-[0.99]"
     >
       <Search size={15} aria-hidden="true" className="shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-left">Buscar o ir a…</span>
+      <span className="min-w-0 flex-1 truncate text-left">{t('shell.searchPlaceholder')}</span>
       <Kbd className="shrink-0 hidden md:inline-flex">{isAppleLike ? '⌘K' : 'Ctrl K'}</Kbd>
     </button>
   );
@@ -245,7 +247,7 @@ export const Shell: React.FC<ShellProps> = ({
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:border focus:border-line focus:bg-surface focus:px-4 focus:py-2 focus:text-meta focus:font-medium focus:text-ink focus:shadow-pop"
       >
-        Saltar al contenido principal
+        {t('shell.skipLink')}
       </a>
 
       {/* --- Barra lateral fija (escritorio) --- */}
@@ -253,9 +255,9 @@ export const Shell: React.FC<ShellProps> = ({
         <div className="px-4 py-5">{brandButton}</div>
         <div className="flex-1 overflow-y-auto px-3 pb-4">{navList('side')}</div>
         <div className="border-t border-line px-4 py-4">
-          <p className="type-micro">Local · Sin conexión</p>
+          <p className="type-micro">{t('shell.localBadge')}</p>
           <p className="type-meta mt-1 leading-relaxed">
-            Tus datos viven en tu navegador (SQLite + IndexedDB).
+            {t('shell.localDesc')}
           </p>
         </div>
       </aside>
@@ -274,14 +276,14 @@ export const Shell: React.FC<ShellProps> = ({
             className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-line bg-surface shadow-pop"
             role="dialog"
             aria-modal="true"
-            aria-label="Navegación"
+            aria-label={t('shell.mobileNav')}
           >
             <div className="flex items-center justify-between px-4 py-4">
               {brandButton}
               <button
                 autoFocus
                 onClick={() => setIsMobileNavOpen(false)}
-                aria-label="Cerrar navegación"
+                aria-label={t('shell.closeNav')}
                 className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:text-ink"
               >
                 <X size={18} aria-hidden="true" />
@@ -289,7 +291,7 @@ export const Shell: React.FC<ShellProps> = ({
             </div>
             <div className="flex-1 overflow-y-auto px-3 pb-4">
               <div className="mb-3 block sm:hidden px-1">
-                <p className="type-micro mb-1.5 text-faint">Temporizador de estudio</p>
+                <p className="type-micro mb-1.5 text-faint">{t('shell.studyTimer')}</p>
                 <PomodoroTimer />
               </div>
               {navList('drawer')}
@@ -306,7 +308,7 @@ export const Shell: React.FC<ShellProps> = ({
             <button
               ref={mobileNavTriggerRef}
               onClick={() => setIsMobileNavOpen(true)}
-              aria-label="Abrir navegación"
+              aria-label={t('shell.openNav')}
               aria-expanded={isMobileNavOpen}
               aria-controls="mobile-nav"
               className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg border border-line text-muted hover:text-ink lg:hidden"

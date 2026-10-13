@@ -12,13 +12,13 @@ import {
 import { dao } from '../db/dao.ts';
 import { resolveLocalDay } from '../services/localDate.ts';
 import {
-  FOCUS_EMPTY_MESSAGE,
   buildFocusPlan,
   buildFocusSummary,
   deriveRecentResources,
   type FocusItem
 } from '../services/focus.ts';
-import { GOAL_DEADLINE_LABELS } from '../services/goals.ts';
+import { useLanguage } from '../hooks/useLanguage.ts';
+import { goalDeadlineLabel } from '../services/goals.ts';
 import { useGoalProgress } from '../hooks/useGoalProgress.ts';
 import type {
   Book,
@@ -82,8 +82,9 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
   onNavigate,
   onOpenDestination
 }) => {
+  const { t, effective } = useLanguage();
   const { day: localDay } = resolveLocalDay();
-  const progressByGoal = useGoalProgress(goals, courses, books, practiceWork);
+  const progressByGoal = useGoalProgress(goals, courses, books, practiceWork, effective);
 
   interface ContinueTarget {
     courseId: string;
@@ -160,8 +161,8 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
         goals,
         goalProgress: progressByGoal,
         recentSessions
-      }),
-    [kpis, localDay, minutesToday, continueTarget, courses, books, practiceWork, goals, progressByGoal, recentSessions]
+      }, effective),
+    [kpis, localDay, minutesToday, continueTarget, courses, books, practiceWork, goals, progressByGoal, recentSessions, effective]
   );
 
   const summary = useMemo(
@@ -206,44 +207,44 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
       <header>
-        <h1 className="type-display text-ink">Hoy</h1>
-        <p className="type-secondary mt-1 capitalize">{formatLocalDate(localDay)} · tu siguiente paso, basado en tus datos.</p>
+        <h1 className="type-display text-ink">{t('focus.title')}</h1>
+        <p className="type-secondary mt-1 capitalize">{t('focus.subtitle', { date: formatLocalDate(localDay) })}</p>
       </header>
 
       {/* Resumen del día: solo hechos medidos. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Panel className="p-4">
-          <p className="type-micro">Estudio de hoy</p>
+          <p className="type-micro">{t('focus.todayStudy')}</p>
           <p className="mt-1 text-xl font-mono font-semibold text-ink">{minutesToday} min</p>
-          <p className="text-micro text-faint"><span className="font-mono">{summary.reviewsToday}</span> ítems repasados</p>
+          <p className="text-micro text-faint"><span className="font-mono">{summary.reviewsToday}</span> {t('dashboard.itemsReviewed')}</p>
         </Panel>
         <Panel className="p-4">
-          <p className="type-micro">Racha activa</p>
+          <p className="type-micro">{t('focus.streak')}</p>
           <p className="mt-1 flex items-center gap-1.5 text-xl font-mono font-semibold text-ink">
             <Flame size={16} className="text-warning" aria-hidden="true" />
-            {summary.streakDays} días
+            {t('dashboard.streakDays', { n: summary.streakDays })}
           </p>
-          <p className="text-micro text-faint">días consecutivos con estudio</p>
+          <p className="text-micro text-faint">{t('focus.streakHint')}</p>
         </Panel>
         <Panel className="p-4">
-          <p className="type-micro">Pendiente de repaso</p>
+          <p className="type-micro">{t('focus.pending')}</p>
           <p className="mt-1 text-xl font-mono font-semibold text-ink">{summary.pendingReviews}</p>
-          <p className="text-micro text-faint">tarjetas vencidas (SM-2)</p>
+          <p className="text-micro text-faint">{t('focus.overdueCards')}</p>
         </Panel>
         <Panel className="p-4">
-          <p className="type-micro">Meta más próxima</p>
+          <p className="type-micro">{t('focus.nextGoal')}</p>
           {summary.nextGoal ? (
             <>
               <p className="mt-1 truncate text-item font-semibold text-ink" title={summary.nextGoal.title}>
                 {summary.nextGoal.title}
               </p>
               <p className="text-micro text-faint">
-                {summary.nextGoalDeadline ? GOAL_DEADLINE_LABELS[summary.nextGoalDeadline] : ''}
+                {summary.nextGoalDeadline ? goalDeadlineLabel(summary.nextGoalDeadline, effective) : ''}
                 {summary.nextGoalProgress?.measurable ? ` · ${summary.nextGoalProgress.percent}%` : ''}
               </p>
             </>
           ) : (
-            <p className="mt-1 text-item text-muted">Sin metas activas</p>
+            <p className="mt-1 text-item text-muted">{t('focus.noGoals')}</p>
           )}
         </Panel>
       </div>
@@ -253,19 +254,19 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
         <div className="mb-4 flex items-center gap-2 border-b border-line pb-3">
           <ListTodo size={16} className="text-accent" aria-hidden="true" />
           <div>
-            <h2 className="type-section text-ink">Qué hacer ahora</h2>
-            <p className="type-meta mt-0.5">Recomendaciones derivadas de tus datos: cada una explica por qué aparece.</p>
+            <h2 className="type-section text-ink">{t('focus.planTitle')}</h2>
+            <p className="type-meta mt-0.5">{t('focus.planDesc')}</p>
           </div>
         </div>
 
         {plan.length === 0 ? (
           <EmptyState
             icon={<CircleCheck size={30} aria-hidden="true" />}
-            title="No hay nada pendiente ahora mismo"
-            hint={FOCUS_EMPTY_MESSAGE}
+            title={t('focus.emptyTitle')}
+            hint={t('focus.emptyHint')}
             action={
               <Button variant="outline" onClick={() => onNavigate('library')}>
-                Explorar la Biblioteca <ArrowRight size={14} aria-hidden="true" />
+                {t('focus.exploreLibrary')} <ArrowRight size={14} aria-hidden="true" />
               </Button>
             }
           />
@@ -316,13 +317,13 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
         <div className="mb-3 flex items-center gap-2 border-b border-line pb-3">
           <History size={16} className="text-accent" aria-hidden="true" />
           <div>
-            <h2 className="type-section text-ink">Estudiado recientemente</h2>
-            <p className="type-meta mt-0.5">Tus últimas sesiones, ordenadas por actividad real.</p>
+            <h2 className="type-section text-ink">{t('focus.recentTitle')}</h2>
+            <p className="type-meta mt-0.5">{t('focus.recentDesc')}</p>
           </div>
         </div>
         {recentResources.length === 0 ? (
           <p className={cn('type-meta text-muted')}>
-            Todavía no hay sesiones de estudio registradas. Empieza un repaso o una lección y aparecerá aquí.
+            {t('focus.noRecent')}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -336,7 +337,7 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
                   <span className="min-w-0">
                     <span className="block truncate text-item font-medium text-ink">{entry.label}</span>
                     <span className="text-micro text-faint">
-                      {entry.lastDay ? `Última sesión: ${entry.lastDay}` : 'Sin fecha legible'} · {entry.minutes} min acumulados
+                      {entry.lastDay ? t('focus.lastSession', { day: entry.lastDay }) : t('focus.noDate')} · {t('focus.minTotal', { n: entry.minutes })}
                     </span>
                   </span>
                   <ArrowRight size={14} className="shrink-0 text-faint" aria-hidden="true" />
@@ -350,13 +351,13 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
       {/* Acceso rápido a las otras piezas de planificación. */}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => onNavigate('goals')}>
-          Ver metas <ArrowRight size={14} aria-hidden="true" />
+          {t('focus.viewGoals')} <ArrowRight size={14} aria-hidden="true" />
         </Button>
         <Button variant="outline" onClick={() => onNavigate('analytics')}>
-          Ver análisis <ArrowRight size={14} aria-hidden="true" />
+          {t('focus.viewAnalytics')} <ArrowRight size={14} aria-hidden="true" />
         </Button>
         <Button variant="outline" onClick={() => onNavigate('review')}>
-          Ir al repaso SM-2 <ArrowRight size={14} aria-hidden="true" />
+          {t('focus.goReviewBtn')} <ArrowRight size={14} aria-hidden="true" />
         </Button>
       </div>
     </div>

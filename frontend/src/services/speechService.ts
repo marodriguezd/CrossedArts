@@ -3,6 +3,9 @@
  * 100% nativo y offline mediante la Web Speech API del navegador.
  */
 
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
+
 export interface SpeechSettings {
   voiceUri?: string;
   rate: number;
@@ -107,9 +110,9 @@ class SpeechService {
   /**
    * Lee un texto en voz alta con la voz y velocidad configuradas.
    */
-  public speak(text: string, onEnd?: () => void, onError?: (err: any) => void): void {
+  public speak(text: string, onEnd?: () => void, onError?: (err: any) => void, lang: LanguageCode = 'es'): void {
     if (!this.isSpeechSynthesisSupported()) {
-      onError?.(new Error('La síntesis de voz no está soportada en este navegador.'));
+      onError?.(new Error(translateKey(lang, 'speech.ttsNo')));
       return;
     }
 
@@ -173,10 +176,11 @@ class SpeechService {
    */
   public startDictation(
     onTranscript: (text: string, isFinal: boolean) => void,
-    onError?: (errorMsg: string) => void
+    onError?: (errorMsg: string) => void,
+    lang: LanguageCode = 'es'
   ): boolean {
     if (!this.isSpeechRecognitionSupported()) {
-      onError?.('El reconocimiento de voz no está soportado en este navegador.');
+      onError?.(translateKey(lang, 'speech.sttNo'));
       return false;
     }
 
@@ -210,13 +214,13 @@ class SpeechService {
       };
 
       recognition.onerror = (event: any) => {
-        let msg = 'Error en el reconocimiento de voz';
+        let msg = translateKey(lang, 'speech.sttErr');
         if (event.error === 'not-allowed') {
-          msg = 'Permiso de micrófono denegado en el navegador.';
+          msg = translateKey(lang, 'speech.micDenied');
         } else if (event.error === 'no-speech') {
           return; // Silencio ignorado
         } else if (event.error === 'network') {
-          msg = 'El reconocimiento por voz del navegador no pudo procesar el audio.';
+          msg = translateKey(lang, 'speech.sttNet');
         }
         onError?.(msg);
       };
@@ -233,7 +237,7 @@ class SpeechService {
       return true;
     } catch (err: any) {
       this.isCurrentlyDictating = false;
-      onError?.(err?.message || 'No se pudo iniciar el micrófono');
+      onError?.(err?.message || translateKey(lang, 'speech.micFail'));
       return false;
     }
   }

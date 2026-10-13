@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { es } from '../src/i18n/locales/es.ts';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
 import {
@@ -554,7 +555,8 @@ test('19.28 CommandPalette overrides the toolbar search with the semantic palett
   assert.ok(!src.includes('onGlobalSearch'), 'La búsqueda global antigua deja de cablearse desde el header');
   assert.ok(!src.includes('<SearchInput'), 'El input de la barra se sustituye por el disparador');
   assert.ok(src.includes('aria-keyshortcuts'), 'El atajo debe ser anunciable y descubrible');
-  assert.ok(src.includes('Buscar o ir a'), 'El disparador debe explicar para qué sirve');
+  assert.ok(src.includes("t('shell.searchPlaceholder')"), 'El disparador usa la clave de idioma shell.searchPlaceholder');
+  assert.equal(es['shell.searchPlaceholder'], 'Buscar o ir a…', 'El disparador debe explicar para qué sirve');
 
   // Solo tokens semánticos: prohibido introducir colores literales de paleta (Regla 5).
   const literals = findLiteralPaletteColors(stripComments(src));
@@ -1018,7 +1020,8 @@ test('19.52 The toolbar trigger keeps its visible text as the accessible name', 
 
   // Defecto 2 (WCAG 2.5.3): un aria-label que no contiene el texto visible rompe
   // el control por voz. El nombre accesible debe ser "Buscar o ir a…".
-  assert.ok(src.includes('Buscar o ir a'), 'El texto visible debe seguir siendo el rótulo');
+  assert.ok(src.includes("t('shell.searchPlaceholder')"), 'El disparador usa la clave de idioma shell.searchPlaceholder');
+  assert.equal(es['shell.searchPlaceholder'], 'Buscar o ir a…', 'El texto visible debe seguir siendo el rótulo');
   assert.ok(
     !/onOpenCommandPalette[\s\S]{0,200}aria-label/.test(src),
     'El disparador no debe llevar aria-label que reemplace al texto visible'

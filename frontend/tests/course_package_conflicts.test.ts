@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
+import { es } from '../src/i18n/locales/es.ts';
 import {
   COURSE_PACKAGE_FORMAT,
   COURSE_PACKAGE_VERSION,
@@ -179,10 +180,8 @@ test('34.7 Settings reports conflicts and the detail explains what a package con
   assert.ok(settings.includes('describeConflicts'), 'Ajustes debe informar de los conflictos detectados');
 
   const detail = readSource('../src/pages/ResourceDetail.tsx');
-  assert.ok(
-    /material educativo/i.test(detail),
-    'El detalle debe describir el paquete como material educativo'
-  );
+  assert.ok(detail.includes('res.packageTitle'), 'El detalle usa la clave de idioma res.packageTitle');
+  assert.match(es['res.packageTitle'], /material educativo/i, 'El detalle debe describir el paquete como material educativo');
   assert.ok(
     /sin tu progreso|no incluye tu progreso/i.test(detail),
     'Debe quedar claro que el paquete no transporta datos personales'

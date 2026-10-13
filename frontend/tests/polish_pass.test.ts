@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 import { dao } from '../src/db/dao.ts';
 import { GRAPH_NODE_LABELS, resolveSearchResultDestination } from '../src/services/domainLogic.ts';
+import { es } from '../src/i18n/locales/es.ts';
 import {
   PALETTE_GROUP_LABELS,
   buildPaletteCatalog,
@@ -106,9 +107,12 @@ test('35.3 the graph legend stays compact on narrow viewports without losing inf
 
   // La información secundaria se compacta; nada se elimina.
   assert.ok(source.includes('text-micro leading-snug text-faint'), 'Los metadatos usan la escala micro');
-  assert.ok(source.includes('nodos con conexiones en el grafo completo'), 'La conectividad sigue visible');
-  assert.ok(source.includes('aparece aislado'), 'El aislamiento de la vista sigue explicado');
-  assert.ok(source.includes('Arrastra y haz zoom'), 'La indicación de interacción sigue visible');
+  assert.ok(source.includes('graph.legendConn'), 'La conectividad sigue visible');
+  assert.match(es['graph.legendConn'], /nodos con conexiones en el grafo completo/);
+  assert.ok(source.includes('graph.legendView'), 'El aislamiento de la vista sigue explicado');
+  assert.match(es['graph.legendViewOther'], /aparece.*aislado/);
+  assert.ok(source.includes('graph.legendMain'), 'La indicación de interacción sigue visible');
+  assert.match(es['graph.legendMain'], /Arrastra y haz zoom/);
 });
 
 /* -------------------------------------------------------------------------- */

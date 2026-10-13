@@ -14,6 +14,9 @@
  * La lógica vive aquí, fuera de React y de SQLite, para poder probarla aparte.
  */
 
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
+
 export const COURSE_PACKAGE_FORMAT = 'crossedarts.course-package';
 /** Versión del formato que esta build sabe escribir y leer. */
 export const COURSE_PACKAGE_VERSION = 1;
@@ -121,9 +124,9 @@ function hasValidId(value: unknown): boolean {
  * respaldos, se comprueba TODO primero: la importación solo empieza si el
  * paquete es íntegro.
  */
-export function validateCoursePackage(data: unknown): CoursePackageValidation {
+export function validateCoursePackage(data: unknown, lang: LanguageCode = 'es'): CoursePackageValidation {
   if (!isPlainObject(data)) {
-    return { valid: false, error: 'El paquete no tiene un formato válido: se esperaba un objeto JSON.' };
+    return { valid: false, error: translateKey(lang, 'pkg.badFormat') };
   }
 
   if (data.format !== COURSE_PACKAGE_FORMAT) {
@@ -135,7 +138,7 @@ export function validateCoursePackage(data: unknown): CoursePackageValidation {
 
   const version = data.version;
   if (typeof version !== 'number' || !Number.isFinite(version)) {
-    return { valid: false, error: 'El paquete no declara una versión válida.' };
+    return { valid: false, error: translateKey(lang, 'pkg.badVersion') };
   }
   if (version > COURSE_PACKAGE_VERSION) {
     return {
@@ -146,7 +149,7 @@ export function validateCoursePackage(data: unknown): CoursePackageValidation {
 
   const resource = data.resource;
   if (!hasValidId(resource) || typeof (resource as any).title !== 'string' || !(resource as any).title.trim()) {
-    return { valid: false, error: 'El paquete no contiene un recurso válido (id y título son obligatorios).' };
+    return { valid: false, error: translateKey(lang, 'pkg.badResource') };
   }
   if (typeof (resource as any).type !== 'string' || !(resource as any).type.trim()) {
     return { valid: false, error: 'El recurso del paquete no declara su tipo.' };
@@ -324,21 +327,27 @@ export function detectCoursePackageConflicts(
 }
 
 /** Resumen legible para la interfaz tras importar. */
-export function describeImportResult(created: number, skipped: number): string {
-  if (created === 0 && skipped === 0) return 'El paquete estaba vacío.';
+export function describeImportResult(created: number, skipped: number, lang: LanguageCode = 'es'): string {
+  if (created === 0 && skipped === 0) return translateKey(lang, 'pkg.empty');
   if (created === 0) {
-    return `No había nada nuevo que importar (${skipped} elemento${skipped === 1 ? '' : 's'} ya existían).`;
+    return skipped === 1
+      ? translateKey(lang, 'pkg.nothingNewOne')
+      : translateKey(lang, 'pkg.nothingNewOther', { n: skipped });
   }
-  const base = `Paquete importado: ${created} elemento${created === 1 ? '' : 's'} nuevo${created === 1 ? '' : 's'}.`;
-  return skipped > 0 ? `${base} ${skipped} ya existían y se omitieron.` : base;
+  const base = created === 1
+    ? translateKey(lang, 'pkg.importedOne')
+    : translateKey(lang, 'pkg.importedOther', { n: created });
+  return skipped > 0 ? `${base}${translateKey(lang, 'pkg.skipped', { n: skipped })}` : base;
 }
 
 /**
  * Completa el resumen de importación con los conflictos detectados. Se mantiene
  * aparte de `describeImportResult` para no alterar su contrato ya probado.
  */
-export function describeConflicts(conflicts: readonly CoursePackageConflict[]): string {
+export function describeConflicts(conflicts: readonly CoursePackageConflict[], lang: LanguageCode = 'es'): string {
   if (conflicts.length === 0) return '';
-  const label = conflicts.length === 1 ? '1 elemento ya existía' : `${conflicts.length} elementos ya existían`;
-  return `${label} con un contenido distinto: se conservó tu versión local y no se sobrescribió nada.`;
+  const label = conflicts.length === 1
+    ? translateKey(lang, 'pkg.conflictOneLabel')
+    : translateKey(lang, 'pkg.conflictOtherLabel', { n: conflicts.length });
+  return `${label}${translateKey(lang, 'pkg.conflictSuffix')}`;
 }

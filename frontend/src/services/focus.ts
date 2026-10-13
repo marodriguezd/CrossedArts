@@ -28,10 +28,12 @@ import { resolveArtifactContextDestination } from './domainLogic.ts';
 import { sessionLocalDay } from './analytics.ts';
 import {
   classifyGoalDeadline,
-  GOAL_DEADLINE_LABELS,
+  goalDeadlineLabel,
   normalizeGoalDate,
   type GoalProgress
 } from './goals.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 
 export type FocusItemKind =
   | 'reviews'
@@ -138,18 +140,24 @@ function sortPlan(items: FocusItem[]): FocusItem[] {
 /**
  * Construye el plan de "Hoy". Determinista y explicable: mismos datos → mismo
  * plan, en el mismo orden.
+ *
+ * `lang` localiza todo el contenido visible; por defecto es español para
+ * preservar el comportamiento histórico (los tests invocan sin idioma).
  */
-export function buildFocusPlan(input: FocusInput): FocusItem[] {
+export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): FocusItem[] {
   const items: FocusItem[] = [];
+  const tr = (key: string, params?: Record<string, string | number | null | undefined>): string =>
+    translateKey(lang, key, params);
 
   // 1. Repaso espaciado vencido (la acción con retorno de estudio más claro).
   if (input.pendingReviews > 0) {
+    const plural = input.pendingReviews === 1 ? 'one' : 'other';
     items.push({
       id: 'focus:reviews',
       kind: 'reviews',
-      title: `Repasar ${input.pendingReviews} tarjeta${input.pendingReviews === 1 ? '' : 's'}`,
-      reason: `${input.pendingReviews} tarjeta${input.pendingReviews === 1 ? '' : 's'} con fecha de repaso vencida según SM-2.`,
-      actionLabel: 'Ir al repaso',
+      title: tr(`focus.reviewTitle.${plural}`, { n: input.pendingReviews }),
+      reason: tr(`focus.reviewReason.${plural}`, { n: input.pendingReviews }),
+      actionLabel: tr('focus.goReview'),
       priority: FOCUS_PRIORITY.reviews,
       badge: `${input.pendingReviews}`,
       tab: 'review'
@@ -166,11 +174,11 @@ export function buildFocusPlan(input: FocusInput): FocusItem[] {
     items.push({
       id: `focus:practice:${item.id}`,
       kind: 'practice',
-      title: `Continuar «${item.title}»`,
+      title: tr('focus.continueWork', { title: item.title }),
       reason: item.resource_id || item.lesson_id || item.concept_id
-        ? 'Trabajo práctico en marcha ligado a tu material de estudio.'
-        : 'Trabajo práctico en marcha.',
-      actionLabel: 'Abrir trabajo',
+        ? tr('focus.practiceLinked')
+        : tr('focus.practicePlain'),
+      actionLabel: tr('focus.openWork'),
       priority: FOCUS_PRIORITY.practice - index,
       destination: resolveArtifactContextDestination({
         resourceId: item.resource_id,
@@ -186,11 +194,13 @@ export function buildFocusPlan(input: FocusInput): FocusItem[] {
     items.push({
       id: 'focus:continue',
       kind: 'continue_lesson',
-      title: `Continuar «${target.courseTitle}»`,
+      title: tr('focus.continueCourse', { title: target.courseTitle }),
       reason: target.lessonTitle
-        ? `Próxima lección pendiente: ${target.lessonTitle}${target.moduleTitle ? ` (${target.moduleTitle})` : ''}.`
-        : 'Curso con lecciones sin completar.',
-      actionLabel: target.lessonId ? 'Continuar lección' : 'Ver curso',
+        ? (target.moduleTitle
+          ? tr('focus.nextLessonModule', { lesson: target.lessonTitle, module: target.moduleTitle })
+          : tr('focus.nextLessonPlain', { lesson: target.lessonTitle }))
+        : tr('focus.courseIncomplete'),
+      actionLabel: target.lessonId ? tr('focus.continueLessonBtn') : tr('focus.viewCourse'),
       priority: FOCUS_PRIORITY.continue_lesson,
       destination: target.lessonId
         ? { tab: 'course', resourceId: target.courseId, lessonId: target.lessonId }
@@ -218,10 +228,13 @@ export function buildFocusPlan(input: FocusInput): FocusItem[] {
       id: `focus:goal-overdue:${goal.id}`,
       kind: 'goal_overdue',
       title: goal.title,
-      reason: `Meta vencida${due ? ` el ${due}` : ''}. ${progress?.basis ?? ''}`.trim(),
-      actionLabel: 'Ver meta',
+      reason: tr('focus.goalOverdue', {
+        date: due ? tr('focus.onDate', { due }) : '',
+        basis: progress?.basis ?? ''
+      }).trim(),
+      actionLabel: tr('focus.viewGoal'),
       priority: FOCUS_PRIORITY.goal_overdue - index,
-      badge: 'Vencida',
+      badge: tr('focus.overdueBadge'),
       destination: { tab: 'goals', goalId: goal.id }
     });
   });
@@ -237,10 +250,10 @@ export function buildFocusPlan(input: FocusInput): FocusItem[] {
       id: `focus:goal-duesoon:${goal.id}`,
       kind: 'goal_due_soon',
       title: goal.title,
-      reason: `Meta con fecha objetivo el ${due ?? '-'}. ${progress?.basis ?? ''}`.trim(),
-      actionLabel: 'Ver meta',
+      reason: tr('focus.goalDueSoon', { due: due ?? '-', basis: progress?.basis ?? '' }).trim(),
+      actionLabel: tr('focus.viewGoal'),
       priority: FOCUS_PRIORITY.goal_due_soon - index,
-      badge: GOAL_DEADLINE_LABELS.due_soon,
+      badge: goalDeadlineLabel('due_soon', lang),
       destination: { tab: 'goals', goalId: goal.id }
     });
   });
@@ -255,8 +268,8 @@ export function buildFocusPlan(input: FocusInput): FocusItem[] {
       id: `focus:goal-ready:${goal.id}`,
       kind: 'goal_ready',
       title: goal.title,
-      reason: 'El progreso medido ya alcanza el objetivo: puedes marcarla como completada.',
-      actionLabel: 'Revisar meta',
+      reason: tr('focus.goalReady'),
+      actionLabel: tr('focus.reviewGoal'),
       priority: FOCUS_PRIORITY.goal_ready - index,
       destination: { tab: 'goals', goalId: goal.id }
     });
@@ -274,11 +287,11 @@ export function buildFocusPlan(input: FocusInput): FocusItem[] {
     items.push({
       id: `focus:book:${readingBook.id}`,
       kind: 'book',
-      title: `Continuar leyendo «${readingBook.title}»`,
+      title: tr('focus.keepReading', { title: readingBook.title }),
       reason: pages
-        ? `Vas por la página ${current} de ${pages}.`
-        : 'Libro empezado sin número de páginas registrado.',
-      actionLabel: 'Abrir libro',
+        ? tr('focus.pageProgress', { cur: current, pages })
+        : tr('focus.bookNoPages'),
+      actionLabel: tr('focus.openBook'),
       priority: FOCUS_PRIORITY.book,
       destination: { tab: 'resource', resourceId: readingBook.id }
     });
@@ -295,9 +308,9 @@ export function buildFocusPlan(input: FocusInput): FocusItem[] {
       items.push({
         id: `focus:start:${untouched.id}`,
         kind: 'start_course',
-        title: `Empezar «${untouched.title}»`,
-        reason: 'Curso pendiente con lecciones registradas.',
-        actionLabel: 'Ver curso',
+        title: tr('focus.startCourse', { title: untouched.title }),
+        reason: tr('focus.coursePending'),
+        actionLabel: tr('focus.viewCourse'),
         priority: FOCUS_PRIORITY.start_course,
         destination: { tab: 'course', resourceId: untouched.id }
       });

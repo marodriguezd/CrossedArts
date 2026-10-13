@@ -6,6 +6,8 @@
  * filas: no puede haber dos formas de convertir el mismo valor de SQLite.
  */
 
+import { translateKey } from '../../i18n/dictionaries.ts';
+import { daoLang } from '../daoLanguage.ts';
 import { parsePracticeChecklist } from '../../services/practiceWork.ts';
 import {
   resolveEffectiveStudySessionScope,
@@ -33,7 +35,7 @@ export class SqlRow {
   str(index: number): string {
     const v = this.row[index];
     if (typeof v !== 'string' && typeof v !== 'number') {
-      throw new Error(`Fila SQL inválida: se esperaba texto en la posición ${index}`);
+      throw new Error(translateKey(daoLang(), 'dao.err.badRow', { i: index }));
     }
     return String(v);
   }

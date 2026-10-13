@@ -18,6 +18,8 @@ import { practiceWorkKindLabel } from './practiceWork.ts';
 import { clampPercent } from './mountainPath.ts';
 
 /** Categoría conceptual de un artefacto de aprendizaje en la galería. */
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 export type ArtifactKind = 'course' | 'book' | 'resource' | 'practice';
 
 /** Cómo se obtiene el progreso de un artefacto (nunca se mezclan en silencio). */
@@ -51,6 +53,11 @@ export const ARTIFACT_KIND_LABELS: Record<ArtifactKind, string> = {
   resource: 'Recurso',
   practice: 'Trabajo práctico'
 };
+
+/** Localized artifact-kind label. Defaults to Spanish (callers omit it). */
+export function artifactKindLabel(kind: ArtifactKind, lang: LanguageCode = 'es'): string {
+  return translateKey(lang, `gallery.kind.${kind}`);
+}
 
 /** Prefijo con el que se construye el id de cada artefacto normalizado. */
 export const ARTIFACT_ID_PREFIX: Record<ArtifactKind, string> = {
@@ -136,26 +143,29 @@ export interface GallerySources {
 export function buildGalleryItems(
   courses: Course[],
   books: Book[],
-  sources: GallerySources = {}
+  sources: GallerySources = {},
+  lang: LanguageCode = 'es'
 ): GalleryItem[] {
+  const tr = (key: string, params?: Record<string, string | number | null | undefined>): string =>
+    translateKey(lang, key, params);
   const courseItems: GalleryItem[] = courses.map((course) => ({
     id: `${ARTIFACT_ID_PREFIX.course}${course.id}`,
     title: course.title,
     kind: 'course',
-    kindLabel: ARTIFACT_KIND_LABELS.course,
+    kindLabel: tr('gallery.kind.course'),
     category: course.category,
     coverPath: course.cover_path,
     progress: coursePercent(course),
     progressSource: 'measured',
     status: course.status,
-    meta: `${course.completed_lessons || 0}/${course.total_lessons || 0} lecciones`
+    meta: tr('gallery.meta.lessons', { done: course.completed_lessons || 0, total: course.total_lessons || 0 })
   }));
 
   const bookItems: GalleryItem[] = books.map((book) => ({
     id: `${ARTIFACT_ID_PREFIX.book}${book.id}`,
     title: book.title,
     kind: 'book',
-    kindLabel: ARTIFACT_KIND_LABELS.book,
+    kindLabel: tr('gallery.kind.book'),
     category: book.category,
     coverPath: book.cover_path,
     progress: bookPercent(book),
@@ -163,7 +173,7 @@ export function buildGalleryItems(
     status: book.status,
     meta:
       book.page_count != null
-        ? `Pág. ${book.current_page || 0}/${book.page_count}`
+        ? tr('gallery.meta.pages', { cur: book.current_page || 0, total: book.page_count })
         : book.author || ''
   }));
 
@@ -173,26 +183,26 @@ export function buildGalleryItems(
       id: `${ARTIFACT_ID_PREFIX.resource}${resource.id}`,
       title: resource.title,
       kind: 'resource' as ArtifactKind,
-      kindLabel: ARTIFACT_KIND_LABELS.resource,
+      kindLabel: tr('gallery.kind.resource'),
       category: resource.category,
       coverPath: resource.cover_path,
       progress: statusPercent(resource.status),
       progressSource: 'status' as GalleryProgressSource,
       status: resource.status,
-      meta: resource.category || 'Documento importado'
+      meta: resource.category || tr('gallery.meta.importedDoc')
     }));
 
   const practiceItems: GalleryItem[] = (sources.practiceWork || []).map((work) => ({
     id: `${ARTIFACT_ID_PREFIX.practice}${work.id}`,
     title: work.title,
     kind: 'practice' as ArtifactKind,
-    kindLabel: ARTIFACT_KIND_LABELS.practice,
+    kindLabel: tr('gallery.kind.practice'),
     category: undefined,
     coverPath: undefined,
     progress: statusPercent(galleryStatusOfPracticeWork(work.status)),
     progressSource: 'status' as GalleryProgressSource,
     status: galleryStatusOfPracticeWork(work.status),
-    meta: practiceWorkKindLabel(work.kind)
+    meta: practiceWorkKindLabel(work.kind, lang)
   }));
 
   return sortGalleryItems([...courseItems, ...bookItems, ...resourceItems, ...practiceItems]);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import type { ConceptEdge, ConceptNode, GraphNodeType } from '../src/types/models.ts';
+import { es } from '../src/i18n/locales/es.ts';
 import {
   applyGraphFilters,
   availableRelationTypes,
@@ -167,6 +168,8 @@ test('28.11 the graph page wires relation filters, focus mode and connectivity',
   assert.ok(source.includes('applyGraphFilters'), 'Debe usar el filtrado compartido');
   assert.ok(source.includes('availableRelationTypes'), 'Debe ofrecer solo las relaciones existentes');
   assert.ok(source.includes('computeConnectivityStats'), 'Debe mostrar la conectividad real');
-  assert.ok(source.includes('Enfoque del vecindario'), 'Debe existir el control de enfoque');
-  assert.ok(source.includes('Filtros de relaciones del grafo'), 'Debe existir el filtro de relaciones');
+  assert.ok(source.includes('graph.focusSr'), 'Debe existir el control de enfoque');
+  assert.equal(es['graph.focusSr'], 'Enfoque del vecindario del nodo seleccionado');
+  assert.ok(source.includes('graph.relFilters'), 'Debe existir el filtro de relaciones');
+  assert.equal(es['graph.relFilters'], 'Filtros de relaciones del grafo');
 });

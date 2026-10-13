@@ -17,6 +17,10 @@ import {
 import { mapLearningSessionRow } from './sqlRows.ts';
 import { resolveLocalDay, computeActiveStreak } from '../../services/localDate.ts';
 import { generateDailyActivitySeries } from '../../services/domainLogic.ts';
+import type { LanguageCode } from '../../i18n/languages.ts';
+
+
+
 import type {
   DailyActivityPoint,
   KPIMetrics,
@@ -68,7 +72,7 @@ export const sessionDao = {
       correct_answers: Number(row[2]) || 0
     };
   },
-  async getDailyActivitySeries(range: TimeRangeFilter = '7d'): Promise<DailyActivityPoint[]> {
+  async getDailyActivitySeries(range: TimeRangeFilter = '7d', lang: LanguageCode = 'es'): Promise<DailyActivityPoint[]> {
     const db = dbBridge.getDatabase();
     const { day: todayStr, utcOffsetModifier } = resolveLocalDay();
 
@@ -93,7 +97,7 @@ export const sessionDao = {
       }
     }
 
-    return generateDailyActivitySeries(history, range, todayStr);
+    return generateDailyActivitySeries(history, range, todayStr, lang);
   },
   async getRecentStudySessions(limit: number = 5): Promise<LearningSession[]> {
     const db = dbBridge.getDatabase();

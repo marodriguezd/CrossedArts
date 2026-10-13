@@ -1,3 +1,6 @@
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
+import { resolveAppLanguage } from '../i18n/resolveAppLanguage.ts';
 import initSqlJs from 'sql.js';
 import type { Database } from 'sql.js';
 import { SCHEMA_SQL, KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL, buildPracticeWorkTableSql, PRACTICE_WORK_INDEX_SQL } from './schema.ts';
@@ -26,10 +29,17 @@ interface PersistedCoordinatorMeta {
    * cuando la revisión persistida ya no es la que esta pestaña conocía.
    * `persistedRevision` es la revisión realmente persistida (la ganadora).
    */
+let dbLang: LanguageCode = resolveAppLanguage();
+
+/** Module-level UI language for DB failure messages (mirrors Settings). */
+export function setDbLanguage(lang: LanguageCode): void {
+  dbLang = lang;
+}
+
 export class StaleWriteError extends Error {
   public readonly persistedRevision: number;
   constructor(persistedRevision: number) {
-    super('Otra pestaña guardó una versión más nueva de la base de datos. Recarga para continuar.');
+    super(translateKey(dbLang, 'db.otherTab'));
     this.name = 'StaleWriteError';
     this.persistedRevision = persistedRevision;
   }
@@ -85,32 +95,35 @@ export class DatabaseInitializationError extends Error {
   }
 }
 
-const INIT_FAILURE_MESSAGES: Record<DbInitFailureCode, { message: string; retryable: boolean }> = {
+function initFailureMessages(lang: LanguageCode = dbLang): Record<DbInitFailureCode, { message: string; retryable: boolean }> {
+  const tr = (key: string): string => translateKey(lang, key);
+  return {
   'wasm-unavailable': {
-    message: 'No se pudo cargar el motor SQLite en WebAssembly. Comprueba tu conexión y vuelve a cargar la aplicación.',
+    message: tr('db.wasmFail'),
     retryable: true
   },
   'storage-unavailable': {
-    message: 'No se pudo acceder al almacenamiento local del navegador, así que la base de datos no se ha podido abrir. Puede ocurrir en ventanas privadas o si el almacenamiento está bloqueado.',
+    message: tr('db.storageBlocked'),
     retryable: true
   },
   'corrupt-storage': {
-    message: 'La base de datos local guardada no se puede abrir de forma segura. Tus datos persistidos se han conservado intactos; restaura una copia compatible antes de continuar.',
+    message: tr('db.unsafeOpen'),
     retryable: false
   },
   'schema-invalid': {
-    message: 'El esquema de la base de datos local no es válido, por lo que la aplicación no puede funcionar.',
+    message: tr('db.badSchema'),
     retryable: false
   },
   'stale-other-tab': {
-    message: 'Otra pestaña de CrossedArts ha actualizado tus datos. Recarga esta pestaña antes de continuar.',
+    message: tr('db.tabUpdated'),
     retryable: true
   },
   unknown: {
-    message: 'No se pudo inicializar la base de datos local. Vuelve a cargar la aplicación; si el problema continúa, revisa el espacio disponible en tu navegador.',
+    message: tr('db.initFail'),
     retryable: true
   }
-};
+  };
+}
 
 function classifyInitError(err: unknown): DbInitFailure {
   const detail = err instanceof Error ? err.message : String(err);
@@ -138,7 +151,7 @@ function classifyInitError(err: unknown): DbInitFailure {
   ) {
     code = 'corrupt-storage';
   }
-  return { ...INIT_FAILURE_MESSAGES[code], code, detail };
+  return { ...initFailureMessages()[code], code, detail };
 }
 
 export interface StorageStatusReport {
@@ -366,10 +379,10 @@ class SQLiteBridge {
         this.lastSeenRevision = Math.max(this.lastSeenRevision, startupRevision);
       } catch (err: any) {
         const msg = err?.message || String(err);
-        if (msg.includes('Formato de instantánea persistida no reconocido')) {
+        if (msg.toLowerCase().includes('snapshot') || msg.includes('instantánea') || msg.includes('快照')) {
           this.setStorageState('corrupt-storage', msg);
           throw new DatabaseInitializationError({
-            ...INIT_FAILURE_MESSAGES['corrupt-storage'],
+            ...initFailureMessages()['corrupt-storage'],
             code: 'corrupt-storage',
             detail: msg
           });
@@ -385,11 +398,11 @@ class SQLiteBridge {
 
       if (savedBytes && savedBytes.byteLength > 0) {
         if (!isValidSqliteBuffer(savedBytes)) {
-          this.setStorageState('corrupt-storage', 'Los datos guardados en IndexedDB no contienen una base de datos SQLite válida.');
+          this.setStorageState('corrupt-storage', translateKey(dbLang, 'db.corruptStore'));
           throw new DatabaseInitializationError({
-            ...INIT_FAILURE_MESSAGES['corrupt-storage'],
+            ...initFailureMessages()['corrupt-storage'],
             code: 'corrupt-storage',
-            detail: 'Los bytes persistidos no tienen una cabecera SQLite válida.'
+            detail: translateKey(dbLang, 'db.badHeader')
           });
         }
 
@@ -557,24 +570,24 @@ class SQLiteBridge {
   public getDatabase(): Database {
     if (this.remoteRevision > this.persistedRevision) {
       throw new DatabaseInitializationError({
-        ...INIT_FAILURE_MESSAGES['stale-other-tab'],
+        ...initFailureMessages()['stale-other-tab'],
         code: 'stale-other-tab',
-        detail: 'La pestaña actual está por detrás de una revisión persistida más reciente.'
+        detail: translateKey(dbLang, 'db.staleTab')
       });
     }
     if (!this.db) {
       if (this.initState === 'failed' || this.initFailure) {
         throw new DatabaseInitializationError(
           this.initFailure || {
-            ...INIT_FAILURE_MESSAGES.unknown,
+            ...initFailureMessages().unknown,
             code: 'unknown'
           }
         );
       }
       throw new DatabaseInitializationError({
-        ...INIT_FAILURE_MESSAGES['storage-unavailable'],
+        ...initFailureMessages()['storage-unavailable'],
         code: 'storage-unavailable',
-        detail: 'getDatabase() llamado antes de que la inicialización terminara.'
+        detail: translateKey(dbLang, 'db.earlyAccess')
       });
     }
     return this.db;
@@ -668,7 +681,7 @@ class SQLiteBridge {
       tx.oncomplete = () => resolve(true);
       tx.onabort = () => {
         if (committed) {
-          reject(new Error('La transacción de persistencia se abortó tras comprometerse.'));
+          reject(new Error(translateKey(dbLang, 'db.txnAbort')));
         } else {
           // Conflicto CAS: la revisión persistida avanzó bajo nuestros pies.
           reject(new StaleWriteError(observedPersistedRevision));
@@ -717,7 +730,7 @@ class SQLiteBridge {
 
   public async importDatabase(bytes: Uint8Array): Promise<void> {
     if (!isValidSqliteBuffer(bytes)) {
-      throw new Error('El archivo suministrado no contiene una cabecera SQLite válida (SQLite format 3).');
+      throw new Error(translateKey(dbLang, 'db.badFileHeader'));
     }
 
     const options = await this.getSqlJsOptions();
@@ -1135,7 +1148,7 @@ class SQLiteBridge {
   }
 
   public exportDatabase(): Uint8Array {
-    if (!this.db) throw new DatabaseInitializationError(this.initFailure || { ...INIT_FAILURE_MESSAGES.unknown, code: 'unknown' });
+    if (!this.db) throw new DatabaseInitializationError(this.initFailure || { ...initFailureMessages().unknown, code: 'unknown' });
     const bytes = this.db.export();
     this.databaseSizeBytes = bytes.byteLength;
     // Reafirmar claves foráneas tras el cierre/reapertura implícita de export().
@@ -1239,7 +1252,7 @@ class SQLiteBridge {
         } else if (ArrayBuffer.isView(res)) {
           resolve(new Uint8Array(res.buffer, res.byteOffset, res.byteLength));
         } else {
-          reject(new Error('Formato de instantánea persistida no reconocido o no compatible en IndexedDB.'));
+          reject(new Error(translateKey(dbLang, 'db.badSnapshot')));
         }
       };
       req.onerror = () => reject(req.error);

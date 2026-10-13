@@ -15,6 +15,7 @@
 import type { Book, Course, LearningSession, PracticeWork, TimeRangeFilter } from '../types/models.ts';
 import { resolveLocalDay, shiftIsoDay, computeActiveStreak } from './localDate.ts';
 import { generateDailyActivitySeries } from './domainLogic.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 import { summarizePracticeWork, type PracticeWorkSummary } from './practiceWork.ts';
 import type { DailyActivityPoint } from '../types/models.ts';
 
@@ -23,12 +24,18 @@ export type AnalyticsRange = TimeRangeFilter;
 
 export const ANALYTICS_RANGES: AnalyticsRange[] = ['7d', '30d', '90d', 'all'];
 
+import { translateKey } from '../i18n/dictionaries.ts';
 export const ANALYTICS_RANGE_LABELS: Record<AnalyticsRange, string> = {
   '7d': '7 días',
   '30d': '30 días',
   '90d': '90 días',
   all: 'Todo'
 };
+
+/** Localized range label. Defaults to Spanish (existing callers omit it). */
+export function analyticsRangeLabel(range: AnalyticsRange, lang: LanguageCode = 'es'): string {
+  return translateKey(lang, `analytics.range.${range}`);
+}
 
 /** Días cubiertos por un rango fijo (null para 'all'). */
 export function rangeDayCount(range: AnalyticsRange): number | null {
@@ -289,7 +296,8 @@ export function buildDailySeries(
   sessions: readonly LearningSession[],
   range: AnalyticsRange,
   today: string,
-  utcOffset?: string
+  utcOffset?: string,
+  lang: LanguageCode = 'es'
 ): DailyActivityPoint[] {
   const { current } = resolveRangeWindows(range, today);
   const historyMap = new Map<string, { minutes: number; reviews: number }>();
@@ -307,7 +315,7 @@ export function buildDailySeries(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, data]) => ({ date, minutes: data.minutes, reviews: data.reviews }));
 
-  return generateDailyActivitySeries(history, range, today);
+  return generateDailyActivitySeries(history, range, today, lang);
 }
 
 /** Racha activa sobre los días locales con estudio registrado. */

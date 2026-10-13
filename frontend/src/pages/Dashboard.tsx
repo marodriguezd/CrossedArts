@@ -39,6 +39,7 @@ import {
 } from '../services/galleryItems.ts';
 import { summarizePracticeWork } from '../services/practiceWork.ts';
 import { describeStudySessionScope } from '../services/sessionScope.ts';
+import { useLanguage } from '../hooks/useLanguage.ts';
 
 interface DashboardProps {
   kpis: KPIMetrics | null;
@@ -82,6 +83,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenResource,
   onNavigate,
 }) => {
+  const { t, effective } = useLanguage();
   const today = kpis?.today;
   const [continueTarget, setContinueTarget] = useState<ContinueTarget | null>(null);
 
@@ -125,7 +127,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let cancelled = false;
     setLoadingActivity(true);
     dao
-      .getDailyActivitySeries(timeRange)
+      .getDailyActivitySeries(timeRange, effective)
       .then((points) => {
         if (!cancelled) setActivityPoints(points);
       })
@@ -136,7 +138,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [timeRange, kpis]);
+  }, [timeRange, kpis, effective]);
 
   const coursePct = (c: Course) =>
     c.total_lessons ? Math.round(((c.completed_lessons || 0) / c.total_lessons) * 100) : 0;
@@ -172,7 +174,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const toEntries = (items: GalleryItem[]): GalleryEntry[] =>
     items.map((item) => ({ ...item, onOpen: () => openArtifact(item.kind, item.id) }));
 
-  const sections = groupGalleryItems(buildGalleryItems(courses, books, { resources, practiceWork }));
+  const sections = groupGalleryItems(buildGalleryItems(courses, books, { resources, practiceWork }, effective));
   const continueEntries = toEntries(sections.continueLearning);
   const resourceEntries = toEntries(sections.resources);
   const practiceEntries = toEntries(sections.practice);
@@ -191,27 +193,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
     .map((item) => ({ percent: item.progress }));
 
   const shortcuts = [
-    { tab: 'focus', label: 'Hoy', hint: 'Qué hacer ahora', icon: CalendarCheck },
-    { tab: 'library', label: 'Biblioteca', hint: 'Explorar recursos', icon: Library },
-    { tab: 'review', label: 'Repaso SM-2', hint: 'Revisar tarjetas', icon: Brain },
-    { tab: 'goals', label: 'Metas', hint: 'Objetivos con progreso', icon: Target },
-    { tab: 'analytics', label: 'Análisis', hint: 'Tu historial real', icon: BarChart3 },
-    { tab: 'graph', label: 'Grafo', hint: 'Explorar conceptos', icon: Network },
-    { tab: 'notes', label: 'Notas', hint: 'Tus apuntes', icon: FileText },
+    { tab: 'focus', labelKey: 'nav.today', hintKey: 'qnav.todayHint', icon: CalendarCheck },
+    { tab: 'library', labelKey: 'nav.library', hintKey: 'qnav.libraryHint', icon: Library },
+    { tab: 'review', labelKey: 'nav.review', hintKey: 'qnav.reviewHint', icon: Brain },
+    { tab: 'goals', labelKey: 'nav.goals', hintKey: 'qnav.goalsHint', icon: Target },
+    { tab: 'analytics', labelKey: 'nav.analytics', hintKey: 'qnav.analyticsHint', icon: BarChart3 },
+    { tab: 'graph', labelKey: 'nav.graph', hintKey: 'qnav.graphHint', icon: Network },
+    { tab: 'notes', labelKey: 'nav.notes', hintKey: 'qnav.notesHint', icon: FileText },
   ];
 
   return (
     <div className="space-y-8 animate-fade-in">
       {/* --- Cabecera de página --- */}
       <header>
-        <h1 className="type-display text-ink">Dashboard</h1>
-        <p className="type-secondary mt-1">Tu actividad de estudio, tu continuación y accesos rápidos.</p>
+        <h1 className="type-display text-ink">{t('dashboard.title')}</h1>
+        <p className="type-secondary mt-1">{t('dashboard.subtitle')}</p>
       </header>
 
       {/* --- Continuar aprendizaje (acción principal) + Estudio de hoy --- */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Panel className="lg:col-span-2 p-5 sm:p-6">
-          <p className="type-micro">Continúa aprendizaje</p>
+          <p className="type-micro">{t('dashboard.continueMicro')}</p>
           {continueTarget ? (
             <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1">
@@ -220,25 +222,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {continueTarget.savedSeconds && continueTarget.savedSeconds > 5 && (
                     <Badge tone="accent">
                       <Clock size={11} aria-hidden="true" />
-                      Minuto {formatPlaybackTime(continueTarget.savedSeconds)}
+                      {t('dashboard.minuteBadge', { time: formatPlaybackTime(continueTarget.savedSeconds) })}
                     </Badge>
                   )}
                 </div>
                 <p className="type-secondary mt-1.5 break-words line-clamp-2">
                   {continueTarget.lessonTitle
-                    ? `Próxima: ${continueTarget.lessonTitle}${continueTarget.moduleTitle ? ` (${continueTarget.moduleTitle})` : ''}`
-                    : 'Curso completo. Vuelve a repasar cuando quieras.'}
+                    ? `${t('dashboard.nextUp', { lesson: continueTarget.lessonTitle })}${continueTarget.moduleTitle ? t('dashboard.nextModule', { module: continueTarget.moduleTitle }) : ''}`
+                    : t('dashboard.courseDone')}
                 </p>
                 <div className="mt-3.5 space-y-1.5 max-w-md">
                   <div className="flex items-center justify-between text-meta font-mono text-muted">
                     <span className="font-semibold text-ink">{coursePct(continueTarget.course)}%</span>
                     <span>
-                      {continueTarget.course.completed_lessons || 0}/{continueTarget.course.total_lessons} lecciones
+                      {t('dashboard.lessonsCount', { done: String(continueTarget.course.completed_lessons || 0), total: String(continueTarget.course.total_lessons) })}
                     </span>
                   </div>
                   <ProgressBar
                     value={coursePct(continueTarget.course)}
-                    label={`Progreso de ${continueTarget.course.title}`}
+                    label={t('dashboard.progressOf', { title: continueTarget.course.title })}
                     className="w-full"
                   />
                 </div>
@@ -256,30 +258,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   }}
                   title={
                     continueTarget.savedSeconds && continueTarget.savedSeconds > 5
-                      ? `Reanudar lección en el minuto ${formatPlaybackTime(continueTarget.savedSeconds)}`
-                      : 'Continuar lección directamente'
+                      ? t('dashboard.resumeAt', { time: formatPlaybackTime(continueTarget.savedSeconds) })
+                      : t('dashboard.continueDirect')
                   }
                 >
                   <Play size={14} aria-hidden="true" />
-                  {continueTarget.savedSeconds && continueTarget.savedSeconds > 5 ? 'Reanudar lección' : 'Continuar lección'}
+                  {continueTarget.savedSeconds && continueTarget.savedSeconds > 5 ? t('dashboard.resumeLesson') : t('dashboard.continueLesson')}
                 </Button>
                 <Button
                   variant="outline"
                   className="w-full sm:w-auto"
                   onClick={() => onSelectCourse(continueTarget.course.id)}
-                  title="Ver temario del curso"
+                  title={t('dashboard.viewSyllabus')}
                 >
-                  Ver curso
+                  {t('dashboard.viewCourse')}
                 </Button>
               </div>
             </div>
           ) : (
             <EmptyState
-              title="Aún no hay cursos"
-              hint="Importa documentos o crea tu primer curso desde la Biblioteca para empezar."
+              title={t('dashboard.noCourses')}
+              hint={t('dashboard.noCoursesHint')}
               action={
                 <Button variant="outline" onClick={() => onNavigate('library')}>
-                  Explorar Biblioteca
+                  {t('dashboard.exploreLibrary')}
                   <ArrowRight size={14} aria-hidden="true" />
                 </Button>
               }
@@ -288,29 +290,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </Panel>
 
         <Panel className="p-5">
-          <p className="type-micro">Estudio de hoy</p>
+          <p className="type-micro">{t('dashboard.todayStudy')}</p>
           <div className="mt-3 space-y-2">
             <div className="flex items-baseline justify-between">
               <span className="text-2xl font-mono font-semibold text-ink">{today?.items_reviewed ?? 0}</span>
-              <span className="type-meta">ítems repasados</span>
+              <span className="type-meta">{t('dashboard.itemsReviewed')}</span>
             </div>
             <div className="border-t border-line pt-2 flex items-baseline justify-between">
               <span className="text-item font-mono font-semibold text-ink">{today?.flashcards_reviewed ?? 0}</span>
-              <span className="type-meta">tarjetas</span>
+              <span className="type-meta">{t('dashboard.cards')}</span>
             </div>
             <div className="border-t border-line pt-2 flex items-baseline justify-between">
               <span className="text-item font-mono font-semibold text-ink">{today?.questions_answered ?? 0}</span>
-              <span className="type-meta">preguntas</span>
+              <span className="type-meta">{t('dashboard.questions')}</span>
             </div>
             <div className="border-t border-line pt-2 flex items-baseline justify-between">
               <span className="text-item font-mono font-semibold text-success">{today?.correct_answers ?? 0}</span>
-              <span className="type-meta">aciertos</span>
+              <span className="type-meta">{t('dashboard.hits')}</span>
             </div>
           </div>
           <div className="mt-4 flex items-center gap-2 border-t border-line pt-3">
             <Flame size={15} className="text-warning" aria-hidden="true" />
             <span className="text-meta text-muted">
-              Racha activa: <strong className="text-ink font-mono">{kpis?.active_streak_days ?? 0} días</strong>
+              {t('dashboard.activeStreak')}: <strong className="text-ink font-mono">{t('dashboard.streakDays', { n: kpis?.active_streak_days ?? 0 })}</strong>
             </span>
           </div>
         </Panel>
@@ -321,25 +323,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="space-y-8">
           <ResourceGallery
             items={continueEntries}
-            title="Continúa aprendiendo"
-            description="Lo que tienes en marcha o pendiente, con su progreso real."
+            title={t('dashboard.keepLearning')}
+            description={t('dashboard.keepLearningDesc')}
             onSeeAll={() => onNavigate('library')}
-            seeAllLabel="Ver toda la Biblioteca"
+            seeAllLabel={t('dashboard.seeAllLibrary')}
             limit={6}
             emptyHint={
               hasOnlyCompleted
-                ? 'Tienes todo lo que empezaste completado. Los cursos y libros terminados siguen disponibles en la Biblioteca.'
-                : 'Aún no tienes cursos ni libros. Importa un documento o crea un curso desde la Biblioteca.'
+                ? t('dashboard.allDone')
+                : t('dashboard.emptyCoursesBooks')
             }
           />
 
           {resourceEntries.length > 0 && (
             <ResourceGallery
               items={resourceEntries}
-              title="Recursos importados"
-              description="Documentos que has incorporado y todavía no forman parte de un curso."
+              title={t('dashboard.importedTitle')}
+              description={t('dashboard.importedDesc')}
               onSeeAll={() => onNavigate('library')}
-              seeAllLabel="Ver en la Biblioteca"
+              seeAllLabel={t('dashboard.seeInLibrary')}
               limit={6}
             />
           )}
@@ -349,8 +351,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                cada ficha abre su contexto de origen (recurso, lección o concepto). */
             <ResourceGallery
               items={practiceEntries}
-              title="Trabajo práctico"
-              description={`${practiceSummary.done} de ${practiceSummary.total} terminados · evidencia de lo que produces`}
+              title={t('dashboard.practiceTitle')}
+              description={t('dashboard.practiceDesc', { done: practiceSummary.done, total: practiceSummary.total })}
               limit={6}
             />
           )}
@@ -358,31 +360,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
       ) : (
         <ResourceGallery
           items={[]}
-          title="Continúa aprendiendo"
-          description="Lo que tienes en marcha o pendiente, con su progreso real."
+          title={t('dashboard.keepLearning')}
+          description={t('dashboard.keepLearningDesc')}
           onSeeAll={() => onNavigate('library')}
           limit={6}
-          emptyHint="Tu galería está vacía. Importa un documento, crea un curso o registra un trabajo práctico desde la Biblioteca para empezar."
+          emptyHint={t('dashboard.galleryEmpty')}
         />
       )}
 
       {/* --- Franja de métricas reales (una sola superficie, sin tarjetas) --- */}
       <div className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
         <div className="px-5 py-4">
-          <p className="type-micro">Recursos totales</p>
+          <p className="type-micro">{t('dashboard.totalResources')}</p>
           <p className="mt-1 text-xl font-mono font-semibold text-ink">{kpis?.total_resources ?? 0}</p>
         </div>
         <div className="border-line px-5 py-4 md:border-0">
-          <p className="type-micro">Completados</p>
+          <p className="type-micro">{t('dashboard.completed')}</p>
           <p className="mt-1 text-xl font-mono font-semibold text-ink">{kpis?.completed_resources ?? 0}</p>
         </div>
         <div className="border-t border-line px-5 py-4 md:border-0">
-          <p className="type-micro">Horas de estudio</p>
+          <p className="type-micro">{t('dashboard.studyHours')}</p>
           <p className="mt-1 text-xl font-mono font-semibold text-ink">{kpis?.total_study_hours ?? 0} h</p>
         </div>
         <div className="border-t border-line px-5 py-4 md:border-0">
-          <p className="type-micro">Racha activa</p>
-          <p className="mt-1 text-xl font-mono font-semibold text-ink">{kpis?.active_streak_days ?? 0} días</p>
+          <p className="type-micro">{t('dashboard.activeStreak')}</p>
+          <p className="mt-1 text-xl font-mono font-semibold text-ink">{t('dashboard.streakDays', { n: kpis?.active_streak_days ?? 0 })}</p>
         </div>
       </div>
 
@@ -392,16 +394,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <BarChart3 size={16} className="text-accent" aria-hidden="true" />
-              <h2 className="type-title text-ink">Historial de estudio</h2>
+              <h2 className="type-title text-ink">{t('dashboard.studyHistory')}</h2>
             </div>
             <p className="type-secondary mt-1">
-              Registro diario de constancia: {chartMetric === 'minutes' ? 'minutos dedicados' : 'ítems repasados'}.
+              {t('dashboard.chartDesc', { metric: chartMetric === 'minutes' ? t('dashboard.minutesStudied') : t('dashboard.itemsReviewed') })}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Selector de métrica */}
-            <div className="flex items-center gap-1 rounded-lg border border-line bg-canvas p-0.5" role="group" aria-label="Métrica a visualizar">
+            <div className="flex items-center gap-1 rounded-lg border border-line bg-canvas p-0.5" role="group" aria-label={t('dashboard.metricLabel')}>
               <button
                 type="button"
                 onClick={() => setChartMetric('minutes')}
@@ -410,7 +412,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   chartMetric === 'minutes' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
                 )}
               >
-                Minutos
+                {t('dashboard.minutes')}
               </button>
               <button
                 type="button"
@@ -420,19 +422,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   chartMetric === 'reviews' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
                 )}
               >
-                Repasos
+                {t('dashboard.reviews')}
               </button>
             </div>
 
             {/* Selector de rango temporal */}
-            <div className="flex items-center gap-1" role="group" aria-label="Rango temporal">
+            <div className="flex items-center gap-1" role="group" aria-label={t('dashboard.rangeLabel')}>
               {(['7d', '30d', 'all'] as const).map((r) => (
                 <Chip
                   key={r}
                   active={timeRange === r}
                   onClick={() => setTimeRange(r)}
                 >
-                  {r === '7d' ? '7 días' : r === '30d' ? '30 días' : 'Histórico'}
+                  {r === '7d' ? t('dashboard.range7') : r === '30d' ? t('dashboard.range30') : t('dashboard.rangeAll')}
                 </Chip>
               ))}
             </div>
@@ -450,9 +452,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div>
                 <div className="mb-3 flex items-center justify-between text-meta text-muted">
                   <span>
-                    Total en periodo: <strong className="text-ink">{totalValue} {chartMetric === 'minutes' ? 'minutos' : 'repasos'}</strong>
+                    {t('dashboard.periodTotal', { total: totalValue, unit: chartMetric === 'minutes' ? t('dashboard.minutes') : t('dashboard.reviews') })}
                   </span>
-                  <span>Máximo diario: <strong className="text-ink">{Math.max(...values, 0)}</strong></span>
+                  <span>{t('dashboard.dailyMax', { n: Math.max(...values, 0) })}</span>
                 </div>
 
                 <div className="flex h-44 items-end gap-1 sm:gap-2 overflow-x-auto pb-6 pt-2">
@@ -471,15 +473,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           role="tooltip"
                         >
                           <p className="font-semibold text-ink">{point.label} ({point.date})</p>
-                          <p className="text-accent">{point.minutes} min de estudio</p>
-                          <p className="text-muted">{point.reviews} ítems repasados</p>
+                          <p className="text-accent">{t('dashboard.minStudy', { n: point.minutes })}</p>
+                          <p className="text-muted">{t('dashboard.itemsReviewedN', { n: point.reviews })}</p>
                         </div>
 
                         {/* Barra vertical */}
                         <button
                           type="button"
                           tabIndex={0}
-                          aria-label={`${point.label}: ${val} ${chartMetric === 'minutes' ? 'minutos' : 'repasos'}`}
+                          aria-label={`${point.label}: ${val} ${chartMetric === 'minutes' ? t('dashboard.minutes') : t('dashboard.reviews')}`}
                           className={cn(
                             'w-full rounded-t-md transition-all duration-fast focus:outline-none focus:ring-2 focus:ring-accent',
                             val > 0
@@ -513,18 +515,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <SectionHeading
-            title="Cursos en progreso"
+            title={t('dashboard.inProgress')}
             action={
               <button
                 onClick={() => onNavigate('library')}
                 className="text-meta font-medium text-accent hover:underline"
               >
-                Ver todos →
+                {t('dashboard.seeAll')}
               </button>
             }
           />
           {courses.length === 0 ? (
-            <p className="type-secondary">Aún no tienes cursos. Encuéntralos en la Biblioteca.</p>
+            <p className="type-secondary">{t('dashboard.noCoursesYet')}</p>
           ) : (
             <ul className="divide-y divide-line rounded-xl border border-line bg-surface shadow-card">
               {courses.slice(0, 4).map((course) => (
@@ -550,14 +552,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         {course.title}
                       </span>
                       <span className="type-meta mt-0.5 block truncate">
-                        {course.instructor || course.category} · {course.completed_lessons || 0}/
-                        {course.total_lessons} lecciones
+                        {course.instructor || course.category} · {t('dashboard.lessonsCount', { done: course.completed_lessons || 0, total: course.total_lessons })}
                       </span>
                     </span>
                     <span className="hidden w-32 shrink-0 sm:block">
                       <ProgressBar
                         value={coursePct(course)}
-                        label={`Progreso de ${course.title}`}
+                        label={t('dashboard.progressOf', { title: course.title })}
                       />
                     </span>
                     <span className="text-meta font-mono font-semibold text-muted w-10 text-right">
@@ -565,7 +566,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </span>
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line text-muted transition-colors group-hover:border-accent group-hover:bg-accent group-hover:text-on-accent">
                       <Play size={13} aria-hidden="true" />
-                      <span className="sr-only">Continuar {course.title}</span>
+                      <span className="sr-only">{t('dashboard.continueSr', { title: course.title })}</span>
                     </span>
                   </button>
                 </li>
@@ -575,10 +576,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Actividad reciente */}
           <div className="mt-8">
-            <SectionHeading title="Actividad reciente" />
+            <SectionHeading title={t('dashboard.recentActivity')} />
             {recentSessions.length === 0 ? (
               <p className="type-secondary">
-                Aún no has completado ninguna sesión de estudio.
+                {t('dashboard.noSessions')}
               </p>
             ) : (
               <ul className="divide-y divide-line rounded-xl border border-line bg-surface shadow-card">
@@ -590,28 +591,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           scope: session.scope,
                           resourceTitle: session.resource_title,
                           lessonTitle: session.lesson_title
-                        })}
+                        }, effective)}
                       </p>
                       {/* El ámbito de lección solo se muestra cuando existe realmente. */}
                       {session.lesson_id && (
                         <div className="flex items-center gap-2">
                           <p className="type-meta truncate text-accent">
-                            Lección: {session.lesson_title || session.lesson_id}
+                            {t('dashboard.lessonLabel', { title: session.lesson_title || session.lesson_id || '' })}
                           </p>
                           {onOpenLesson && (
                             <button
                               type="button"
                               onClick={() => onOpenLesson(session.lesson_id!)}
                               className="inline-flex items-center gap-0.5 text-micro font-medium text-accent hover:underline cursor-pointer"
-                              title="Abrir esta lección"
+                              title={t('dashboard.openLesson')}
                             >
-                              <Play size={9} aria-hidden="true" /> Reanudar
+                              <Play size={9} aria-hidden="true" /> {t('dashboard.resumeShort')}
                             </button>
                           )}
                         </div>
                       )}
                       <p className="type-meta mt-0.5">
-                        <span className="font-mono">{session.cards_reviewed}</span> tarjetas · <span className="font-mono">{session.questions_answered}</span> preguntas
+                        {t('dashboard.sessionCounts', { c: session.cards_reviewed, q: session.questions_answered })}
                       </p>
                     </div>
                     <span className="shrink-0 text-meta font-mono font-semibold text-muted">
@@ -629,7 +630,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <MountainProgress resources={mountainSources} />
 
           <div>
-            <SectionHeading title="Accesos rápidos" />
+            <SectionHeading title={t('dashboard.quickAccess')} />
             <div className="grid grid-cols-2 gap-2">
               {shortcuts.map((s) => {
                 const Icon = s.icon;
@@ -640,8 +641,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className="group rounded-xl border border-line bg-surface px-3 py-3 text-left shadow-card transition-all duration-fast hover:border-accent/40 hover:bg-accent-soft/40 active:scale-[0.98]"
                   >
                     <Icon size={16} className="text-accent" aria-hidden="true" />
-                    <span className="type-item mt-2 block text-ink">{s.label}</span>
-                    <span className="type-meta block">{s.hint}</span>
+                    <span className="type-item mt-2 block text-ink">{t(s.labelKey)}</span>
+                    <span className="type-meta block">{t(s.hintKey)}</span>
                   </button>
                 );
               })}
@@ -649,9 +650,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div>
-            <SectionHeading title="Lecturas activas" />
+            <SectionHeading title={t('dashboard.activeReads')} />
             {books.length === 0 ? (
-              <p className="type-secondary">No hay libros en curso.</p>
+              <p className="type-secondary">{t('dashboard.noBooks')}</p>
             ) : (
               <ul className="divide-y divide-line rounded-xl border border-line bg-surface shadow-card">
                 {books.slice(0, 3).map((book) => (
@@ -670,11 +671,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="type-item truncate text-ink">{book.title}</p>
-                      <p className="type-meta truncate">{book.author || 'Autor no indicado'}</p>
+                      <p className="type-meta truncate">{book.author || t('dashboard.authorUnknown')}</p>
                       <div className="mt-2 flex items-center gap-2">
                         <ProgressBar
                           value={book.reading_percentage || 0}
-                          label={`Lectura de ${book.title}`}
+                          label={t('dashboard.readingOf', { title: book.title })}
                           className="flex-1"
                         />
                         <span className="text-meta font-mono font-semibold text-muted">
@@ -682,7 +683,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </span>
                       </div>
                       <p className="type-meta font-mono mt-1">
-                        Pág. {book.current_page}/{book.page_count}
+                        {t('dashboard.pageCount', { cur: book.current_page, total: book.page_count })}
                       </p>
                     </div>
                   </li>
@@ -694,8 +695,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="flex items-start gap-2 rounded-xl border border-line bg-surface px-4 py-3 shadow-card">
             <History size={15} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
             <p className="type-meta">
-              Todo se calcula localmente desde SQLite: sin métricas inventadas ni sin conexión
-              necesaria.
+              {t('dashboard.localNote')}
             </p>
           </div>
         </div>

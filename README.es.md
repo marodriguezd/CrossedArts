@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="frontend/public/favicon.svg" alt="logotipo de CrossedArts" height="96" />
+</div>
+
 # CrossedArts - Learning Operating System
 
 [![Despliegue en GitHub Pages](https://github.com/marodriguezd/CrossedArts/actions/workflows/deploy.yml/badge.svg)](https://github.com/marodriguezd/CrossedArts/actions/workflows/deploy.yml)
@@ -5,7 +9,7 @@
 
 **Aplicación en vivo:** [https://marodriguezd.github.io/CrossedArts/](https://marodriguezd.github.io/CrossedArts/)
 
-[English](README.md) · [Español](README.es.md)
+[English](README.md) · Español · [Deutsch](README.de.md) · [Français](README.fr.md) · [Italiano](README.it.md) · [中文](README.zh.md)
 
 ---
 
@@ -129,7 +133,10 @@ npm run preview:qa &             # sirve la build en 127.0.0.1:4173
 QA_URL=http://127.0.0.1:4173 npm run qa:visual
 ```
 
-Las capturas se escriben en `/tmp/crossedarts-qa` (nunca se versionan). El ejecutable devuelve un código distinto de cero si falla alguna comprobación objetiva. Usar `npm run preview:qa` en lugar de flags sueltos evita que npm ignore argumentos.
+Las capturas se escriben en `/tmp/crossedarts-qa` (nunca se versionan). El ejecutable devuelve un código distinto de cero si falla alguna comprobación objetiva.
+
+> [!WARNING]
+> Usar `npm run preview:qa` en lugar de flags sueltos evita que npm ignore argumentos.
 
 ### Compilación
 
@@ -172,13 +179,14 @@ El servidor API se ejecuta en `http://127.0.0.1:8080` con documentación interac
 
 ### La exposición en red es opt-in
 
-La API **no tiene autenticación** y está pensada para uso local. Escucha en
-`127.0.0.1` por defecto, y arrancarla en una interfaz no local (p. ej.
-`HOST=0.0.0.0`) se **rechaza** salvo que definas explícitamente
-`ALLOW_NETWORK_ACCESS=true`. Activar esa opción expone a tu red una API de
-escritura sin autenticación; si lo haces, restringe el puerto con un cortafuegos
-o un reverse proxy. Si usas Ollama, define `OLLAMA_ORIGINS` con tu origen exacto
-(p. ej. `http://localhost:5173`) en lugar de `"*"`.
+> [!CAUTION]
+> La API **no tiene autenticación** y está pensada para uso local. Escucha en
+> `127.0.0.1` por defecto, y arrancarla en una interfaz no local (p. ej.
+> `HOST=0.0.0.0`) se **rechaza** salvo que definas explícitamente
+> `ALLOW_NETWORK_ACCESS=true`. Activar esa opción expone a tu red una API de
+> escritura sin autenticación; si lo haces, restringe el puerto con un cortafuegos
+> o un reverse proxy. Si usas Ollama, define `OLLAMA_ORIGINS` con tu origen exacto
+> (p. ej. `http://localhost:5173`) en lugar de `"*"`.
 
 ## Copia de Seguridad
 
@@ -189,9 +197,7 @@ Dentro de la vista de Ajustes:
 - **Exportar JSON:** Genera un volcado estructurado de todas las tablas
 - **Importar JSON:** Restaura desde una copia de seguridad JSON (validada antes de cualquier cambio)
 
-## Licencia
-
-CrossedArts está licenciado bajo [GPL-3.0-only](LICENSE).
+## Avisos de terceros
 
 Las dependencias de terceros conservan sus respectivas licencias:
 - `onnx-community/embeddinggemma-300m-ONNX`: Gemma Terms of Use

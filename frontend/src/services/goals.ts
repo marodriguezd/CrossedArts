@@ -13,6 +13,8 @@
  *    la UI debe decirlo, no inventar un 0%.
  */
 import type { Book, Course, LearningGoal, GoalKind, PracticeWork } from '../types/models.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 
 /** Etiquetas en español de los tipos de meta. */
 export const GOAL_KIND_LABELS: Record<GoalKind, string> = {
@@ -25,6 +27,27 @@ export const GOAL_KIND_LABELS: Record<GoalKind, string> = {
 
 /** Orden estable para poblar selectores. */
 export const GOAL_KINDS: GoalKind[] = ['course', 'book', 'practice', 'study_time', 'custom'];
+
+/**
+ * Localized goal-kind label. Defaults to Spanish to preserve the historic
+ * behavior (existing callers and tests omit the language).
+ */
+export function goalKindLabel(kind: GoalKind, lang: LanguageCode = 'es'): string {
+  return translateKey(lang, `goals.kind.${kind}`);
+}
+
+/** Localized unit label for a goal measure. */
+const GOAL_UNIT_KEYS: Record<GoalUnit, string> = {
+  lecciones: 'lessons',
+  páginas: 'pages',
+  piezas: 'pieces',
+  minutos: 'minutes',
+  ninguna: 'none'
+};
+
+export function goalUnitLabel(unit: GoalUnit, lang: LanguageCode = 'es'): string {
+  return translateKey(lang, `goals.unit.${GOAL_UNIT_KEYS[unit] ?? 'none'}`);
+}
 
 /** Tipos de meta ligados a un recurso concreto (curso o libro). */
 export const GOAL_KINDS_REQUIRING_RESOURCE: ReadonlySet<GoalKind> = new Set<GoalKind>(['course', 'book']);
@@ -85,29 +108,29 @@ export function normalizeGoalDate(value: string | null | undefined): string | nu
  *  5. La fecha objetivo, si existe, debe ser una fecha real.
  *  6. Nunca se aceptan URLs `blob:` en la descripción (no son referencias).
  */
-export function validateGoalDraft(draft: GoalDraft): GoalValidation {
+export function validateGoalDraft(draft: GoalDraft, lang: LanguageCode = 'es'): GoalValidation {
   if (!draft.title || !draft.title.trim()) {
-    return { ok: false, error: 'La meta necesita un título.' };
+    return { ok: false, error: translateKey(lang, 'goals.validate.title') };
   }
 
   if (GOAL_KINDS_REQUIRING_RESOURCE.has(draft.kind) && !draft.resource_id) {
-    return { ok: false, error: 'Selecciona el recurso al que se vincula esta meta.' };
+    return { ok: false, error: translateKey(lang, 'goals.validate.resource') };
   }
 
   if (draft.target_value !== undefined && draft.target_value !== null) {
     const value = draft.target_value;
     if (!Number.isFinite(value) || value <= 0) {
-      return { ok: false, error: 'El valor objetivo debe ser un número mayor que cero.' };
+      return { ok: false, error: translateKey(lang, 'goals.validate.targetNumber') };
     }
   }
 
   if (draft.kind === 'study_time' && !(typeof draft.target_value === 'number' && draft.target_value > 0)) {
-    return { ok: false, error: 'Define los minutos objetivo de la meta de estudio.' };
+    return { ok: false, error: translateKey(lang, 'goals.validate.studyMinutes') };
   }
 
   if (draft.target_date !== undefined && draft.target_date !== null && draft.target_date !== '') {
     if (!normalizeGoalDate(draft.target_date)) {
-      return { ok: false, error: 'La fecha objetivo no es una fecha válida.' };
+      return { ok: false, error: translateKey(lang, 'goals.validate.badDate') };
     }
   }
 
@@ -207,33 +230,39 @@ function measured(
  *  - Práctica sin objetivo ni piezas registradas → no medible.
  *  - Meta personalizada → nunca medible: se completa manualmente.
  */
-export function computeGoalProgress(goal: LearningGoal, context: GoalProgressContext): GoalProgress {
+export function computeGoalProgress(
+  goal: LearningGoal,
+  context: GoalProgressContext,
+  lang: LanguageCode = 'es'
+): GoalProgress {
   const unit = GOAL_UNIT_BY_KIND[goal.kind] ?? 'ninguna';
+  const tr = (key: string, params?: Record<string, string | number | null | undefined>): string =>
+    translateKey(lang, key, params);
 
   switch (goal.kind) {
     case 'course': {
-      if (!goal.resource_id) return unmeasurable(unit, 'Sin recurso enlazado.');
+      if (!goal.resource_id) return unmeasurable(unit, tr('goals.basis.noResource'));
       const course = context.courses.get(goal.resource_id);
-      if (!course) return unmeasurable(unit, 'El curso enlazado ya no existe.', true);
+      if (!course) return unmeasurable(unit, tr('goals.basis.courseGone'), true);
       if (!course.total_lessons || course.total_lessons <= 0) {
-        return unmeasurable(unit, 'El curso no tiene lecciones registradas.');
+        return unmeasurable(unit, tr('goals.basis.courseNoLessons'));
       }
       return measured(
         unit,
-        `Lecciones completadas del curso «${course.title}».`,
+        tr('goals.basis.courseLessons', { title: course.title }),
         course.completed_lessons,
         course.total_lessons
       );
     }
 
     case 'book': {
-      if (!goal.resource_id) return unmeasurable(unit, 'Sin recurso enlazado.');
+      if (!goal.resource_id) return unmeasurable(unit, tr('goals.basis.noResource'));
       const book = context.books.get(goal.resource_id);
-      if (!book) return unmeasurable(unit, 'El libro enlazado ya no existe.', true);
+      if (!book) return unmeasurable(unit, tr('goals.basis.bookGone'), true);
       const pageCount = book.page_count ?? null;
-      if (!pageCount || pageCount <= 0) return unmeasurable(unit, 'El libro no tiene número de páginas.');
+      if (!pageCount || pageCount <= 0) return unmeasurable(unit, tr('goals.basis.bookNoPages'));
       const current = Math.max(0, book.current_page ?? 0);
-      return measured(unit, `Páginas leídas del libro «${book.title}».`, current, pageCount);
+      return measured(unit, tr('goals.basis.bookPages', { title: book.title }), current, pageCount);
     }
 
     case 'practice': {
@@ -250,15 +279,15 @@ export function computeGoalProgress(goal: LearningGoal, context: GoalProgressCon
         return unmeasurable(
           unit,
           goal.resource_id
-            ? 'No hay trabajo práctico registrado con este recurso.'
-            : 'No hay trabajo práctico registrado todavía.'
+            ? tr('goals.basis.practiceNoneScoped')
+            : tr('goals.basis.practiceNone')
         );
       }
       return measured(
         unit,
         explicitTarget
-          ? 'Trabajos prácticos terminados frente a tu objetivo.'
-          : 'Trabajos prácticos terminados sobre los registrados (tu objetivo es terminarlos todos).',
+          ? tr('goals.basis.practiceTarget')
+          : tr('goals.basis.practiceAll'),
         done,
         target
       );
@@ -266,14 +295,14 @@ export function computeGoalProgress(goal: LearningGoal, context: GoalProgressCon
 
     case 'study_time': {
       const target = typeof goal.target_value === 'number' && goal.target_value > 0 ? goal.target_value : null;
-      if (target === null) return unmeasurable(unit, 'Sin objetivo de minutos definido.');
+      if (target === null) return unmeasurable(unit, tr('goals.basis.studyNoTarget'));
       const current = Math.max(0, context.studyMinutesByGoal.get(goal.id) ?? 0);
-      return measured(unit, 'Minutos de estudio registrados desde que creaste la meta.', current, target);
+      return measured(unit, tr('goals.basis.studyMinutes'), current, target);
     }
 
     case 'custom':
     default:
-      return unmeasurable('ninguna', 'Meta sin medida automática: se completa manualmente.');
+      return unmeasurable('ninguna', tr('goals.basis.customManual'));
   }
 }
 
@@ -293,6 +322,17 @@ export const GOAL_DEADLINE_LABELS: Record<GoalDeadlineState, string> = {
   upcoming: 'Próxima',
   no_deadline: 'Sin fecha'
 };
+
+/**
+ * Localized deadline label. Defaults to Spanish to preserve the historic
+ * behavior (existing callers and tests omit the language).
+ */
+export function goalDeadlineLabel(
+  state: GoalDeadlineState,
+  lang: LanguageCode = 'es',
+): string {
+  return translateKey(lang, `goals.deadline.${state}`);
+}
 
 /**
  * Clasifica la fecha objetivo de una meta respecto a `today` (`YYYY-MM-DD`).

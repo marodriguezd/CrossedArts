@@ -7,7 +7,7 @@ import type {
   ResourceDestination,
 } from '../types/models.ts';
 import { practiceWorkKindLabel, practiceWorkStatusLabel } from './practiceWork.ts';
-import { GOAL_KIND_LABELS } from './goals.ts';
+import { GOAL_KIND_LABELS, goalKindLabel } from './goals.ts';
 import { resolveArtifactContextDestination } from './domainLogic.ts';
 
 /**
@@ -417,6 +417,8 @@ export function bodySnippet(body: string, normalizedQuery: string, maxLength = 8
 /* -------------------------------------------------------------------------- */
 
 /** Etiqueta humana de cada agrupación, reutilizada por la interfaz. */
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 export const PALETTE_GROUP_LABELS: Record<PaletteGroup, string> = {
   accion: 'Acciones',
   meta: 'Metas',
@@ -428,6 +430,35 @@ export const PALETTE_GROUP_LABELS: Record<PaletteGroup, string> = {
   nota: 'Notas',
   concepto: 'Conceptos'
 };
+
+const NAV_ACTION_STRINGS: Record<string, { titleKey: string; subtitleKey: string }> = {
+  'accion:dashboard': { titleKey: 'palette.nav.dashboard', subtitleKey: 'palette.nav.dashboardSub' },
+  'accion:focus': { titleKey: 'palette.nav.focus', subtitleKey: 'palette.nav.focusSub' },
+  'accion:analytics': { titleKey: 'palette.nav.analytics', subtitleKey: 'palette.nav.analyticsSub' },
+  'accion:goals': { titleKey: 'palette.nav.goals', subtitleKey: 'palette.nav.goalsSub' },
+  'accion:library': { titleKey: 'palette.nav.library', subtitleKey: 'palette.nav.librarySub' },
+  'accion:graph': { titleKey: 'palette.nav.graph', subtitleKey: 'palette.nav.graphSub' },
+  'accion:notes': { titleKey: 'palette.nav.notes', subtitleKey: 'palette.nav.notesSub' },
+  'accion:settings': { titleKey: 'palette.nav.settings', subtitleKey: 'palette.nav.settingsSub' }
+};
+
+/** Navigation actions with localized title/subtitle (Spanish when omitted). */
+export function navigationActions(lang: LanguageCode = 'es'): PaletteItem[] {
+  return NAVIGATION_ACTIONS.map(action => {
+    const keys = NAV_ACTION_STRINGS[action.id];
+    if (!keys) return { ...action };
+    return {
+      ...action,
+      title: translateKey(lang, keys.titleKey),
+      subtitle: translateKey(lang, keys.subtitleKey)
+    };
+  });
+}
+
+/** Localized palette group label. Defaults to Spanish (callers omit it). */
+export function paletteGroupLabel(group: PaletteGroup, lang: LanguageCode = 'es'): string {
+  return translateKey(lang, `palette.group.${group}`);
+}
 
 /** Orden fijo de los grupos en la paleta: vista predecible de un vistazo. */
 const GROUP_ORDER: PaletteGroup[] = [
@@ -585,8 +616,10 @@ function buildBody(text: string | undefined): { body?: string; bodyNormalized?: 
  * datos: dos cargas que devuelven las mismas filas en distinto orden producen
  * exactamente la misma paleta, que es lo que hace comprobable el ranking.
  */
-export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
-  const items: PaletteItem[] = NAVIGATION_ACTIONS.map(action => ({ ...action }));
+export function buildPaletteCatalog(input: PaletteCatalogInput, lang: LanguageCode = 'es'): PaletteItem[] {
+  const items: PaletteItem[] = navigationActions(lang);
+  const tr = (key: string, params?: Record<string, string | number | null | undefined>): string =>
+    translateKey(lang, key, params);
 
   // Cada colección usa SUS propios accesores: las filas de lección y concepto
   // exponen `lessonTitle` / `conceptName`, no `title`.
@@ -606,7 +639,7 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
     items.push({
       id: 'accion:continue',
       group: 'accion',
-      title: 'Continuar aprendiendo',
+      title: tr('palette.continue'),
       subtitle: `${input.continueTarget.lessonTitle} · ${input.continueTarget.courseTitle}`,
       icon: 'accion',
       destination: {
@@ -621,11 +654,11 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
   items.push({
     id: 'accion:review',
     group: 'accion',
-    title: 'Repasar ahora',
+    title: tr('palette.review'),
     subtitle:
       input.pendingReviews > 0
-        ? `${input.pendingReviews} ${input.pendingReviews === 1 ? 'tarjeta pendiente' : 'tarjetas pendientes'}`
-        : 'Sesión de repaso SM-2 y preguntas de práctica',
+        ? tr(`palette.reviewDue.${input.pendingReviews === 1 ? 'one' : 'other'}`, { n: input.pendingReviews })
+        : tr('palette.reviewEmpty'),
     icon: 'accion',
     destination: null,
     keywords: ['sm2', 'supermemo', 'flashcards', 'tarjetas', 'repaso', 'practica', 'espaciado']
@@ -634,8 +667,8 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
   items.push({
     id: 'accion:ai',
     group: 'accion',
-    title: 'Abrir el Tutor IA',
-    subtitle: 'Pregunta sobre tu contenido local',
+    title: tr('palette.tutor'),
+    subtitle: tr('palette.tutorSub'),
     icon: 'accion',
     destination: null,
     keywords: ['ia', 'asistente', 'tutor', 'preguntar', 'rag', 'llm']
@@ -644,8 +677,8 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
   items.push({
     id: 'accion:mount-folder',
     group: 'accion',
-    title: 'Escanear carpeta local',
-    subtitle: 'Asociar vídeos de tu disco a las lecciones',
+    title: tr('palette.scan'),
+    subtitle: tr('palette.scanSub'),
     icon: 'accion',
     destination: null,
     keywords: ['carpeta', 'disco', 'video', 'medios', 'scan', 'importar', 'fsa']
@@ -654,8 +687,8 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
   items.push({
     id: 'accion:backup',
     group: 'accion',
-    title: 'Exportar copia de seguridad',
-    subtitle: 'Descarga la base de datos SQLite',
+    title: tr('palette.backup'),
+    subtitle: tr('palette.backupSub'),
     icon: 'accion',
     destination: null,
     keywords: ['backup', 'respaldo', 'exportar', 'sqlite', 'descargar', 'copia']
@@ -664,8 +697,8 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
   items.push({
     id: 'accion:theme',
     group: 'accion',
-    title: input.isDarkTheme ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro',
-    subtitle: 'Alternar el tema de la interfaz',
+    title: input.isDarkTheme ? tr('palette.themeLight') : tr('palette.themeDark'),
+    subtitle: tr('palette.themeSub'),
     icon: 'accion',
     destination: null,
     keywords: ['tema', 'claro', 'oscuro', 'carbon', 'crema', 'apariencia', 'dark', 'light']
@@ -676,7 +709,7 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
       id: `curso:${course.id}`,
       group: 'curso',
       title: course.title,
-      subtitle: course.description || course.category || 'Curso',
+      subtitle: course.description || course.category || tr('palette.courseFallback'),
       icon: 'course',
       destination: { tab: 'course', resourceId: course.id },
       keywords: [course.category, course.instructor ?? '', 'curso'],
@@ -689,7 +722,7 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
       id: `libro:${book.id}`,
       group: 'libro',
       title: book.title,
-      subtitle: book.author || book.description || 'Libro',
+      subtitle: book.author || book.description || tr('palette.bookFallback'),
       icon: 'book',
       destination: { tab: 'resource', resourceId: book.id },
       keywords: [book.author ?? '', book.category, 'libro', 'leer'],
@@ -715,7 +748,11 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
   }
 
   for (const note of [...input.notes].sort(byNote)) {
-    const context = note.lesson_id ? 'Nota de lección' : note.resource_id ? 'Nota de recurso' : 'Nota general';
+    const context = note.lesson_id
+      ? tr('palette.noteLesson')
+      : note.resource_id
+        ? tr('palette.noteResource')
+        : tr('palette.noteGeneral');
     const body = buildBody(note.content);
     items.push({
       id: `nota:${note.id}`,
@@ -743,7 +780,7 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
       id: `recurso:${resource.resourceId}`,
       group: 'recurso',
       title: resource.resourceTitle,
-      subtitle: resource.resourceCategory || 'Recurso importado',
+      subtitle: resource.resourceCategory || tr('gallery.meta.importedDoc'),
       icon: 'resource',
       destination: { tab: 'resource', resourceId: resource.resourceId },
       keywords: [resource.resourceType, resource.resourceCategory ?? '', 'recurso', 'documento', 'importado'],
@@ -756,14 +793,14 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
   // concepto), porque no tiene vista propia. Misma decision que el grafo.
   const byPractice = byTextThenId<PracticeWorkIndexRow>(p => p.practiceTitle, p => p.practiceId);
   for (const work of [...input.practiceWork].sort(byPractice)) {
-    const kindLabel = practiceWorkKindLabel(work.practiceKind);
+    const kindLabel = practiceWorkKindLabel(work.practiceKind, lang);
     items.push({
       id: `practica:${work.practiceId}`,
       group: 'practica',
       title: work.practiceTitle,
       subtitle: work.contextTitle
         ? `${kindLabel} · ${work.contextTitle}`
-        : `${kindLabel} · ${practiceWorkStatusLabel(work.practiceStatus)}`,
+        : `${kindLabel} · ${practiceWorkStatusLabel(work.practiceStatus, lang)}`,
       icon: 'practice',
       destination: resolveArtifactContextDestination({
         resourceId: work.resourceId,
@@ -780,7 +817,7 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
       id: `concepto:${concept.conceptId}`,
       group: 'concepto',
       title: concept.conceptName,
-      subtitle: concept.conceptDescription || 'Concepto',
+      subtitle: concept.conceptDescription || tr('graph.node.concept'),
       icon: 'concept',
       destination: { tab: 'concept', conceptId: concept.conceptId },
       keywords: ['concepto', 'idea', 'definicion']
@@ -795,14 +832,14 @@ export function buildPaletteCatalog(input: PaletteCatalogInput): PaletteItem[] {
   // para una entidad sin página propia).
   const byGoal = byTextThenId<LearningGoal>(goal => goal.title, goal => goal.id);
   for (const goal of [...(input.goals ?? [])].sort(byGoal)) {
-    const kindLabel = GOAL_KIND_LABELS[goal.kind] ?? GOAL_KIND_LABELS.custom;
+    const kindLabel = goalKindLabel(goal.kind, lang);
     items.push({
       id: `meta:${goal.id}`,
       group: 'meta',
       title: goal.title,
       subtitle: goal.status === 'completed'
-        ? `${kindLabel} · Completada`
-        : `${kindLabel} · Activa${goal.target_date ? ` · objetivo ${goal.target_date.slice(0, 10)}` : ''}`,
+        ? `${kindLabel} · ${tr('goals.deadline.completed')}`
+        : `${kindLabel} · ${tr('palette.goalActive')}${goal.target_date ? ` · ${tr('palette.goalTarget', { date: goal.target_date.slice(0, 10) })}` : ''}`,
       icon: 'accion',
       destination: { tab: 'goals', goalId: goal.id },
       keywords: ['meta', 'objetivo', 'goal', 'planificacion', kindLabel, goal.kind, goal.status],
@@ -925,7 +962,8 @@ export function matchPaletteItems(
  * Los grupos vacíos se omiten y su orden es fijo.
  */
 export function groupPaletteItems<T extends PaletteItem | PaletteMatch>(
-  items: T[]
+  items: T[],
+  lang: LanguageCode = 'es'
 ): Array<{ group: PaletteGroup; label: string; items: T[] }> {
   // Acepta tanto elementos sueltos como coincidencias completas, para que quien
   // solo necesite la lista no tenga que envolverla y quien necesite el resaltado
@@ -935,7 +973,7 @@ export function groupPaletteItems<T extends PaletteItem | PaletteMatch>(
   const result: Array<{ group: PaletteGroup; label: string; items: T[] }> = [];
   for (const group of GROUP_ORDER) {
     const groupItems = items.filter(item => groupOf(item) === group);
-    if (groupItems.length) result.push({ group, label: PALETTE_GROUP_LABELS[group], items: groupItems });
+    if (groupItems.length) result.push({ group, label: paletteGroupLabel(group, lang), items: groupItems });
   }
   return result;
 }

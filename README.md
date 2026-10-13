@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="frontend/public/favicon.svg" alt="CrossedArts logo" height="96" />
+</div>
+
 # CrossedArts - Learning Operating System
 
 [![Deploy to GitHub Pages](https://github.com/marodriguezd/CrossedArts/actions/workflows/deploy.yml/badge.svg)](https://github.com/marodriguezd/CrossedArts/actions/workflows/deploy.yml)
@@ -5,7 +9,7 @@
 
 **Live application:** [https://marodriguezd.github.io/CrossedArts/](https://marodriguezd.github.io/CrossedArts/)
 
-[English](README.md) · [Español](README.es.md)
+English · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Italiano](README.it.md) · [中文](README.zh.md)
 
 ---
 
@@ -132,7 +136,8 @@ Screenshots are written to `/tmp/crossedarts-qa` (never committed). The runner e
 
 Running this suite on your machine is optional — `npm test` covers the functional behaviour. **Passing it is not optional**: it runs against the exact production build that is published, and the `Deploy to Pages` job declares `needs: [build-frontend, validate-backend]`, so a failing Visual QA check blocks the deployment to GitHub Pages. It also runs on every pull request against `main` and manually via `workflow_dispatch`.
 
-Use `npm run preview:qa` rather than `npm run preview -- --port …`: npm does not forward trailing arguments to Vite, so the port and `--strictPort` flags would be silently dropped.
+> [!WARNING]
+> Use `npm run preview:qa` rather than `npm run preview -- --port …`: npm does not forward trailing arguments to Vite, so the port and `--strictPort` flags would be silently dropped.
 
 ### Build
 
@@ -175,13 +180,14 @@ The API server runs at `http://127.0.0.1:8080` with interactive documentation at
 
 ### Network exposure is opt-in
 
-The API has **no authentication** and is meant to be used locally. It binds to
-`127.0.0.1` by default, and starting it on a non-loopback interface (e.g.
-`HOST=0.0.0.0`) is **refused** unless you explicitly set
-`ALLOW_NETWORK_ACCESS=true`. Enabling that flag exposes a write-capable,
-unauthenticated API to your network; restrict the port with a firewall or a
-reverse proxy if you do. When using Ollama, set `OLLAMA_ORIGINS` to your exact
-origin (e.g. `http://localhost:5173`) rather than `"*"`.
+> [!CAUTION]
+> The API has **no authentication** and is meant to be used locally. It binds to
+> `127.0.0.1` by default, and starting it on a non-loopback interface (e.g.
+> `HOST=0.0.0.0`) is **refused** unless you explicitly set
+> `ALLOW_NETWORK_ACCESS=true`. Enabling that flag exposes a write-capable,
+> unauthenticated API to your network; restrict the port with a firewall or a
+> reverse proxy if you do. When using Ollama, set `OLLAMA_ORIGINS` to your exact
+> origin (e.g. `http://localhost:5173`) rather than `"*"`.
 
 ## Data Backup
 
@@ -192,9 +198,7 @@ Inside the Settings view:
 - **Export JSON:** Generate a structured dump of all tables
 - **Import JSON:** Restore from a JSON backup (validated before any changes)
 
-## License
-
-CrossedArts is licensed under [GPL-3.0-only](LICENSE).
+## Third-Party Notices
 
 Third-party dependencies retain their respective licenses:
 - `onnx-community/embeddinggemma-300m-ONNX`: Gemma Terms of Use

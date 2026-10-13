@@ -5,6 +5,8 @@
  * vincula con `ON DELETE SET NULL` para que reorganizar la biblioteca nunca
  * destruya el trabajo del usuario.
  */
+import { translateKey } from '../../i18n/dictionaries.ts';
+import { daoLang } from '../daoLanguage.ts';
 import { dbBridge } from '../sqliteBridge.ts';
 import { serializePracticeChecklist } from '../../services/practiceWork.ts';
 import { PRACTICE_WORK_ORDER_SQL, PRACTICE_WORK_COLUMNS } from './practiceWorkQueries.ts';
@@ -80,7 +82,7 @@ export const practiceWorkDao = {
   async addPracticeWork(work: Partial<PracticeWork>): Promise<string> {
     const db = dbBridge.getDatabase();
     const id = work.id || 'pw-' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    const title = (work.title || '').trim() || 'Trabajo práctico';
+    const title = (work.title || '').trim() || translateKey(daoLang(), 'gallery.kind.practice');
     db.run(
       `INSERT INTO practice_work
         (id, title, description, resource_id, lesson_id, concept_id, kind, status, artifact_url, notes, self_rating, completed_at, content, checklist)

@@ -25,7 +25,9 @@ import {
   Download
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
-import { GRAPH_NODE_LABELS, GRAPH_RELATION_LABELS } from '../services/domainLogic.ts';
+import { GRAPH_RELATION_LABELS, graphNodeLabel, graphRelationLabel } from '../services/domainLogic.ts';
+import type { GraphRelationType } from '../types/models.ts';
+import { useLanguage } from '../hooks/useLanguage.ts';
 import { FlashcardGenerationModal } from '../components/study/FlashcardGenerationModal.tsx';
 import { PracticeWorkPanel } from '../components/practice/PracticeWorkPanel.tsx';
 import { downloadJsonFile, slugifyForFilename } from '../db/exportImport.ts';
@@ -63,6 +65,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
   onStudyResource,
   onExplainResource
 }) => {
+  const { t, effective } = useLanguage();
   const [detail, setDetail] = useState<ResourceDetailModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,16 +85,16 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
     try {
       const pkg = await dao.exportCoursePackage(resourceId);
       if (!pkg) {
-        setPackageFeedback('No se pudo preparar el paquete: el recurso ya no existe.');
+        setPackageFeedback(t('res.exportFailGone'));
         return;
       }
       downloadJsonFile(pkg, `crossedarts-paquete-${slugifyForFilename(pkg.resource.title)}.json`);
       setPackageFeedback(
-        'Material exportado como paquete educativo (temario y trabajo propuesto). No incluye tu progreso, notas ni sesiones. Compártelo para que otra persona lo importe.'
+        t('res.exportOk')
       );
     } catch (err) {
       console.warn('No se pudo exportar el paquete:', err);
-      setPackageFeedback('No se pudo exportar el paquete del recurso.');
+      setPackageFeedback(t('res.exportFail'));
     }
   };
 
@@ -101,13 +104,13 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
     try {
       const data = await dao.getResourceDetail(resourceId);
       if (!data) {
-        setError('Este recurso ya no existe en la base local.');
+        setError(t('res.goneError'));
         setDetail(null);
       } else {
         setDetail(data);
       }
     } catch (err: any) {
-      setError(err?.message || 'No se pudo cargar el detalle del recurso.');
+      setError(err?.message || t('res.loadFail'));
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +127,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
     const currentPage = bookForm.currentPage ? parseInt(bookForm.currentPage, 10) : undefined;
 
     if (pageCount !== undefined && (isNaN(pageCount) || pageCount <= 0)) {
-      setMetaFeedback({ text: 'El número de páginas debe ser mayor que cero.', isError: true });
+      setMetaFeedback({ text: t('res.pagesInvalid'), isError: true });
       return;
     }
 
@@ -133,21 +136,21 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
       pageCount
     });
     if (!res.success) {
-      setMetaFeedback({ text: res.error || 'No se pudieron actualizar los metadatos.', isError: true });
+      setMetaFeedback({ text: res.error || t('res.metaFail'), isError: true });
       return;
     }
 
     if (currentPage !== undefined) {
       const prog = await dao.updateBookProgress(detail.book.id, currentPage, pageCount || detail.book.page_count || 0);
       if (!prog.success) {
-        setMetaFeedback({ text: prog.error || 'No se pudo actualizar el progreso.', isError: true });
+        setMetaFeedback({ text: prog.error || t('res.progressFail'), isError: true });
         onRefresh();
         return;
       }
     }
 
     setIsEditingBook(false);
-    setMetaFeedback({ text: 'Libro actualizado correctamente.' });
+    setMetaFeedback({ text: t('res.bookUpdated') });
     await load();
     onRefresh();
   };
@@ -156,7 +159,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-24 text-muted">
         <Loader2 size={26} className="animate-spin text-accent" aria-hidden="true" />
-        <p className="text-meta">Cargando recurso local…</p>
+        <p className="text-meta">{t('res.loading')}</p>
       </div>
     );
   }
@@ -165,11 +168,11 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
     return (
       <div className="space-y-4">
         <button onClick={onBack} className="flex items-center gap-2 text-meta font-medium text-muted transition hover:text-ink">
-          <ArrowLeft size={15} aria-hidden="true" /> Volver a la Biblioteca
+          <ArrowLeft size={15} aria-hidden="true" /> {t('res.back')}
         </button>
         <InlineStatus tone="error" className="text-body">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          {error || 'Recurso no encontrado.'}
+          {error || t('res.notFound')}
         </InlineStatus>
       </div>
     );
@@ -184,7 +187,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
   return (
     <div className="animate-fade-in space-y-6">
       <button onClick={onBack} className="flex items-center gap-2 text-meta font-medium text-muted transition hover:text-ink">
-        <ArrowLeft size={15} aria-hidden="true" /> Volver a la Biblioteca
+        <ArrowLeft size={15} aria-hidden="true" /> {t('res.back')}
       </button>
 
       {/* Cabecera editorial del objeto de estudio */}
@@ -192,7 +195,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <Badge tone="accent">
-              {GRAPH_NODE_LABELS[kind === 'resource' ? 'resource' : kind]}
+              {graphNodeLabel(kind === 'resource' ? 'resource' : kind, effective)}
             </Badge>
             <h1 className="type-display mt-2 break-words text-ink">{resource.title}</h1>
             {resource.description && <p className="type-secondary mt-1">{resource.description}</p>}
@@ -202,72 +205,72 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
             {canStudy && (
               <>
                 <Button size="sm" variant="solid" onClick={() => onStudyResource(resource.id, 'mixed')}>
-                  <Play size={13} aria-hidden="true" /> Estudiar
+                  <Play size={13} aria-hidden="true" /> {t('res.study')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => onStudyResource(resource.id, 'flashcards')}>
-                  <Brain size={13} aria-hidden="true" /> Repasar
+                  <Brain size={13} aria-hidden="true" /> {t('res.review')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => onStudyResource(resource.id, 'practice')}>
-                  <ListChecks size={13} aria-hidden="true" /> Practicar
+                  <ListChecks size={13} aria-hidden="true" /> {t('res.practice')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setIsGenOpen(true)}>
-                  <Sparkles size={13} aria-hidden="true" /> Generar tarjetas
+                  <Sparkles size={13} aria-hidden="true" /> {t('res.genCards')}
                 </Button>
               </>
             )}
             <Button size="sm" variant="outline" onClick={() => onExplainResource(resource.id, resource.title)}>
-              <Sparkles size={13} aria-hidden="true" /> Explicar
+              <Sparkles size={13} aria-hidden="true" /> {t('res.explain')}
             </Button>
             {/*
               Paquete portable: SOLO material educativo (estructura, contenido y
-              trabajo práctico propuesto). No es un respaldo de la cuenta ni
-              incluye el progreso, las notas ni las sesiones del alumno.
+              trabajo práctico propuesto). No es un respaldo de la cuenta:
+              sin tu progreso, notas ni sesiones.
             */}
             <Button
               size="sm"
               variant="outline"
               onClick={handleExportPackage}
-              title="Exportar el material educativo de este recurso como paquete JSON: temario y trabajo propuesto, sin tu progreso, notas ni sesiones"
+              title={t('res.packageTitle')}
             >
-              <Download size={13} aria-hidden="true" /> Material</Button>
+              <Download size={13} aria-hidden="true" /> {t('res.material')}</Button>
           </div>
         </div>
 
         {/* Metadatos discretos */}
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-meta sm:grid-cols-3">
           <div>
-            <dt className="text-faint">Tipo</dt>
-            <dd className="text-ink">{GRAPH_NODE_LABELS[kind === 'resource' ? 'resource' : kind]}</dd>
+            <dt className="text-faint">{t('res.type')}</dt>
+            <dd className="text-ink">{graphNodeLabel(kind === 'resource' ? 'resource' : kind, effective)}</dd>
           </div>
           <div>
-            <dt className="text-faint">Categoría</dt>
+            <dt className="text-faint">{t('res.category')}</dt>
             <dd className="text-ink">{resource.category}</dd>
           </div>
           <div>
-            <dt className="text-faint">Estado</dt>
+            <dt className="text-faint">{t('res.status')}</dt>
             <dd className="text-ink">{resource.status}</dd>
           </div>
           {book && (
             <>
               <div>
-                <dt className="flex items-center gap-1 text-faint"><User size={11} aria-hidden="true" /> Autor</dt>
-                <dd className="text-ink">{book.author || 'No especificado'}</dd>
+                <dt className="flex items-center gap-1 text-faint"><User size={11} aria-hidden="true" /> {t('res.author')}</dt>
+                <dd className="text-ink">{book.author || t('dashboard.authorUnknown')}</dd>
               </div>
               <div>
-                <dt className="text-faint">Progreso de lectura</dt>
-                <dd className="text-ink">{book.current_page || 0} / {book.page_count} pág ({book.reading_percentage}%)</dd>
+                <dt className="text-faint">{t('res.reading')}</dt>
+                <dd className="text-ink">{t('res.pagesOf', { cur: book.current_page || 0, total: book.page_count, pct: book.reading_percentage })}</dd>
               </div>
             </>
           )}
           {source?.sourceType && (
             <div>
-              <dt className="text-faint">Formato de origen</dt>
+              <dt className="text-faint">{t('res.sourceFormat')}</dt>
               <dd className="uppercase text-ink">{source.sourceType}</dd>
             </div>
           )}
           {resource.created_at && (
             <div>
-              <dt className="flex items-center gap-1 text-faint"><Calendar size={11} aria-hidden="true" /> Importado</dt>
+              <dt className="flex items-center gap-1 text-faint"><Calendar size={11} aria-hidden="true" /> {t('res.imported')}</dt>
               <dd className="text-ink">{resource.created_at.slice(0, 10)}</dd>
             </div>
           )}
@@ -278,22 +281,22 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-meta">
             <span className="flex items-center gap-1 text-muted">
               <Database size={12} className="text-accent" aria-hidden="true" />
-              Fragmentos de contenido indexados: <strong className="text-ink">{fragments.length}</strong>
+              {t('res.indexed', { n: fragments.length }).split('{n}')[0]}<strong className="text-ink">{fragments.length}</strong>
             </span>
             <span className="text-faint">
-              Indexación semántica local: opcional al importar; la búsqueda exacta siempre funciona sin embeddings.
+              {t('res.semanticNote')}
             </span>
           </p>
           {source?.fileName && (
             <p className="text-meta">
-              <span className="text-faint">Archivo original:</span>{' '}
+              <span className="text-faint">{t('res.origFile')}</span>{' '}
               <span className="break-all font-mono text-muted">{source.fileName}</span>
             </p>
           )}
           {source?.fingerprint && (
             <p className="text-meta">
               <span className="flex items-center gap-1 text-faint">
-                <Hash size={11} aria-hidden="true" /> Huella SHA-256:
+                <Hash size={11} aria-hidden="true" /> {t('res.sha')}
               </span>
               <span className="break-all font-mono text-muted">{source.fingerprint}</span>
             </p>
@@ -305,45 +308,45 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
             {isEditingBook ? (
               <div className="space-y-2 rounded-lg border border-line bg-canvas p-3">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <label className="sr-only" htmlFor="rd-author">Autor del libro</label>
+                  <label className="sr-only" htmlFor="rd-author">{t('res.authorSr')}</label>
                   <input
                     id="rd-author"
                     type="text"
                     value={bookForm.author}
                     onChange={e => setBookForm(f => ({ ...f, author: e.target.value }))}
-                    placeholder="Autor"
-                    aria-label="Autor del libro"
+                    placeholder={t('res.authorPh')}
+                    aria-label={t('res.authorSr')}
                     className={INPUT_CLS}
                   />
-                  <label className="sr-only" htmlFor="rd-pages">Páginas totales</label>
+                  <label className="sr-only" htmlFor="rd-pages">{t('res.pagesTotal')}</label>
                   <input
                     id="rd-pages"
                     type="number"
                     min="1"
                     value={bookForm.pageCount}
                     onChange={e => setBookForm(f => ({ ...f, pageCount: e.target.value }))}
-                    placeholder="Páginas totales"
-                    aria-label="Páginas totales"
+                    placeholder={t('res.pagesTotal')}
+                    aria-label={t('res.pagesTotal')}
                     className={INPUT_CLS}
                   />
-                  <label className="sr-only" htmlFor="rd-current">Página actual</label>
+                  <label className="sr-only" htmlFor="rd-current">{t('res.currentPage')}</label>
                   <input
                     id="rd-current"
                     type="number"
                     min="0"
                     value={bookForm.currentPage}
                     onChange={e => setBookForm(f => ({ ...f, currentPage: e.target.value }))}
-                    placeholder="Página actual"
-                    aria-label="Página actual"
+                    placeholder={t('res.currentPage')}
+                    aria-label={t('res.currentPage')}
                     className={INPUT_CLS}
                   />
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button size="sm" variant="quiet" onClick={() => setIsEditingBook(false)}>
-                    Cancelar
+                    {t('res.cancel')}
                   </Button>
                   <Button size="sm" variant="solid" onClick={handleSaveBook}>
-                    <Check size={12} aria-hidden="true" /> Guardar
+                    <Check size={12} aria-hidden="true" /> {t('res.save')}
                   </Button>
                 </div>
               </div>
@@ -356,7 +359,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
                   setIsEditingBook(true);
                 }}
               >
-                <Edit3 size={12} aria-hidden="true" /> Editar metadatos y progreso
+                <Edit3 size={12} aria-hidden="true" /> {t('res.editMeta')}
               </Button>
             )}
             {metaFeedback && (
@@ -377,9 +380,9 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
 
       {/* Contenido extraído (tratado como datos): protagonista de la página */}
       {fragments.length > 0 && (
-        <section className="rounded-xl border border-line bg-surface p-5 shadow-card" aria-label="Contenido indexado">
+        <section className="rounded-xl border border-line bg-surface p-5 shadow-card" aria-label={t('res.indexedLabel')}>
           <h2 className="type-section mb-3 border-b border-line pb-2 text-ink">
-            Contenido indexado ({fragments.length})
+            {t('res.indexedCount', { n: fragments.length })}
           </h2>
           <ul className="space-y-1.5">
             {fragments.map(frag => {
@@ -418,17 +421,17 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
       />
 
       {/* Relacionado (solo relaciones canónicas) */}
-      <section className="rounded-xl border border-line bg-surface p-5 shadow-card" aria-label="Relacionado">
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card" aria-label={t('res.relatedLabel')}>
         <h2 className="type-section mb-3 border-b border-line pb-2 text-ink">
-          Relacionado ({related.length})
+          {t('res.relatedCount', { n: related.length })}
         </h2>
         {related.length === 0 ? (
-          <p className="type-meta">Sin relaciones registradas. Puedes añadirlas desde el Grafo de Conocimiento.</p>
+          <p className="type-meta">{t('res.noRelations')}</p>
         ) : (
           <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             {related.map(item => {
               const Icon = RELATED_ICONS[item.type] || FileText;
-              const relationLabel = (GRAPH_RELATION_LABELS as Record<string, string>)[item.relation] || item.relation;
+              const relationLabel = item.relation in GRAPH_RELATION_LABELS ? graphRelationLabel(item.relation as GraphRelationType, effective) : item.relation;
               return (
                 <li key={`${item.id}-${item.relation}`}>
                   <button
@@ -443,7 +446,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
                     <span className="min-w-0">
                       <span className="block truncate text-meta font-semibold text-ink">{item.title}</span>
                       <span className="block text-micro">
-                        {GRAPH_NODE_LABELS[item.type]} · {relationLabel}{item.derived ? ' (estructural)' : ''}
+                        {graphNodeLabel(item.type, effective)} · {relationLabel}{item.derived ? t('res.structural') : ''}
                       </span>
                     </span>
                   </button>

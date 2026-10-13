@@ -1,4 +1,6 @@
 import { dbBridge } from './sqliteBridge.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 import {
   resolveStudySessionScope,
   STUDY_SESSION_SCOPES,
@@ -91,9 +93,9 @@ export interface BackupValidationResult {
  *  3. Se rechazan las tablas de nivel superior desconocidas.
  *  4. Cada fila debe ser un objeto plano cuyas columnas existan en el esquema real.
  */
-export function validateJsonBackup(data: unknown): BackupValidationResult {
+export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): BackupValidationResult {
   if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-    return { valid: false, error: 'El archivo de respaldo no tiene un formato válido: se esperaba un objeto con las tablas de CrossedArts.' };
+    return { valid: false, error: translateKey(lang, 'backup.err.badFormat') };
   }
 
   const payload = data as Record<string, unknown>;
@@ -113,11 +115,11 @@ export function validateJsonBackup(data: unknown): BackupValidationResult {
   const meta = payload[META_KEY];
   if (meta !== undefined) {
     if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) {
-      return { valid: false, error: 'Los metadatos del respaldo no tienen un formato válido.' };
+      return { valid: false, error: translateKey(lang, 'backup.err.badMeta') };
     }
     const version = (meta as Record<string, unknown>).version;
     if (version !== undefined && (typeof version !== 'number' || !Number.isFinite(version))) {
-      return { valid: false, error: 'La versión del formato de respaldo no es válida.' };
+      return { valid: false, error: translateKey(lang, 'backup.err.badVersion') };
     }
     if (typeof version === 'number' && version > JSON_BACKUP_FORMAT_VERSION) {
       return {
@@ -190,10 +192,10 @@ function normalizeRestoredRow(table: string, row: Record<string, any>): Record<s
  * falla, la operación lanza y la UI no informa de una restauración que no se
  * guardó.
  */
-export async function importJsonBackup(data: Record<string, any[]>): Promise<void> {
-  const validation = validateJsonBackup(data);
+export async function importJsonBackup(data: Record<string, any[]>, lang: LanguageCode = 'es'): Promise<void> {
+  const validation = validateJsonBackup(data, lang);
   if (!validation.valid) {
-    throw new Error(validation.error || 'El archivo de respaldo no es válido.');
+    throw new Error(validation.error || translateKey(lang, 'backup.err.invalidFile'));
   }
 
   const db = dbBridge.getDatabase();
@@ -221,7 +223,7 @@ export async function importJsonBackup(data: Record<string, any[]>): Promise<voi
     }
     const foreignKeyViolations = db.exec('PRAGMA foreign_key_check;');
     if (foreignKeyViolations.length && foreignKeyViolations[0].values.length > 0) {
-      throw new Error('El respaldo contiene referencias internas incompatibles y no se puede restaurar de forma segura.');
+      throw new Error(translateKey(lang, 'backup.err.unsafeRef'));
     }
     db.run('COMMIT;');
   } catch (err) {
@@ -253,9 +255,9 @@ export async function exportSqliteFile(): Promise<string> {
   return filename;
 }
 
-export async function importSqliteFile(file: File): Promise<void> {
+export async function importSqliteFile(file: File, lang: LanguageCode = 'es'): Promise<void> {
   if (file.size > 50 * 1024 * 1024) {
-    throw new Error('El archivo excede el tamaño máximo permitido para respaldos locales (50 MB).');
+    throw new Error(translateKey(lang, 'backup.err.tooBig'));
   }
   const arrayBuffer = await file.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);

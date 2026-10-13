@@ -25,6 +25,10 @@
  */
 
 /** Los tres ámbitos canónicos de una sesión de estudio. */
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
+import { daoLang } from '../db/daoLanguage.ts';
+
 export type StudySessionScope = 'global' | 'resource' | 'lesson';
 
 /** Conjunto ordenado de ámbitos válidos (para validación y para la UI). */
@@ -85,7 +89,8 @@ export interface StudySessionScopeConsistency {
  */
 export function validateStudySessionScope(
   scope: StudySessionScope,
-  input: StudySessionScopeInput
+  input: StudySessionScopeInput,
+  lang: LanguageCode = 'es'
 ): StudySessionScopeConsistency {
   const hasResource = Boolean(input.resourceId);
   const hasLesson = Boolean(input.lessonId);
@@ -94,7 +99,7 @@ export function validateStudySessionScope(
     if (hasResource || hasLesson) {
       return {
         ok: false,
-        error: 'Una sesión global no puede tener recurso ni lección: elige el ámbito resource o lesson.'
+        error: translateKey(lang, 'scope.globalLeak')
       };
     }
     return { ok: true };
@@ -102,32 +107,34 @@ export function validateStudySessionScope(
 
   if (scope === 'resource') {
     if (!hasResource) {
-      return { ok: false, error: 'Una sesión de recurso necesita un resource_id.' };
+      return { ok: false, error: translateKey(lang, 'scope.needResource') };
     }
     if (hasLesson) {
       return {
         ok: false,
-        error: 'Una sesión de recurso no puede tener lección: usa el ámbito lesson.'
+        error: translateKey(lang, 'scope.noLesson')
       };
     }
     return { ok: true };
   }
 
   if (!hasLesson) {
-    return { ok: false, error: 'Una sesión de lección necesita un lesson_id.' };
+    return { ok: false, error: translateKey(lang, 'scope.needLesson') };
   }
   return { ok: true };
 }
 
 /** Etiqueta en español del ámbito. Nunca vacía: un ámbito desconocido degrada a global. */
-export function studySessionScopeLabel(scope: StudySessionScope): string {
+export function studySessionScopeLabel(scope: StudySessionScope, lang: LanguageCode = 'es'): string {
   switch (scope) {
     case 'lesson':
-      return 'Lección';
+      return translateKey(lang, 'scope.lesson');
     case 'resource':
-      return 'Recurso';
+      return translateKey(lang, 'scope.resource');
     case 'global':
     default:
+      return translateKey(lang, 'scope.global');
+      return translateKey(lang, 'scope.global');
       return 'Repaso general';
   }
 }
@@ -142,14 +149,14 @@ export interface StudySessionScopeDescriptionInput {
  * Descripción legible de una sesión a partir de su ámbito y sus títulos
  * resueltos. No inventa títulos: sin título conocido describe el ámbito.
  */
-export function describeStudySessionScope(input: StudySessionScopeDescriptionInput): string {
+export function describeStudySessionScope(input: StudySessionScopeDescriptionInput, lang: LanguageCode = 'es'): string {
   const { scope, resourceTitle, lessonTitle } = input;
   if (scope === 'lesson') {
     const parts = [resourceTitle, lessonTitle].filter(Boolean);
-    return parts.length ? parts.join(' › ') : studySessionScopeLabel(scope);
+    return parts.length ? parts.join(' › ') : studySessionScopeLabel(scope, lang);
   }
   if (scope === 'resource') {
-    return resourceTitle || studySessionScopeLabel(scope);
+    return resourceTitle || studySessionScopeLabel(scope, lang);
   }
-  return studySessionScopeLabel(scope);
+  return studySessionScopeLabel(scope, lang);
 }

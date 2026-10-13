@@ -1,7 +1,6 @@
 import { dbBridge } from './sqliteBridge.ts';
 import type { Course, Book, LearningResource, Flashcard, FlashcardType, MediaAsset, ConceptNode, ConceptEdge, Module, Lesson, LearningSession, StudySessionMode, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter, PracticeWork, PracticeWorkKind, PracticeWorkStatus, PracticeChecklistItem } from '../types/models.ts';
 import { calculateBookProgress, calculateSM2, validateKnowledgeConnection } from '../services/domainLogic.ts';
-import { GOAL_KIND_LABELS } from '../services/goals.ts';
 import {
   buildCoursePackage,
   planCoursePackageImport,
@@ -19,6 +18,24 @@ import {
   type StudySessionScope
 } from '../services/sessionScope.ts';
 import { asNullableString, asNullableNumber } from './dao/sqlRows.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
+import { daoLang, setDaoLanguage } from './daoLanguage.ts';
+import { goalKindLabel } from '../services/goals.ts';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { sessionDao } from './dao/sessions.ts';
 import { noteDao } from './dao/notes.ts';
 import { practiceWorkDao } from './dao/practiceWork.ts';
@@ -43,6 +60,10 @@ import type { SM2Result } from '../services/domainLogic.ts';
 /* La lista de verificación se parsea/serializa con los helpers puros de
  * services/practiceWork.ts: la base de datos guarda JSON y la lógica de
  * conversión vive en un módulo probable, no dentro del DAO. */
+
+export { setDaoLanguage };
+
+
 
 export const dao = {
   ...sessionDao,
@@ -81,9 +102,9 @@ export const dao = {
     const db = dbBridge.getDatabase();
     const anchors = { resourceId: params.resourceId, lessonId: params.lessonId };
     const scope = params.scope ?? resolveStudySessionScope(anchors);
-    const consistency = validateStudySessionScope(scope, anchors);
+    const consistency = validateStudySessionScope(scope, anchors, daoLang());
     if (!consistency.ok) {
-      throw new Error(consistency.error || 'Ámbito de sesión incoherente.');
+      throw new Error(consistency.error || translateKey(daoLang(), 'dao.err.sessionScope'));
     }
 
     const id = `ss_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -535,7 +556,7 @@ export const dao = {
     const front = card.front.trim();
     const back = card.back.trim();
     if (!front || !back) {
-      return { success: false, error: 'El anverso y el reverso no pueden estar vacíos.' };
+      return { success: false, error: translateKey(daoLang(), 'dao.err.cardsBoth') };
     }
     const db = dbBridge.getDatabase();
     const id = `fc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -553,13 +574,13 @@ export const dao = {
     const params: any[] = [];
     if (updates.front !== undefined) {
       const f = updates.front.trim();
-      if (!f) return { success: false, error: 'El anverso no puede estar vacío.' };
+      if (!f) return { success: false, error: translateKey(daoLang(), 'dao.err.cardsFront') };
       clauses.push('front = ?');
       params.push(f);
     }
     if (updates.back !== undefined) {
       const b = updates.back.trim();
-      if (!b) return { success: false, error: 'El reverso no puede estar vacío.' };
+      if (!b) return { success: false, error: translateKey(daoLang(), 'dao.err.cardsBack') };
       clauses.push('back = ?');
       params.push(b);
     }
@@ -827,10 +848,11 @@ export const dao = {
       {
         nodeIds: graph.nodes.map(n => n.id),
         existingEdges: graph.edges.filter(e => !e.derived).map(e => ({ source_id: e.source_id, target_id: e.target_id, connection_type: e.connection_type }))
-      }
+      },
+      daoLang()
     );
     if (!validation.valid || !validation.relation) {
-      return { success: false, error: validation.error || 'Conexión inválida.' };
+      return { success: false, error: validation.error || translateKey(daoLang(), 'dao.err.connInvalid') };
     }
 
     const db = dbBridge.getDatabase();
@@ -920,7 +942,7 @@ export const dao = {
   },
   async createCourse(input: { title: string; description?: string; category?: string; instructor?: string; difficulty?: CourseDifficulty }): Promise<{ success: boolean; id?: string; error?: string }> {
     const title = (input.title || '').trim();
-    if (title.length < 3) return { success: false, error: 'El título del curso debe tener al menos 3 caracteres.' };
+    if (title.length < 3) return { success: false, error: translateKey(daoLang(), 'dao.err.courseShort') };
     const db = dbBridge.getDatabase();
     const id = `course_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const difficulty = input.difficulty || 'BEGINNER';
@@ -938,7 +960,7 @@ export const dao = {
   async createModule(input: { courseId: string; title: string }): Promise<{ success: boolean; id?: string; error?: string }> {
     const title = (input.title || '').trim();
     if (!input.courseId) return { success: false, error: 'Debes seleccionar un curso.' };
-    if (title.length < 2) return { success: false, error: 'El título del módulo es demasiado corto.' };
+    if (title.length < 2) return { success: false, error: translateKey(daoLang(), 'dao.err.moduleShort') };
     const db = dbBridge.getDatabase();
     const courseExists = db.exec('SELECT 1 FROM course WHERE id = ?', [input.courseId]);
     if (!courseExists.length || !courseExists[0].values.length) return { success: false, error: 'El curso indicado no existe.' };
@@ -952,11 +974,11 @@ export const dao = {
   },
   async createLesson(input: { moduleId: string; title: string; content?: string; durationMinutes?: number; lessonType?: LessonType; mediaUrl?: string }): Promise<{ success: boolean; id?: string; error?: string }> {
     const title = (input.title || '').trim();
-    if (!input.moduleId) return { success: false, error: 'Debes seleccionar un módulo.' };
-    if (title.length < 2) return { success: false, error: 'El título de la lección es demasiado corto.' };
+    if (!input.moduleId) return { success: false, error: translateKey(daoLang(), 'dao.err.needModule') };
+    if (title.length < 2) return { success: false, error: translateKey(daoLang(), 'dao.err.lessonShort') };
     const db = dbBridge.getDatabase();
     const moduleRes = db.exec('SELECT course_id FROM module WHERE id = ?', [input.moduleId]);
-    if (!moduleRes.length || !moduleRes[0].values.length) return { success: false, error: 'El módulo indicado no existe.' };
+    if (!moduleRes.length || !moduleRes[0].values.length) return { success: false, error: translateKey(daoLang(), 'dao.err.moduleGone') };
     const courseId = String(moduleRes[0].values[0][0]);
     const id = `les_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const orderRes = db.exec('SELECT COALESCE(MAX(order_index), 0) + 1 FROM lesson WHERE module_id = ?', [input.moduleId]);
@@ -1012,10 +1034,10 @@ export const dao = {
   async updateLesson(id: string, fields: { title?: string; content?: string | null; durationMinutes?: number; lessonType?: LessonType; mediaUrl?: string }): Promise<{ success: boolean; error?: string }> {
     const title = fields.title !== undefined ? (fields.title || '').trim() : undefined;
     if (title !== undefined && title.length < 2) {
-      return { success: false, error: 'El título de la lección es demasiado corto.' };
+      return { success: false, error: translateKey(daoLang(), 'dao.err.lessonShort') };
     }
     if (fields.durationMinutes !== undefined && (typeof fields.durationMinutes !== 'number' || fields.durationMinutes < 0)) {
-      return { success: false, error: 'La duración debe ser un número no negativo.' };
+      return { success: false, error: translateKey(daoLang(), 'dao.err.durationNeg') };
     }
     const db = dbBridge.getDatabase();
     db.run(
@@ -1043,16 +1065,16 @@ export const dao = {
   async moveLesson(lessonId: string, direction: 'up' | 'down'): Promise<{ success: boolean; error?: string }> {
     const db = dbBridge.getDatabase();
     const lesson = await this.getLessonById(lessonId);
-    if (!lesson) return { success: false, error: 'La lección indicada no existe.' };
+    if (!lesson) return { success: false, error: translateKey(daoLang(), 'dao.err.lessonGone') };
 
     const res = db.exec('SELECT id, order_index FROM lesson WHERE module_id = ? ORDER BY order_index ASC, id ASC', [lesson.module_id]);
     const ordered = res.length ? res[0].values.map(r => ({ id: String(r[0]), order: Number(r[1]) || 0 })) : [];
     const index = ordered.findIndex(l => l.id === lessonId);
-    if (index === -1) return { success: false, error: 'La lección no pertenece al módulo.' };
+    if (index === -1) return { success: false, error: translateKey(daoLang(), 'dao.err.lessonNotInModule') };
 
     const swapIndex = direction === 'up' ? index - 1 : index + 1;
     if (swapIndex < 0 || swapIndex >= ordered.length) {
-      return { success: false, error: direction === 'up' ? 'La lección ya es la primera.' : 'La lección ya es la última.' };
+      return { success: false, error: direction === 'up' ? translateKey(daoLang(), 'dao.err.lessonFirst') : translateKey(daoLang(), 'dao.err.lessonLast') };
     }
 
     const reordered = [...ordered];
@@ -1195,7 +1217,7 @@ export const dao = {
   async updateBookDetails(id: string, fields: { title?: string; description?: string; category?: string; author?: string; isbn?: string; pageCount?: number }): Promise<{ success: boolean; error?: string }> {
     const db = dbBridge.getDatabase();
     if (fields.pageCount !== undefined && (typeof fields.pageCount !== 'number' || fields.pageCount <= 0)) {
-      return { success: false, error: 'El número de páginas debe ser mayor que cero.' };
+      return { success: false, error: translateKey(daoLang(), 'dao.err.pagesPositive') };
     }
 
     if (fields.title !== undefined || fields.description !== undefined || fields.category !== undefined) {
@@ -1325,7 +1347,7 @@ export const dao = {
           id: String(r[0]),
           type: 'practice',
           title: String(r[1]),
-          subtitle: r[2] ? String(r[2]).slice(0, 80) : 'Trabajo práctico',
+          subtitle: r[2] ? String(r[2]).slice(0, 80) : translateKey(daoLang(), 'gallery.kind.practice'),
           resourceId: r[3] ? String(r[3]) : undefined,
           lessonId: r[4] ? String(r[4]) : undefined
         });
@@ -1341,12 +1363,13 @@ export const dao = {
     );
     if (goalRes.length) {
       for (const r of goalRes[0].values) {
-        const kindLabel = GOAL_KIND_LABELS[String(r[3]) as keyof typeof GOAL_KIND_LABELS] || GOAL_KIND_LABELS.custom;
+        const rawKind = String(r[3]);
+        const kindLabel = goalKindLabel(((['course', 'book', 'practice', 'study_time', 'custom'] as readonly string[]).includes(rawKind) ? rawKind : 'custom') as 'course' | 'book' | 'practice' | 'study_time' | 'custom', daoLang());
         results.push({
           id: String(r[0]),
           type: 'goal',
           title: String(r[1]),
-          subtitle: `${kindLabel} · ${String(r[4]) === 'completed' ? 'Completada' : 'Activa'}${r[2] ? ` · ${String(r[2]).slice(0, 60)}` : ''}`
+          subtitle: `${kindLabel} · ${String(r[4]) === 'completed' ? translateKey(daoLang(), 'goals.deadline.completed') : translateKey(daoLang(), 'palette.goalActive')}${r[2] ? ` · ${String(r[2]).slice(0, 60)}` : ''}`
         });
       }
     }

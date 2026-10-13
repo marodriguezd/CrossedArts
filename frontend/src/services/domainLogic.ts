@@ -15,14 +15,15 @@ export type BookProgressResult =
  */
 export function calculateBookProgress(
   currentPage: number,
-  totalPages: number
+  totalPages: number,
+  lang: LanguageCode = 'es'
 ): BookProgressResult {
   if (typeof totalPages !== 'number' || isNaN(totalPages) || totalPages <= 0) {
-    return { valid: false, error: 'El libro no tiene un número total de páginas válido configurado.' };
+    return { valid: false, error: translateKey(lang, 'book.err.noTotal') };
   }
 
   if (typeof currentPage !== 'number' || isNaN(currentPage)) {
-    return { valid: false, error: 'La página indicada debe ser un número válido.' };
+    return { valid: false, error: translateKey(lang, 'book.err.badPage') };
   }
 
   const clampedPage = Math.max(0, Math.min(Math.floor(currentPage), totalPages));
@@ -133,12 +134,14 @@ export function parseUtcTimestamp(value: string | null | undefined): number {
 /**
  * Formatea el próximo intervalo calculado por SM-2 en texto legible para la UI.
  */
-export function formatNextReviewInterval(intervalDays: number): string {
+export function formatNextReviewInterval(intervalDays: number, lang: LanguageCode = 'es'): string {
   const days = Math.max(1, Math.round(intervalDays));
-  if (days === 1) return '1 día';
-  if (days < 30) return `${days} días`;
+  if (days === 1) return translateKey(lang, 'review.interval.day');
+  if (days < 30) return translateKey(lang, 'review.interval.days', { n: days });
   const months = Math.round(days / 30);
-  return months === 1 ? '1 mes' : `${months} meses`;
+  return months === 1
+    ? translateKey(lang, 'review.interval.month')
+    : translateKey(lang, 'review.interval.months', { n: months });
 }
 
 export interface StudySessionCounters {
@@ -222,24 +225,25 @@ export interface KnowledgeConnectionValidationResult {
  */
 export function validateKnowledgeConnection(
   candidate: KnowledgeConnectionCandidate,
-  context: KnowledgeConnectionValidationContext
+  context: KnowledgeConnectionValidationContext,
+  lang: LanguageCode = 'es'
 ): KnowledgeConnectionValidationResult {
   const relation = normalizeGraphRelation(candidate.relationType);
   if (!relation) {
-    return { valid: false, error: `Tipo de relación no soportado: "${candidate.relationType}".` };
+    return { valid: false, error: translateKey(lang, 'conn.err.badRel', { rel: candidate.relationType }) };
   }
   if (!candidate.sourceId || !candidate.targetId) {
-    return { valid: false, error: 'Debes seleccionar un origen y un destino válidos.' };
+    return { valid: false, error: translateKey(lang, 'conn.err.needBoth') };
   }
   if (candidate.sourceId === candidate.targetId) {
-    return { valid: false, error: 'El origen y el destino no pueden ser el mismo recurso.' };
+    return { valid: false, error: translateKey(lang, 'conn.err.sameNode') };
   }
   const nodeIds = context.nodeIds instanceof Set ? context.nodeIds : new Set(context.nodeIds);
   if (!nodeIds.has(candidate.sourceId)) {
-    return { valid: false, error: 'El recurso de origen no existe en el grafo local.' };
+    return { valid: false, error: translateKey(lang, 'conn.err.noSource') };
   }
   if (!nodeIds.has(candidate.targetId)) {
-    return { valid: false, error: 'El recurso de destino no existe en el grafo local.' };
+    return { valid: false, error: translateKey(lang, 'conn.err.noTarget') };
   }
   const duplicate = context.existingEdges.some(
     e =>
@@ -248,11 +252,13 @@ export function validateKnowledgeConnection(
       e.connection_type === relation
   );
   if (duplicate) {
-    return { valid: false, error: 'Esta conexión ya existe.' };
+    return { valid: false, error: translateKey(lang, 'conn.err.dup') };
   }
   return { valid: true, relation };
 }
 
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 export const GRAPH_NODE_LABELS: Record<GraphNodeType, string> = {
   concept: 'Concepto',
   course: 'Curso',
@@ -263,6 +269,16 @@ export const GRAPH_NODE_LABELS: Record<GraphNodeType, string> = {
   practice: 'Trabajo práctico',
   resource: 'Recurso'
 };
+
+/** Localized node-type label. Defaults to Spanish (existing callers omit it). */
+export function graphNodeLabel(type: GraphNodeType, lang: LanguageCode = 'es'): string {
+  return translateKey(lang, `graph.node.${type}`);
+}
+
+/** Localized relation label. Defaults to Spanish (existing callers omit it). */
+export function graphRelationLabel(relation: GraphRelationType, lang: LanguageCode = 'es'): string {
+  return translateKey(lang, `graph.rel.${relation}`);
+}
 
 export const GRAPH_RELATION_LABELS: Record<GraphRelationType, string> = {
   contains: 'contiene',
@@ -371,36 +387,39 @@ export type DestructiveAction = 'delete-course' | 'delete-module' | 'delete-less
  */
 export function describeDestructiveAction(
   action: DestructiveAction,
-  targetLabel: string
+  targetLabel: string,
+  lang: LanguageCode = 'es'
 ): { title: string; consequence: string; confirmLabel: string; reversible: boolean } {
+  const tr = (key: string, params?: Record<string, string | number | null | undefined>): string =>
+    translateKey(lang, key, params);
   switch (action) {
     case 'delete-course':
       return {
-        title: 'Eliminar curso',
-        consequence: `Se eliminará "${targetLabel}" junto con sus módulos y lecciones. Las notas y tarjetas asociadas se conservarán, pero perderán su vínculo con el curso. Esta acción no se puede deshacer.`,
-        confirmLabel: 'Eliminar curso',
+        title: tr('destroy.courseT'),
+        consequence: tr('destroy.courseC', { label: targetLabel }),
+        confirmLabel: tr('destroy.courseOk'),
         reversible: false
       };
     case 'delete-module':
       return {
-        title: 'Eliminar módulo',
-        consequence: `Se eliminará "${targetLabel}" y todas sus lecciones. Las notas asociadas se conservarán. Esta acción no se puede deshacer.`,
-        confirmLabel: 'Eliminar módulo',
+        title: tr('destroy.moduleT'),
+        consequence: tr('destroy.moduleC', { label: targetLabel }),
+        confirmLabel: tr('destroy.moduleOk'),
         reversible: false
       };
     case 'delete-lesson':
       return {
-        title: 'Eliminar lección',
-        consequence: `Se eliminará "${targetLabel}". Las notas asociadas se conservarán, pero perderán su vínculo con la lección. Esta acción no se puede deshacer.`,
-        confirmLabel: 'Eliminar lección',
+        title: tr('destroy.lessonT'),
+        consequence: tr('destroy.lessonC', { label: targetLabel }),
+        confirmLabel: tr('destroy.lessonOk'),
         reversible: false
       };
     case 'delete-connection':
     default:
       return {
-        title: 'Eliminar conexión',
-        consequence: `Se eliminará la relación "${targetLabel}" entre ambos recursos. Solo la relación se borra; los recursos no se modifican. Esta acción no se puede deshacer.`,
-        confirmLabel: 'Eliminar conexión',
+        title: tr('destroy.connT'),
+        consequence: tr('destroy.connC', { label: targetLabel }),
+        confirmLabel: tr('destroy.connOk'),
         reversible: false
       };
   }
@@ -646,7 +665,8 @@ export function filterSupportedFiles(files: File[] | FileList | null | undefined
 export function generateDailyActivitySeries(
   history: Array<{ date: string; minutes: number; reviews: number }>,
   range: TimeRangeFilter,
-  todayStr: string
+  todayStr: string,
+  lang: LanguageCode = 'es'
 ): DailyActivityPoint[] {
   const daysCount = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 0;
   const historyMap = new Map<string, { minutes: number; reviews: number }>();
@@ -663,8 +683,12 @@ export function generateDailyActivitySeries(
     if (parts.length < 3) return isoDate;
     const [, mm, dd] = parts;
     const monthNames: Record<string, string> = {
-      '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr', '05': 'May', '06': 'Jun',
-      '07': 'Jul', '08': 'Ago', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic'
+      '01': translateKey(lang, 'chart.month.01'), '02': translateKey(lang, 'chart.month.02'),
+      '03': translateKey(lang, 'chart.month.03'), '04': translateKey(lang, 'chart.month.04'),
+      '05': translateKey(lang, 'chart.month.05'), '06': translateKey(lang, 'chart.month.06'),
+      '07': translateKey(lang, 'chart.month.07'), '08': translateKey(lang, 'chart.month.08'),
+      '09': translateKey(lang, 'chart.month.09'), '10': translateKey(lang, 'chart.month.10'),
+      '11': translateKey(lang, 'chart.month.11'), '12': translateKey(lang, 'chart.month.12')
     };
     return `${dd} ${monthNames[mm] || mm}`;
   };
@@ -713,7 +737,7 @@ export function generateDailyActivitySeries(
 /**
  * Convierte una nota individual a formato Markdown con metadatos en cabecera frontmatter y marca de agua local.
  */
-export function exportNoteToMarkdown(note: Note, contextInfo?: { resourceTitle?: string; lessonTitle?: string }): string {
+export function exportNoteToMarkdown(note: Note, contextInfo?: { resourceTitle?: string; lessonTitle?: string }, lang: LanguageCode = 'es'): string {
   const lines: string[] = [];
   lines.push('---');
   lines.push(`title: "${note.title.replace(/"/g, '\\"')}"`);
@@ -729,18 +753,18 @@ export function exportNoteToMarkdown(note: Note, contextInfo?: { resourceTitle?:
   lines.push(note.content || '');
   lines.push('');
   lines.push('---');
-  lines.push(`*Exportado localmente desde CrossedArts el ${new Date().toISOString().slice(0, 10)}*`);
+  lines.push(`*${translateKey(lang, 'export.md.footer', { date: new Date().toISOString().slice(0, 10) })}*`);
   return lines.join('\n');
 }
 
 /**
  * Convierte un lote de notas a un único documento Markdown consolidado con separadores.
  */
-export function exportNotesToSingleMarkdown(notes: Note[]): string {
+export function exportNotesToSingleMarkdown(notes: Note[], lang: LanguageCode = 'es'): string {
   const lines: string[] = [];
-  lines.push('# Cuaderno de Estudio — CrossedArts');
+  lines.push(`# ${translateKey(lang, 'export.md.notebook')}`);
   lines.push('');
-  lines.push(`*Colección de ${notes.length} notas de estudio exportadas el ${new Date().toISOString().slice(0, 10)}*`);
+  lines.push(`*${translateKey(lang, 'export.md.notebookSub', { n: notes.length, date: new Date().toISOString().slice(0, 10) })}*`);
   lines.push('');
 
   for (let i = 0; i < notes.length; i++) {
@@ -749,8 +773,8 @@ export function exportNotesToSingleMarkdown(notes: Note[]): string {
     lines.push('');
     if (note.created_at || note.tags) {
       const metaParts: string[] = [];
-      if (note.created_at) metaParts.push(`**Fecha:** ${note.created_at.slice(0, 10)}`);
-      if (note.tags) metaParts.push(`**Etiquetas:** \`${note.tags}\``);
+      if (note.created_at) metaParts.push(translateKey(lang, 'export.md.metaDate', { date: note.created_at.slice(0, 10) }));
+      if (note.tags) metaParts.push(translateKey(lang, 'export.md.metaTags', { tags: note.tags }));
       lines.push(metaParts.join(' | '));
       lines.push('');
     }

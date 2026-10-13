@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { ProgressBar, resolveProgress, type ProgressBarProps } from '../src/components/ui/primitives.ts';
+import { es } from '../src/i18n/locales/es.ts';
 
 const render = (props: ProgressBarProps): string => renderToStaticMarkup(createElement(ProgressBar, props));
 
@@ -53,7 +54,8 @@ test('36.5 el shell ofrece salto al contenido principal', () => {
   const source = readFileSync(new URL('../src/components/layout/Shell.tsx', import.meta.url), 'utf8');
   assert.ok(source.includes('href="#main-content"'), 'Debe existir un enlace "Saltar al contenido principal"');
   assert.ok(source.includes('id="main-content"'), 'El destino del salto debe existir en el DOM');
-  assert.ok(source.includes('Saltar al contenido principal'), 'El enlace debe tener texto visible al enfocarse');
+  assert.ok(source.includes("t('shell.skipLink')"), 'El enlace usa la clave de idioma shell.skipLink');
+  assert.equal(es['shell.skipLink'], 'Saltar al contenido principal', 'El enlace debe tener texto visible al enfocarse');
 });
 
 test('36.6 el cajón de navegación móvil atrapa el foco, cierra con Escape y lo restaura', () => {

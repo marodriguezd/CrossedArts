@@ -6,6 +6,8 @@
  * mantener el componente de la página dedicado solo a la presentación.
  */
 import type { ConceptEdge, ConceptNode, GraphNodeType } from '../types/models.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 
 export interface GraphFilterOptions {
   /** Tipos de nodo visibles. */
@@ -384,9 +386,9 @@ export function computeGraphAnalytics(
  * Frases ACCIONABLES y honestas sobre la analítica estructural. Cada frase es
  * un hecho verificable del grafo; ninguna convierte conexiones en importancia.
  */
-export function buildGraphInsights(analytics: GraphAnalytics): string[] {
+export function buildGraphInsights(analytics: GraphAnalytics, lang: LanguageCode = 'es'): string[] {
   if (analytics.totalNodes === 0) {
-    return ['El grafo está vacío: todavía no hay nodos que analizar.'];
+    return [translateKey(lang, 'graph.insight.empty')];
   }
 
   const insights: string[] = [];
@@ -394,36 +396,36 @@ export function buildGraphInsights(analytics: GraphAnalytics): string[] {
   if (analytics.isolatedNodes > 0) {
     insights.push(
       analytics.isolatedNodes === 1
-        ? '1 nodo no tiene ninguna relación.'
-        : `${analytics.isolatedNodes} nodos no tienen ninguna relación.`
+        ? translateKey(lang, 'graph.insight.isolatedOne')
+        : translateKey(lang, 'graph.insight.isolatedOther', { n: analytics.isolatedNodes })
     );
   }
 
   if (analytics.components.count > 1) {
     insights.push(
-      `El grafo tiene ${analytics.components.count} grupos sin conexión entre sí (el mayor reúne ${analytics.components.largestSize} nodos).`
+      translateKey(lang, 'graph.insight.groups', { n: analytics.components.count, m: analytics.components.largestSize })
     );
   }
 
   if (analytics.weakResources.length > 0) {
     insights.push(
-      `${analytics.weakResources.length} ${analytics.weakResources.length === 1 ? 'recurso está poco conectado' : 'recursos están poco conectados'} (una sola conexión o ninguna).`
+      translateKey(lang, `graph.insight.${analytics.weakResources.length === 1 ? 'weakOne' : 'weakOther'}`, { n: analytics.weakResources.length })
     );
   }
 
   const most = analytics.topConnected[0];
   if (most) {
-    insights.push(`«${most.name}» es el nodo con más conexiones (${most.degree}).`);
+    insights.push(translateKey(lang, 'graph.insight.topMost', { name: most.name, n: most.degree }));
   }
 
   if (analytics.highDegree.length > 0) {
     insights.push(
-      `${analytics.highDegree.length} ${analytics.highDegree.length === 1 ? 'nodo tiene' : 'nodos tienen'} un número de conexiones inusualmente alto (grado ≥ ${analytics.highDegreeThreshold}).`
+      translateKey(lang, `graph.insight.${analytics.highDegree.length === 1 ? 'hubOne' : 'hubOther'}`, { n: analytics.highDegree.length, t: analytics.highDegreeThreshold })
     );
   }
 
   if (analytics.recent.length > 0) {
-    insights.push(`Actividad reciente: ${analytics.recent.length} elementos con cambios el ${analytics.recent[0].date} o después.`);
+    insights.push(translateKey(lang, 'graph.insight.recentAct', { n: analytics.recent.length, date: analytics.recent[0].date }));
   }
 
   return insights;

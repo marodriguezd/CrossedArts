@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
-import { dao } from './db/dao.ts';
-import { dbBridge } from './db/sqliteBridge.ts';
+import { dao, setDaoLanguage } from './db/dao.ts';
+import { dbBridge, setDbLanguage } from './db/sqliteBridge.ts';
 import { Shell } from './components/layout/Shell.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
 import { CommandPalette } from './components/common/CommandPalette.ts';
@@ -9,6 +9,7 @@ import { localAiRuntime } from './services/localAiRuntime.ts';
 import { aiService } from './ai/aiService.ts';
 import { useAppData } from './hooks/useAppData.ts';
 import { useTheme } from './hooks/useTheme.ts';
+import { useLanguage } from './hooks/useLanguage.ts';
 import { useCommandPaletteHotkey } from './hooks/useCommandPaletteHotkey.ts';
 import {
   buildPaletteCatalog,
@@ -39,12 +40,15 @@ const GoalsView = lazy(() => import('./pages/GoalsView.tsx').then(m => ({ defaul
 const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph.tsx').then(m => ({ default: m.KnowledgeGraph })));
 const AIAssistantDrawer = lazy(() => import('./components/ai/AIAssistantDrawer.tsx').then(m => ({ default: m.AIAssistantDrawer })));
 
-const TabLoadingFallback: React.FC = () => (
-  <div className="flex flex-col items-center justify-center min-h-[300px] py-16 text-muted animate-fade-in" aria-live="polite">
-    <Loader2 className="w-7 h-7 animate-spin text-accent mb-2.5" aria-hidden="true" />
-    <p className="text-secondary text-ink">Cargando vista…</p>
-  </div>
-);
+const TabLoadingFallback: React.FC = () => {
+  const { t } = useLanguage();
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[300px] py-16 text-muted animate-fade-in" aria-live="polite">
+      <Loader2 className="w-7 h-7 animate-spin text-accent mb-2.5" aria-hidden="true" />
+      <p className="text-secondary text-ink">{t('app.loadingView')}</p>
+    </div>
+  );
+};
 
 export const App: React.FC = () => {
   const initialUrlState = typeof window !== 'undefined'
@@ -238,10 +242,17 @@ export const App: React.FC = () => {
     }
   };
 
+  const { t, effective } = useLanguage();
+
+  useEffect(() => {
+    setDaoLanguage(effective);
+    setDbLanguage(effective);
+  }, [effective]);
+
   const handleMountLocalFolder = async () => {
     if (!localMediaService.isSupported()) {
       // Aviso de capacidad del navegador mostrado en la propia interfaz (no con alert() nativo).
-      setAppNotice('Tu navegador no soporta File System Access API de forma nativa. Usa navegadores basados en Chromium (Chrome, Edge, Brave) para conceder acceso a carpetas locales.');
+      setAppNotice(t('app.fsNotice'));
       return;
     }
 
@@ -410,8 +421,8 @@ export const App: React.FC = () => {
         pendingReviews: kpis?.pending_reviews ?? 0,
         continueTarget,
         isDarkTheme: theme === 'dark'
-      }),
-    [courses, books, notes, lessonIndex, conceptIndex, resourceIndex, practiceIndex, goals, kpis, continueTarget, theme]
+      }, effective),
+    [courses, books, notes, lessonIndex, conceptIndex, resourceIndex, practiceIndex, goals, kpis, continueTarget, theme, effective]
   );
 
   /** Despacha el elemento elegido: destino de entidad o acción por identificador. */
@@ -474,8 +485,8 @@ export const App: React.FC = () => {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-canvas text-ink gap-3" role="status" aria-live="polite">
         <Loader2 className="animate-spin text-accent" size={36} />
-        <p className="text-secondary font-semibold tracking-wide">Inicializando SQLite en WebAssembly...</p>
-        <span className="text-meta">Cargando base de datos y esquemas relacionales</span>
+        <p className="text-secondary font-semibold tracking-wide">{t('app.dbLoading')}</p>
+        <span className="text-meta">{t('app.dbLoadingSub')}</span>
       </div>
     );
   }
@@ -500,13 +511,13 @@ export const App: React.FC = () => {
         >
           <AlertTriangle size={30} className="mx-auto text-error" aria-hidden="true" />
           <div className="space-y-2">
-            <h1 className="type-display text-ink">No se pudo abrir tu base de datos local</h1>
+            <h1 className="type-display text-ink">{t('app.dbErrorTitle')}</h1>
             <p className="text-body leading-relaxed text-muted">{initError.message}</p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
             <Button variant="solid" onClick={() => void retryInit()}>
               <RotateCcw size={15} aria-hidden="true" />
-              {initError.retryable ? 'Reintentar' : 'Volver a intentar la carga'}
+              {initError.retryable ? t('app.retry') : t('app.retryLoading')}
             </Button>
             <Button
               variant="outline"
@@ -514,21 +525,19 @@ export const App: React.FC = () => {
                 if (typeof window !== 'undefined') window.location.reload();
               }}
             >
-              Recargar la aplicación
+              {t('app.reloadApp')}
             </Button>
             {initError.code === 'corrupt-storage' && (
               <Button
                 variant="outline"
                 onClick={() => void dbBridge.exportPersistedRecovery()}
               >
-                Guardar copia de recuperación
+                {t('app.saveRecovery')}
               </Button>
             )}
           </div>
           <p className="text-micro text-faint">
-            Tus datos persistidos no se eliminan automáticamente. Cuando una base guardada no
-            puede abrirse de forma segura, puedes conservar una copia de recuperación antes de
-            intentar reparar o restaurar los datos.
+            {t('app.dbPersistNote')}
           </p>
         </div>
       </div>
@@ -555,7 +564,7 @@ export const App: React.FC = () => {
             <span className="flex-1">{appNotice}</span>
             <button
               onClick={() => setAppNotice(null)}
-              aria-label="Cerrar aviso"
+              aria-label={t('app.dismissNotice')}
               className="shrink-0 text-faint hover:text-ink"
             >
               <X size={14} />

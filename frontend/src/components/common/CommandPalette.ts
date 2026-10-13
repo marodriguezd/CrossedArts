@@ -28,6 +28,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Kbd, cn } from '../ui/primitives.ts';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import {
   groupPaletteItems,
   matchPaletteItems,
@@ -119,12 +120,13 @@ export function CommandPalette({
   // render estático (`renderToStaticMarkup`) los efectos NO se ejecutan, así que
   // sembrar únicamente en `useEffect` haría que `initialQuery` no apareciera nunca
   // fuera del navegador. El efecto de apertura cubre el caso real de reabrirla.
+  const { effective } = useLanguage();
   const [query, setQuery] = useState(initialQuery ?? '');
   const [activeIndex, setActiveIndex] = useState(0);
 
   const matches = useMemo(() => matchPaletteItems(items, query), [items, query]);
   const results = useMemo(() => matches.map(match => match.item), [matches]);
-  const groups = useMemo(() => groupPaletteItems(matches), [matches]);
+  const groups = useMemo(() => groupPaletteItems(matches, effective), [matches, effective]);
 
   // El índice activo se recorta al rango real: la lista cambia de longitud con
   // cada pulsación y el activo nunca debe quedar fuera.

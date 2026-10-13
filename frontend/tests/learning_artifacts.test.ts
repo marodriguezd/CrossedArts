@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import type { Book, Course, LearningResource, PracticeWork } from '../src/types/models.ts';
+import { es } from '../src/i18n/locales/es.ts';
 import {
   ARTIFACT_ID_PREFIX,
   ARTIFACT_KIND_LABELS,
@@ -167,15 +168,19 @@ test('31.8 the Dashboard builds its gallery from the shared projection and group
   assert.ok(dashboard.includes('buildGalleryItems'), 'Debe usar la proyección compartida');
   assert.ok(dashboard.includes('groupGalleryItems'), 'Debe agrupar en secciones en lugar de volcar una lista');
   assert.ok(dashboard.includes('practiceWork'), 'La galería debe incluir el trabajo práctico');
-  assert.ok(dashboard.includes('Trabajo práctico'), 'Debe existir una sección de trabajo práctico');
-  assert.ok(dashboard.includes('Recursos importados'), 'Debe existir una sección de recursos importados');
-  assert.ok(dashboard.includes('Continúa aprendiendo'), 'Debe existir la sección principal de continuación');
+  assert.ok(dashboard.includes('dashboard.practiceTitle'), 'Debe existir una sección de trabajo práctico');
+  assert.equal(es['dashboard.practiceTitle'], 'Trabajo práctico', 'La sección de trabajo práctico conserva su título');
+  assert.ok(dashboard.includes('dashboard.importedTitle'), 'Debe existir una sección de recursos importados');
+  assert.equal(es['dashboard.importedTitle'], 'Recursos importados', 'La sección de recursos conserva su título');
+  assert.ok(dashboard.includes('dashboard.keepLearning'), 'Debe existir la sección principal de continuación');
+  assert.equal(es['dashboard.keepLearning'], 'Continúa aprendiendo', 'La sección principal conserva su título');
 });
 
 test('31.9 the gallery is rendered before the metrics strip (visual first)', () => {
   const dashboard = readSource('../src/pages/Dashboard.tsx');
-  const galleryIndex = dashboard.indexOf('title="Continúa aprendiendo"');
-  const metricsIndex = dashboard.indexOf('Recursos totales');
+  const galleryIndex = dashboard.indexOf('dashboard.keepLearning');
+  const metricsIndex = dashboard.indexOf('dashboard.totalResources');
+  assert.equal(es['dashboard.totalResources'], 'Recursos totales', 'La franja de métricas conserva su etiqueta');
   assert.ok(galleryIndex > 0 && metricsIndex > 0);
   assert.ok(
     galleryIndex < metricsIndex,

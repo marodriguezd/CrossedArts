@@ -8,6 +8,8 @@ import type { PracticeChecklistItem, PracticeWork, PracticeWorkKind, PracticeWor
 import { computeContentHash } from '../lib/localEmbeddings/chunking.ts';
 
 /** Etiquetas en español de los tipos de artefacto. */
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 export const PRACTICE_WORK_KIND_LABELS: Record<PracticeWorkKind, string> = {
   exercise: 'Ejercicio',
   project: 'Proyecto',
@@ -250,17 +252,17 @@ export function summarizePracticeWork(items: readonly PracticeWork[]): PracticeW
 }
 
 /** Etiqueta legible del tipo, con degradación segura ante valores desconocidos. */
-export function practiceWorkKindLabel(kind?: string): string {
+export function practiceWorkKindLabel(kind?: string, lang: LanguageCode = 'es'): string {
   if (kind && kind in PRACTICE_WORK_KIND_LABELS) {
-    return PRACTICE_WORK_KIND_LABELS[kind as PracticeWorkKind];
+    return translateKey(lang, `practice.kind.${kind}`);
   }
-  return PRACTICE_WORK_KIND_LABELS.other;
+  return translateKey(lang, 'practice.kind.other');
 }
 
 /** Etiqueta legible del estado, con degradación segura ante valores desconocidos. */
-export function practiceWorkStatusLabel(status?: string): string {
+export function practiceWorkStatusLabel(status?: string, lang: LanguageCode = 'es'): string {
   if (status && status in PRACTICE_WORK_STATUS_LABELS) {
-    return PRACTICE_WORK_STATUS_LABELS[status as PracticeWorkStatus].text;
+    return translateKey(lang, `practice.status.${status}`);
   }
   return PRACTICE_WORK_STATUS_LABELS.PLANNED.text;
 }

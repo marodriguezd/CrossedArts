@@ -31,6 +31,15 @@ import {
   filterNotesByQueryAndTag
 } from '../services/domainLogic.ts';
 import { Button, SearchInput, Badge, EmptyState, Chip, cn } from '../components/ui/index.tsx';
+import { useLanguage } from '../hooks/useLanguage.ts';
+
+
+
+
+
+
+
+
 
 interface NotesViewProps {
   notes: Note[];
@@ -39,6 +48,7 @@ interface NotesViewProps {
 }
 
 export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialNoteId }) => {
+  const { t, effective } = useLanguage();
   const [selectedNote, setSelectedNote] = useState<Note | null>(notes[0] || null);
 
   // Estados de creación y edición
@@ -109,7 +119,8 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
         (errorMsg: string) => {
           setIsDictating(false);
           setDictationError(errorMsg);
-        }
+        },
+        effective
       );
       if (success) setIsDictating(true);
     }
@@ -126,7 +137,8 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
       speechService.speak(
         text,
         () => setIsPlayingNoteAudio(false),
-        () => setIsPlayingNoteAudio(false)
+        () => setIsPlayingNoteAudio(false),
+        effective
       );
     }
   };
@@ -254,24 +266,24 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
       {/* Cabecera */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="type-display text-ink">Notas</h1>
-          <p className="type-secondary mt-1">Tus notas, ideas y referencias en Markdown con persistencia local.</p>
+          <h1 className="type-display text-ink">{t('notes.title')}</h1>
+          <p className="type-secondary mt-1">{t('notes.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {notes.length > 0 && (
             <Button
               variant="outline"
               onClick={() => {
-                const md = exportNotesToSingleMarkdown(filteredNotes.length > 0 ? filteredNotes : notes);
+                const md = exportNotesToSingleMarkdown(filteredNotes.length > 0 ? filteredNotes : notes, effective);
                 triggerTextDownload(md, `crossedarts-notas-${new Date().toISOString().slice(0, 10)}.md`);
               }}
-              title="Exportar todas las notas visibles en un único archivo Markdown (.md)"
+              title={t('notes.exportAllTitle')}
             >
-              <Download size={14} aria-hidden="true" /> Exportar notas ({filteredNotes.length > 0 ? filteredNotes.length : notes.length})
+              <Download size={14} aria-hidden="true" /> {t('notes.exportNotes', { n: filteredNotes.length > 0 ? filteredNotes.length : notes.length })}
             </Button>
           )}
           <Button variant="solid" onClick={handleStartCreate}>
-            <Plus size={15} aria-hidden="true" /> Nueva nota
+            <Plus size={15} aria-hidden="true" /> {t('notes.newNote')}
           </Button>
         </div>
       </div>
@@ -280,20 +292,20 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
         {/* Lista de notas (izquierda) */}
         <div className="md:col-span-1">
           <SearchInput
-            label="Buscar notas"
-            placeholder="Buscar notas…"
+            label={t('notes.searchLabel')}
+            placeholder={t('notes.searchPh')}
             value={query}
             onChange={setQuery}
             className="mb-3"
           />
 
           {availableTags.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-1.5" role="toolbar" aria-label="Filtrar por etiqueta">
+            <div className="mb-3 flex flex-wrap gap-1.5" role="toolbar" aria-label={t('notes.filterByTag')}>
               <Chip
                 active={selectedTag === null}
                 onClick={() => setSelectedTag(null)}
               >
-                Todas ({notes.length})
+                {t('notes.all', { n: notes.length })}
               </Chip>
               {availableTags.map(({ tag, count }) => (
                 <Chip
@@ -312,10 +324,10 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
               <div className="rounded-xl border border-line bg-surface/50 p-4 text-center">
                 <p className="type-meta text-muted">
                   {notes.length === 0
-                    ? 'Aún no hay notas.'
+                    ? t('notes.emptyNone')
                     : selectedTag
-                    ? `No hay notas con la etiqueta «#${selectedTag}»${query ? ' y esa búsqueda' : ''}.`
-                    : 'Sin coincidencias para esa búsqueda.'}
+                    ? t('notes.emptyTag', { tag: selectedTag, extra: query ? t('notes.emptyTagExtra') : '' })
+                    : t('notes.emptySearch')}
                 </p>
                 {(selectedTag || query) && (
                   <Button
@@ -327,7 +339,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                       setQuery('');
                     }}
                   >
-                    Limpiar filtros
+                    {t('notes.clearFilters')}
                   </Button>
                 )}
               </div>
@@ -361,19 +373,19 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                           <Tag size={10} aria-hidden="true" />
                           {note.tags
                             .split(',')
-                            .map(t => t.trim())
-                            .filter(t => t && !t.startsWith('sha256:'))
-                            .map(t => (
+                            .map(tag => tag.trim())
+                            .filter(tag => tag && !tag.startsWith('sha256:'))
+                            .map(tag => (
                               <span
-                                key={t}
+                                key={tag}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedTag(prev => prev === t.toLowerCase() ? null : t.toLowerCase());
+                                  setSelectedTag(prev => prev === tag.toLowerCase() ? null : tag.toLowerCase());
                                 }}
                                 className="cursor-pointer hover:underline"
-                                title={`Filtrar por #${t}`}
+                                title={t('notes.filterBy', { tag })}
                               >
-                                #{t}
+                                #{tag}
                               </span>
                             ))}
                         </div>
@@ -392,7 +404,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
             <form onSubmit={handleSubmitForm} className="space-y-4">
               <div className="flex items-center justify-between border-b border-line pb-3">
                 <h3 className="type-section text-ink">
-                  {isCreating ? 'Crear nueva nota' : `Editar: ${selectedNote?.title}`}
+                  {isCreating ? t('notes.createTitle') : t('notes.editTitle', { title: selectedNote?.title ?? '' })}
                 </h3>
                 {/* Pestañas Escribir / Vista previa */}
                 <div className="flex items-center gap-1 rounded-lg border border-line bg-canvas p-1" role="tablist">
@@ -406,7 +418,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                       activeTab === 'write' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
                     )}
                   >
-                    <PenTool size={12} aria-hidden="true" /> Escribir
+                    <PenTool size={12} aria-hidden="true" /> {t('notes.write')}
                   </button>
                   <button
                     type="button"
@@ -418,19 +430,19 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                       activeTab === 'preview' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
                     )}
                   >
-                    <Eye size={12} aria-hidden="true" /> Vista previa
+                    <Eye size={12} aria-hidden="true" /> {t('notes.preview')}
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className={LABEL_CLS} htmlFor="note-title">Título</label>
+                <label className={LABEL_CLS} htmlFor="note-title">{t('notes.titleLabel')}</label>
                 <input
                   id="note-title"
                   type="text"
                   value={formData.title}
                   onChange={e => setFormData(f => ({ ...f, title: e.target.value }))}
-                  placeholder="Título de la nota"
+                  placeholder={t('notes.titlePh')}
                   required
                   className={INPUT_CLS}
                 />
@@ -438,39 +450,39 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
-                  <label className={LABEL_CLS} htmlFor="note-tags">Etiquetas (separadas por coma)</label>
+                  <label className={LABEL_CLS} htmlFor="note-tags">{t('notes.tagsLabel')}</label>
                   <input
                     id="note-tags"
                     type="text"
                     value={formData.tags}
                     onChange={e => setFormData(f => ({ ...f, tags: e.target.value }))}
-                    placeholder="react, hooks, arquitectura"
+                    placeholder="react, hooks, architecture"
                     className={INPUT_CLS}
                   />
                 </div>
                 <div>
-                  <label className={LABEL_CLS} htmlFor="note-resource">Recurso asociado (opcional)</label>
+                  <label className={LABEL_CLS} htmlFor="note-resource">{t('notes.resourceLabel')}</label>
                   <select
                     id="note-resource"
                     value={formData.resource_id}
                     onChange={e => setFormData(f => ({ ...f, resource_id: e.target.value }))}
                     className={INPUT_CLS}
                   >
-                    <option value="">Sin recurso específico</option>
+                    <option value="">{t('notes.noResource')}</option>
                     {resources.map(r => (
                       <option key={r.id} value={r.id}>{r.title}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className={LABEL_CLS} htmlFor="note-lesson">Lección asociada (opcional)</label>
+                  <label className={LABEL_CLS} htmlFor="note-lesson">{t('notes.lessonLabel')}</label>
                   <select
                     id="note-lesson"
                     value={formData.lesson_id}
                     onChange={e => setFormData(f => ({ ...f, lesson_id: e.target.value }))}
                     className={INPUT_CLS}
                   >
-                    <option value="">Sin lección</option>
+                    <option value="">{t('notes.noLesson')}</option>
                     {lessons.map(l => (
                       <option key={l.id} value={l.id}>{l.courseTitle} › {l.title}</option>
                     ))}
@@ -481,7 +493,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
               {activeTab === 'write' ? (
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className={LABEL_CLS} htmlFor="note-content">Contenido (Markdown soportado)</label>
+                    <label className={LABEL_CLS} htmlFor="note-content">{t('notes.contentLabel')}</label>
                     <button
                       type="button"
                       onClick={handleToggleDictation}
@@ -491,10 +503,10 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                           ? "border-accent bg-accent-soft text-accent animate-pulse font-semibold"
                           : "border-line bg-surface text-muted hover:text-ink hover:bg-canvas"
                       )}
-                      title={isDictating ? "Detener dictado por voz" : "Dictar por voz"}
+                      title={isDictating ? t('notes.dictStop') : t('notes.dictStart')}
                     >
                       {isDictating ? <MicOff size={13} className="text-accent" /> : <Mic size={13} />}
-                      <span>{isDictating ? "Escuchando…" : "Dictar"}</span>
+                      <span>{isDictating ? t('notes.listening') : t('notes.dictate')}</span>
                     </button>
                   </div>
                   {dictationError && (
@@ -505,7 +517,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                     id="note-content"
                     value={formData.content}
                     onChange={e => setFormData(f => ({ ...f, content: e.target.value }))}
-                    placeholder="Escribe tus notas en Markdown (# títulos, **negrita**, *cursiva*, ```bloques de código```, - listas, [02:30] marcas de tiempo)…"
+                    placeholder={t('notes.contentPh')}
                     rows={12}
                     className={cn(INPUT_CLS, 'resize-y font-mono text-secondary')}
                   />
@@ -515,17 +527,17 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                   {formData.content.trim() ? (
                     <MarkdownViewer content={formData.content} />
                   ) : (
-                    <p className="type-meta italic text-muted">Escribe algo en la pestaña «Escribir» para previsualizarlo en Markdown.</p>
+                    <p className="type-meta italic text-muted">{t('notes.previewHint')}</p>
                   )}
                 </div>
               )}
 
               <div className="flex justify-end gap-2 border-t border-line pt-3">
                 <Button variant="quiet" onClick={handleCancelForm}>
-                  <X size={14} aria-hidden="true" /> Cancelar
+                  <X size={14} aria-hidden="true" /> {t('notes.cancel')}
                 </Button>
                 <Button variant="solid" type="submit">
-                  <Save size={14} aria-hidden="true" /> {isCreating ? 'Guardar nota en SQLite' : 'Guardar cambios'}
+                  <Save size={14} aria-hidden="true" /> {isCreating ? t('notes.saveNote') : t('notes.saveChanges')}
                 </Button>
               </div>
             </form>
@@ -536,29 +548,29 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                 <div className="min-w-0">
                   <h2 className="type-title text-ink break-words">{selectedNote.title}</h2>
                   <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <span className="text-meta">Fecha: {selectedNote.created_at?.slice(0, 10)}</span>
+                    <span className="text-meta">{t('notes.date', { date: selectedNote.created_at?.slice(0, 10) ?? '' })}</span>
                     {selectedNote.tags && (
                       <div className="flex flex-wrap items-center gap-1.5">
                         {selectedNote.tags
                           .split(',')
-                          .map(t => t.trim())
-                          .filter(t => t && !t.startsWith('sha256:'))
-                          .map(t => {
-                            const isCurrentTag = selectedTag === t.toLowerCase();
+                          .map(tag => tag.trim())
+                          .filter(tag => tag && !tag.startsWith('sha256:'))
+                          .map(tag => {
+                            const isCurrentTag = selectedTag === tag.toLowerCase();
                             return (
                               <button
-                                key={t}
+                                key={tag}
                                 type="button"
-                                onClick={() => setSelectedTag(prev => prev === t.toLowerCase() ? null : t.toLowerCase())}
+                                onClick={() => setSelectedTag(prev => prev === tag.toLowerCase() ? null : tag.toLowerCase())}
                                 className={cn(
                                   "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-micro font-medium transition-colors cursor-pointer",
                                   isCurrentTag
                                     ? "bg-accent text-on-accent shadow-sm"
                                     : "bg-surface text-muted border border-line hover:text-ink hover:border-line-strong"
                                 )}
-                                title={`Filtrar lista por #${t}`}
+                                title={t('notes.filterListBy', { tag })}
                               >
-                                <Tag size={10} aria-hidden="true" /> #{t}
+                                <Tag size={10} aria-hidden="true" /> #{tag}
                               </button>
                             );
                           })}
@@ -568,7 +580,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                   {(selectedNote.resource_id || selectedNote.lesson_id) && (
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-meta">
                       <span className="inline-flex items-center gap-1 text-faint">
-                        <Link2 size={11} aria-hidden="true" /> Asociada a:
+                        <Link2 size={11} aria-hidden="true" /> {t('notes.linkedAs')}
                       </span>
                       {resourceName(selectedNote.resource_id) && (
                         <Badge tone="info">
@@ -589,10 +601,10 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                     size="sm"
                     variant="outline"
                     onClick={handleToggleNoteSpeech}
-                    title={isPlayingNoteAudio ? "Detener lectura en voz alta" : "Leer nota en voz alta"}
+                    title={isPlayingNoteAudio ? t('notes.stopReading') : t('notes.readAloud')}
                   >
                     {isPlayingNoteAudio ? <VolumeX size={13} className="text-accent animate-pulse" /> : <Volume2 size={13} />}
-                    {isPlayingNoteAudio ? 'Detener' : 'Escuchar'}
+                    {isPlayingNoteAudio ? t('notes.stop') : t('notes.listen')}
                   </Button>
                   <Button
                     size="sm"
@@ -601,19 +613,19 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                       const md = exportNoteToMarkdown(selectedNote, {
                         resourceTitle: resourceName(selectedNote.resource_id),
                         lessonTitle: lessonName(selectedNote.lesson_id)
-                      });
+                      }, effective);
                       const safeTitle = selectedNote.title.toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 30);
                       triggerTextDownload(md, `${safeTitle || 'nota'}.md`);
                     }}
-                    title="Exportar esta nota en archivo Markdown (.md)"
+                    title={t('notes.exportOneTitle')}
                   >
-                    <Download size={13} aria-hidden="true" /> Exportar .md
+                    <Download size={13} aria-hidden="true" /> {t('notes.exportMd')}
                   </Button>
                   <Button size="sm" variant="outline" onClick={handleStartEdit}>
-                    <Edit3 size={13} aria-hidden="true" /> Editar
+                    <Edit3 size={13} aria-hidden="true" /> {t('notes.edit')}
                   </Button>
                   <Button size="sm" variant="danger" onClick={() => setDeleteConfirmOpen(true)}>
-                    <Trash2 size={13} aria-hidden="true" /> Eliminar
+                    <Trash2 size={13} aria-hidden="true" /> {t('notes.delete')}
                   </Button>
                 </div>
               </header>
@@ -626,8 +638,8 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
           ) : (
             <EmptyState
               icon={<FileText size={30} aria-hidden="true" />}
-              title="Selecciona una nota"
-              hint="Elige una nota de la lista para leerla o pulsa «Nueva nota» para crearla."
+              title={t('notes.selectNote')}
+              hint={t('notes.selectHint')}
             />
           )}
         </div>
@@ -636,10 +648,10 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
       {/* Diálogo accesible de confirmación para eliminar nota */}
       <ConfirmDialog
         isOpen={deleteConfirmOpen}
-        title="Eliminar nota"
-        consequence={`Se eliminará permanentemente la nota "${selectedNote?.title}". Esta acción no se puede deshacer.`}
-        confirmLabel="Eliminar nota"
-        cancelLabel="Cancelar"
+        title={t('notes.deleteTitle')}
+        consequence={t('notes.deleteCons', { title: selectedNote?.title ?? '' })}
+        confirmLabel={t('notes.deleteTitle')}
+        cancelLabel={t('notes.cancel')}
         tone="danger"
         onConfirm={handleDeleteNote}
         onCancel={() => setDeleteConfirmOpen(false)}

@@ -7,6 +7,7 @@ import {
   type GoalProgress
 } from '../services/goals.ts';
 import type { Book, Course, LearningGoal, PracticeWork } from '../types/models.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 
 /**
  * Deriva el progreso de cada meta en memoria.
@@ -20,7 +21,8 @@ export function useGoalProgress(
   goals: readonly LearningGoal[],
   courses: readonly Course[],
   books: readonly Book[],
-  practiceWork: readonly PracticeWork[]
+  practiceWork: readonly PracticeWork[],
+  lang: LanguageCode = 'es'
 ): Map<string, GoalProgress> {
   const [studyMinutes, setStudyMinutes] = useState<Map<string, number>>(new Map());
 
@@ -62,7 +64,7 @@ export function useGoalProgress(
     };
     const map = new Map<string, GoalProgress>();
     for (const goal of goals) {
-      map.set(goal.id, computeGoalProgress(goal, context));
+      map.set(goal.id, computeGoalProgress(goal, context, lang));
     }
     return map;
   }, [goals, courses, books, practiceWork, studyMinutes]);
