@@ -18,7 +18,11 @@ import {
   STUDY_SESSION_SCOPES
 } from '../src/services/sessionScope.ts';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
-import { dao } from '../src/db/dao.ts';
+import { dao, setDaoLanguage } from '../src/db/dao.ts';
+
+// These tests assert Spanish copy: pin the data layer explicitly instead of
+// inheriting the OS locale (Spanish dev machines vs C-locale CI runners).
+setDaoLanguage('es');
 
 async function removeSession(id: string): Promise<void> {
   const db = dbBridge.getDatabase();

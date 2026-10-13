@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import initSqlJs from 'sql.js';
-import { dbBridge, DatabaseInitializationError, StaleWriteError, isValidSqliteBuffer } from '../src/db/sqliteBridge.ts';
-import { dao } from '../src/db/dao.ts';
+import { dbBridge, DatabaseInitializationError, StaleWriteError, isValidSqliteBuffer, setDbLanguage } from '../src/db/sqliteBridge.ts';
+import { dao, setDaoLanguage } from '../src/db/dao.ts';
+
+// These tests assert Spanish copy: pin the data layer explicitly instead of
+// inheriting the OS locale (Spanish dev machines vs C-locale CI runners).
+setDbLanguage('es');
+setDaoLanguage('es');
 
 // ---------------------------------------------------------------------------
 // Suite de tests para el ciclo de vida, migraciones y recuperación de la base

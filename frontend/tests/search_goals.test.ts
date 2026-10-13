@@ -11,7 +11,11 @@ import {
 } from '../src/services/commandPalette.ts';
 import { resolveSearchResultDestination } from '../src/services/domainLogic.ts';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
-import { dao } from '../src/db/dao.ts';
+import { dao, setDaoLanguage } from '../src/db/dao.ts';
+
+// This test asserts Spanish copy: pin the data layer explicitly instead of
+// inheriting the OS locale (Spanish dev machines vs C-locale CI runners).
+setDaoLanguage('es');
 import type { LearningGoal, SearchResult } from '../src/types/models.ts';
 
 function catalogInput(overrides: Partial<PaletteCatalogInput> = {}): PaletteCatalogInput {

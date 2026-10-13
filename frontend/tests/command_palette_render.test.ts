@@ -5,6 +5,26 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { CommandPalette } from '../src/components/common/CommandPalette.ts';
 import { buildPaletteCatalog, type PaletteCatalogInput } from '../src/services/commandPalette.ts';
 
+// These tests assert Spanish copy, but `useLanguage()` resolves 'auto' from
+// the runtime locale (Spanish dev machines vs C-locale CI runners). Pin it.
+try {
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { language: 'es-ES', languages: ['es-ES'] },
+    configurable: true,
+    writable: true
+  });
+} catch {
+  const nav = globalThis.navigator as { language?: string; languages?: string[] };
+  if (nav) {
+    try {
+      nav.language = 'es-ES';
+      nav.languages = ['es-ES'];
+    } catch {
+      /* read-only navigator: environment already decides the language */
+    }
+  }
+}
+
 /**
  * Pruebas de RENDER de la paleta, sobre el HTML realmente producido.
  *

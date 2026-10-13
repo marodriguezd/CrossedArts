@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { dbBridge, DatabaseInitializationError } from '../src/db/sqliteBridge.ts';
-import { dao } from '../src/db/dao.ts';
+import { dbBridge, DatabaseInitializationError, setDbLanguage } from '../src/db/sqliteBridge.ts';
+import { dao, setDaoLanguage } from '../src/db/dao.ts';
+
+// These tests assert Spanish copy: pin the data layer explicitly instead of
+// inheriting the OS locale (Spanish dev machines vs C-locale CI runners).
+setDbLanguage('es');
+setDaoLanguage('es');
 import { resolveLocalDay, shiftIsoDay, computeActiveStreak, parseUtcOffsetToMinutes } from '../src/services/localDate.ts';
 import { retrieveLocalContext } from '../src/lib/localRag/retrieval.ts';
 import { aiService } from '../src/ai/aiService.ts';
