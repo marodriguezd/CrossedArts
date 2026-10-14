@@ -1,10 +1,10 @@
 import { LOCAL_MODELS_REGISTRY, type LocalModelDefinition } from './registry.ts';
 
 /**
- * Tareas pedagógicas que la IA local puede ejecutar. La tarea influences QUÉ
- * modelo conviene, nunca SI el hardware lo soporta: la elegibilidad la decide
- * siempre `selectBestLocalModel` (capacidades reales), y la tarea solo ordena
- * preferences entre los modelos ya elegibles.
+ * Tutoring tasks local AI can run. The task influences WHICH model fits, never
+ * WHETHER the hardware supports it: eligibility always comes from
+ * `selectBestLocalModel` (real capabilities); the task only orders preferences
+ * among already eligible models.
  */
 export type AIModelTask =
   | 'tutor'
@@ -14,16 +14,14 @@ export type AIModelTask =
   | 'light_assistance';
 
 /**
- * Política interna y determinista de selección de modelo local.
- *
- * El usuario NUNCA elige modelo en el flujo normal: CrossedArts decide por él.
- * Los navegadores no exponen la VRAM real, así que NUNCA se asume capacidad
- * exacta. Solo se usan señales conservadoras:
- *   - disponibilidad de WebGPU,
- *   - features EXPLÍCITAMENTE reportadas por el adaptador,
- *   - una pista tosca de gama alta (`deviceTier`) derivada de límites holgados.
- *
- * Con información incierta se elige siempre el modelo viable más pequeño.
+ * Internal deterministic local-model selection policy. Users NEVER pick a
+ * model in the normal flow: CrossedArts decides for them. Browsers never
+ * expose real VRAM, so exact capacity is NEVER assumed. Only conservative
+ * signals apply:
+ *   - WebGPU availability,
+ *   - features EXPLICITLY reported by the adapter,
+ *   - a coarse high-tier hint (`deviceTier`) from generous limits. Under
+ * uncertain information the smallest viable model always wins.
  */
 
 export type WebGpuSupport = 'supported' | 'unsupported' | 'unknown';
@@ -32,27 +30,27 @@ export interface LocalAiCapabilities {
   webgpu: WebGpuSupport;
   hasWasm?: boolean;
   /**
-   * Features reportadas por el adaptador. `null`/`undefined` significa
-   * DESCONOCIDO: no se asume soporte de ningún requisito.
+   * Adapter-reported features. `null`/`undefined` means UNKNOWN: support for no
+   * requirement is assumed.
    */
   supportedFeatures?: string[] | null;
   /**
-   * Pista conservadora de gama. `'high'` solo cuando el adaptador expone
-   * límites holgados; no es una medición de VRAM.
+   * Conservative tier hint. `'high'` only when the adapter exposes generous
+   * limits; not a VRAM measurement.
    */
   deviceTier?: 'high' | 'unknown';
 }
 
 export interface LocalRuntimeProfile {
   model: LocalModelDefinition;
-  /** Motivo interno (solo diagnóstico avanzado). */
+  /** Internal reason (advanced diagnostics only). */
   reason: 'recommended-capable' | 'conservative-fallback' | 'cpu-wasm-fallback';
 }
 
 /**
- * Devuelve el modelo más adecuado para las capacidades dadas.
- * Si WebGPU está disponible, selecciona el modelo WebGPU óptimo.
- * Si WebGPU no está disponible pero WebAssembly está activo, selecciona el modelo CPU/WASM ligero.
+ * Returns the best model for the given capabilities. With WebGPU available it
+ * picks the optimal WebGPU model; without WebGPU but with WebAssembly it picks
+ * the light CPU/WASM model.
  */
 export function selectBestLocalModel(
   capabilities: LocalAiCapabilities
@@ -63,7 +61,7 @@ export function selectBestLocalModel(
   if (isWebGpuSupported) {
     const knownFeatures = capabilities.supportedFeatures;
 
-    // Modelos WebGPU que satisfacen las features reportadas
+    // WebGPU models satisfying the reported features
     const eligible = LOCAL_MODELS_REGISTRY.filter((model) => {
       if (model.runtimeBackend !== 'webgpu') return false;
       if (!model.requiredFeatures || model.requiredFeatures.length === 0) return true;
@@ -82,15 +80,15 @@ export function selectBestLocalModel(
         if (recommended) return recommended;
       }
 
-      // Conservador: el modelo viable con menor huella estimada (desempate por id)
+      // Conservative: viable model with the smallest estimated footprint (id tiebreak)
       return [...eligible].sort(
         (a, b) => a.vramRequiredMB - b.vramRequiredMB || a.id.localeCompare(b.id)
       )[0];
     }
   }
 
-  // Fallback a CPU / WebAssembly si no hay WebGPU pero sí soporte WASM.
-  // El orden de preferencia es el canónico (`wasmModelsInPreferenceOrder`).
+  // CPU / WebAssembly fallback without WebGPU but with WASM support.
+  // Preference order is the canonical one (`wasmModelsInPreferenceOrder`).
   if (hasWasm) {
     const wasmModels = wasmModelsInPreferenceOrder();
     if (wasmModels.length > 0) return wasmModels[0];
@@ -99,7 +97,7 @@ export function selectBestLocalModel(
   return null;
 }
 
-/** Igual que `selectBestLocalModel` pero expone el motivo para diagnóstico. */
+/** Same as `selectBestLocalModel` but exposes the reason for diagnostics. */
 export function selectRuntimeProfile(
   capabilities: LocalAiCapabilities
 ): LocalRuntimeProfile | null {
@@ -124,15 +122,13 @@ export function selectRuntimeProfile(
 
 
 /* -------------------------------------------------------------------------- */
-/* Selección por tarea (una sola implementación)                        */
+/* Per-task selection (single implementation)                            */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Orden de preferencia de los modelos CPU/WASM.
- *
- * Qwen2.5-0.5B va primero por su soporte en español y razonamiento (decisión de
- * producto ya existente); el resto sigue un orden explícito y determinista, no
- * una comparación por nombre.
+ * CPU/WASM model preference order. Qwen2.5-0.5B goes first for its Spanish
+ * support and reasoning (existing product decision); the rest follows an
+ * explicit deterministic order, not a name comparison.
  */
 const WASM_PREFERENCE_ORDER = [
   'onnx-community/Qwen2.5-0.5B-Instruct',
@@ -153,13 +149,12 @@ function wasmModelsInPreferenceOrder(): LocalModelDefinition[] {
 }
 
 /**
- * Preferencia por tarea dentro de los modelos YA ELEGIBLES.
- *
- * El orden es explícito y determinista; si ningún id está disponible se cae al
- * criterio por defecto de la tarea (recomendado o menor huella), nunca al azar.
+ * Per-task preference among ALREADY ELIGIBLE models. The order is explicit
+ * and deterministic; when no id is available it falls back to the task default
+ * (recommended or smallest footprint), never to chance.
  */
 const TASK_PREFERENCE: Record<AIModelTask, string[]> = {
-  // Generación estructurada: se prioriza la adherencia a JSON.
+  // Structured generation: JSON adherence wins.
   flashcard_generation: [
     'Qwen3-1.7B-q4f16_1-MLC',
     'Llama-3.2-1B-Instruct-q4f16_1-MLC',
@@ -174,24 +169,21 @@ const TASK_PREFERENCE: Record<AIModelTask, string[]> = {
     'onnx-community/Qwen2.5-0.5B-Instruct',
     'HuggingFaceTB/SmolLM2-360M-Instruct'
   ],
-  // Asistencia ligera: el modelo viable más pequeño.
+  // Light assistance: the smallest viable model.
   light_assistance: [],
-  // Tutor y resumen: el modelo recomendado que el dispositivo permita.
+  // Tutor and summary: the recommended model the device allows.
   tutor: [],
   summarization: []
 };
 
 /**
- * Selección CANÓNICA de modelo para una tarea, respetando las capacidades.
- *
- * Regla: primero se determina el conjunto ELEGIBLE por hardware (WebGPU con sus
- * features reportadas, o CPU/WASM). Solo entre esos candidatos se aplica la
- * preferencia de la tarea. Si la tarea no expresa preferencia o ninguno de sus
- * modelos está disponible, se usa el recomendado del conjunto elegible y, en su
- * defecto, el de menor huella estimada (desempate por id). Determinista.
- *
- * Es la ÚNICA política de selección por tarea: la preparación del runtime la usa
- * directamente, de modo que no puede existir una segunda ruta de selección.
+ * CANONICAL per-task model selection, honoring capabilities. Rule: first
+ * determine the hardware-ELIGIBLE set (WebGPU with reported features, or
+ * CPU/WASM). Task preference applies only among those candidates. When the
+ * task states no preference or none of its models is available, use the
+ * eligible set's recommended model, else the smallest estimated footprint (id
+ * tiebreak). Deterministic. This is the ONLY per-task selection policy: the
+ * runtime setup uses it directly, so no second selection path can exist.
  */
 export function selectBestLocalModelForTask(
   capabilities: LocalAiCapabilities,
@@ -200,10 +192,10 @@ export function selectBestLocalModelForTask(
   const eligible = eligibleModelsFor(capabilities);
   if (!eligible.length) return null;
 
-  // Criterio conservador: el viable de menor huella estimada. Los empates (todos
-  // los modelos CPU declaran 0 MB) se resuelven por el ORDEN CANÓNICO de
-  // elegibilidad, no alfabéticamente: así la preferencia de producto del runtime
-  // CPU (Qwen2.5-0.5B) se respeta sin dejar de ser determinista.
+  // Conservative rule: viable model with the smallest estimated footprint. Ties
+  // (all CPU models declare 0 MB) resolve by the CANONICAL eligibility ORDER,
+  // not alphabetically: the CPU runtime product preference (Qwen2.5-0.5B) holds
+  // while staying deterministic.
   const smallest = [...eligible].sort(
     (a, b) =>
       a.vramRequiredMB - b.vramRequiredMB ||
@@ -211,10 +203,10 @@ export function selectBestLocalModelForTask(
       a.id.localeCompare(b.id)
   )[0];
 
-  // Dispositivo claramente capaz: se puede elegir por tarea (y por preferencia de
-  // calidad) porque hay margen. Cuando la información es incierta NO se asume
-  // capacidad: se conserva el criterio conservador de siempre, el viable más
-  // pequeño. Así la selección por tarea nunca sube la exigencia de hardware.
+  // Clearly capable device: per-task (and quality-preference) choice is safe
+  // with headroom. Under uncertain information NO capability is assumed: keep
+  // the usual conservative rule, the smallest viable model. Per-task selection
+  // thus never raises hardware demands.
   const clearlySuitable =
     capabilities.deviceTier === 'high' &&
     Array.isArray(capabilities.supportedFeatures) &&
@@ -231,7 +223,7 @@ export function selectBestLocalModelForTask(
   return recommended ?? smallest;
 }
 
-/** Modelos que el dispositivo puede ejecutar según sus capacidades declaradas. */
+/** Models the device can run per its declared capabilities. */
 export function eligibleModelsFor(capabilities: LocalAiCapabilities): LocalModelDefinition[] {
   if (capabilities.webgpu === 'supported') {
     const knownFeatures = capabilities.supportedFeatures;

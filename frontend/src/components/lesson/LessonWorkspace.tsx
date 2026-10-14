@@ -107,7 +107,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
   const [isLocalMedia, setIsLocalMedia] = useState(false);
   const [mediaLoading, setMediaLoading] = useState(false);
 
-  // Control y memoria de posición del reproductor multimedia
+  // Media-player control and position memory
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastSavedTimeRef = useRef<number>(0);
   const [currentPlaybackSeconds, setCurrentPlaybackSeconds] = useState<number>(0);
@@ -130,7 +130,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
   const [isGenOpen, setIsGenOpen] = useState(false);
   const [nextLesson, setNextLesson] = useState<{ id: string; title: string; moduleTitle: string; allCompleted: boolean } | null>(null);
 
-  // Restaurar y registrar posición en almacenamiento local (localStorage)
+  // Restore and record position in local storage (localStorage)
   const handleLoadedMetadata = () => {
     if (!videoRef.current) return;
     try {
@@ -145,7 +145,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         }
       }
     } catch {
-      // Ignorar restricciones de almacenamiento
+      // Ignore storage restrictions
     }
   };
 
@@ -159,7 +159,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
       try {
         localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(cur));
       } catch {
-        // Ignorar
+        // Ignore
       }
     }
   };
@@ -182,13 +182,13 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         try {
           localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
         } catch {
-          // Ignorar
+          // Ignore
         }
       }
     };
   }, [lesson.id]);
 
-  // Velocidad de reproducción (persiste preferencia del usuario)
+  // Playback speed (persists the user preference)
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('crossedarts-playback-speed');
@@ -198,7 +198,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
     }
   });
 
-  // Notificación breve sobre el vídeo al cambiar controles
+  // Brief on-video notification when controls change
   const [playerOverlayToast, setPlayerOverlayToast] = useState<string | null>(null);
   const overlayToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -216,7 +216,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
     try {
       localStorage.setItem('crossedarts-playback-speed', String(newSpeed));
     } catch {
-      // Ignorar restricciones
+      // Ignore restrictions
     }
     showToastFeedback(`${newSpeed}x`);
   }, [showToastFeedback]);
@@ -258,22 +258,22 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         showToastFeedback('Ventana flotante (PiP)');
       }
     } catch {
-      // Ignorar rechazo o falta de soporte
+      // Ignore user dismissal or lack of Picture-in-Picture support
     }
   }, [showToastFeedback]);
 
-  // Atajos globales de reproducción multimedia (Space, J/L, flechas, M, [ ])
+  // Global media-playback shortcuts (Space, J/L, arrows, M, [ ])
   useEffect(() => {
     if (!playbackUrl) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Las combinaciones con modificador NO pertenecen a este atajo: son de la
-      // aplicación o del sistema (por ejemplo Ctrl+K / Cmd+K abren la paleta de
-      // comandos global). Sin esta guarda, Cmd+L saltaba -10 s, Cmd+M silenciaba
-      // y Cmd+K pausaba el vídeo mientras abría la paleta.
+      // Modified combos do NOT belong to this shortcut: they belong to the app
+      // or the OS (e.g. Ctrl+K / Cmd+K open the global command palette). Without
+      // this guard, Cmd+L jumped -10s, Cmd+M muted, and Cmd+K paused the video
+      // while opening the palette.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      // Evitar captura si el usuario está escribiendo en notas, inputs o selects
+      // Avoid capturing while the user types in notes, inputs, or selects
       const activeEl = document.activeElement;
       const isInput =
         activeEl &&
@@ -332,7 +332,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
     loadWorkspace();
   }, [loadWorkspace]);
 
-  // Media local efímera para la lección activa; se revoca al cambiar de lección o desmontar.
+  // Ephemeral local media for the active lesson; revoked on lesson change or unmount.
   useEffect(() => {
     let isCancelled = false;
 
@@ -520,7 +520,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* Cabecera de la lección */}
+      {/* Lesson header */}
       <div className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -568,7 +568,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Acciones de estudio unificadas */}
+        {/* Unified study actions */}
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <Button size="sm" variant="solid" onClick={() => onStudyLesson(lesson.id, 'mixed')}>
             <Play size={13} aria-hidden="true" /> Estudiar esta lección
@@ -597,7 +597,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         )}
       </div>
 
-      {/* Reproductor de medios locales */}
+      {/* Local media player */}
       <div className={cn('relative overflow-hidden rounded-xl border border-line', playbackUrl ? 'bg-black' : 'bg-surface')}>
         {playbackUrl ? (
           <div className="relative group">
@@ -613,13 +613,13 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   try {
                     localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
                   } catch {
-                    // Ignorar
+                    // Ignore
                   }
                 }
               }}
               className="max-h-[420px] w-full bg-black object-contain"
             />
-            {/* Overlay Toast de feedback breve al usar atajos o cambiar controles */}
+            {/* Short-feedback overlay toast when using shortcuts or changing controls */}
             {playerOverlayToast && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <span className="animate-fade-in rounded-lg bg-black/85 px-4 py-2 font-mono text-title font-bold text-white shadow-lg backdrop-blur-sm">
@@ -655,7 +655,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
                 <span className="text-line-strong" aria-hidden="true">|</span>
 
-                {/* Saltos temporales */}
+                {/* Time jumps */}
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -677,7 +677,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   </button>
                 </div>
 
-                {/* Selector de velocidad */}
+                {/* Speed selector */}
                 <div className="flex items-center gap-0.5 rounded-lg border border-line bg-canvas px-1 py-0.5" title="Velocidad de reproducción ([ y ] para ajustar)">
                   <Gauge size={12} className="mx-1 text-muted" aria-hidden="true" />
                   {SUPPORTED_PLAYBACK_SPEEDS.map(s => (
@@ -697,7 +697,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   ))}
                 </div>
 
-                {/* Botón Picture-in-Picture */}
+                {/* Picture-in-Picture button */}
                 {typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && (
                   <button
                     type="button"
@@ -735,7 +735,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Contenido de la lección: el objeto visual principal (texto/Markdown como datos) */}
+      {/* Lesson content: the main visual object (text/Markdown as data) */}
       <section className="rounded-xl border border-line bg-surface p-5 shadow-card sm:p-7" aria-label="Contenido de la lección">
         <div className="mb-4 flex items-center justify-between gap-3 border-b border-line pb-3">
           <h3 className="type-section text-ink">Contenido</h3>
@@ -809,7 +809,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         )}
       </section>
 
-      {/* Tarjetas de estudio de la lección (SM-2) */}
+      {/* Lesson study cards (SM-2) */}
       <section className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5" aria-label="Tarjetas de estudio de la lección">
         <div className="mb-4 flex flex-col gap-3 border-b border-line pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
@@ -834,7 +834,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Formulario de creación de nueva tarjeta */}
+        {/* New-card creation form */}
         {isCreatingCard && (
           <form onSubmit={handleCreateCard} className="mb-4 space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
             <p className="text-meta font-semibold text-ink">Nueva tarjeta de estudio para esta lección</p>
@@ -877,7 +877,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </form>
         )}
 
-        {/* Lista de tarjetas */}
+        {/* Card list */}
         {flashcards.length === 0 && !isCreatingCard ? (
           <EmptyState
             title="Esta lección aún no tiene tarjetas de estudio asociadas."
@@ -979,9 +979,9 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         )}
       </section>
 
-      {/* Zona secundaria: notas, recursos, conceptos y contexto */}
+      {/* Secondary area: notes, resources, concepts, and context */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Notas de la lección */}
+        {/* Lesson notes */}
         <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Notas de la lección">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="type-section text-ink">Notas ({notes.length})</h3>
@@ -1091,7 +1091,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           )}
         </section>
 
-        {/* Recursos relacionados */}
+        {/* Related resources */}
         <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Recursos relacionados">
           <h3 className="type-section mb-3 text-ink">Recursos relacionados ({resources.length})</h3>
           {resources.length === 0 ? (
@@ -1137,7 +1137,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           )}
         </section>
 
-        {/* Conceptos + contexto */}
+        {/* Concepts + context */}
         <div className="space-y-5">
           {concepts.length > 0 && (
             <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Conceptos">
@@ -1157,7 +1157,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
             </section>
           )}
 
-          {/* Panel de aprendizaje relacionado (solo relaciones canónicas) */}
+          {/* Related-learning panel (canonical relations only) */}
           {(relatedBooks.length > 0 || notes.length > 0 || resources.length > 0 || concepts.length > 0) && (
             <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Aprendizaje relacionado">
               <h3 className="type-section mb-2 text-ink">Aprendizaje relacionado</h3>
@@ -1176,7 +1176,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Continuar aprendiendo */}
+      {/* Keep learning */}
       {nextLesson && (
         <div className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent-soft/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -1191,7 +1191,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Confirmación accesible para eliminar flashcard */}
+      {/* Accessible confirmation to delete a flashcard */}
       <ConfirmDialog
         isOpen={Boolean(deletingCardId)}
         title="Eliminar tarjeta de estudio"

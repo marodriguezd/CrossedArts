@@ -11,7 +11,7 @@ import { Button, Chip, SearchInput, Panel, SectionHeading, Badge, InlineStatus, 
 interface LibraryProps {
   courses: Course[];
   books: Book[];
-  /** Consulta proveniente de la búsqueda global de la cabecera. */
+  /** Query coming from the header global search. */
   initialQuery?: string;
   onSelectCourse: (id: string) => void;
   onMountLocalFolder: () => void;
@@ -24,7 +24,7 @@ interface LibraryProps {
   onOpenResource?: (resourceId: string) => void;
   onOpenNote?: (noteId: string) => void;
   onOpenConcept?: (conceptId: string) => void;
-  /** Abre la vista de Metas, opcionalmente con una meta concreta seleccionada. */
+  /** Opens the Goals view, optionally with one goal selected. */
   onOpenGoals?: (goalId?: string) => void;
 }
 
@@ -49,7 +49,7 @@ export const Library: React.FC<LibraryProps> = ({
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
 
-  // La búsqueda global de la cabecera se convierte en el filtro de esta vista.
+  // The header global search becomes this view's filter.
   useEffect(() => {
     if (initialQuery) setQuery(initialQuery);
   }, [initialQuery]);
@@ -58,7 +58,7 @@ export const Library: React.FC<LibraryProps> = ({
   const [inputPage, setInputPage] = useState<string>('');
   const [bookFeedback, setBookFeedback] = useState<{ id: string; msg: string; isError?: boolean } | null>(null);
 
-  // Estado del flujo de importación de documentos locales con Preview
+  // Local document import flow state with Preview
   const [isImporting, setIsImporting] = useState(false);
   const [ingestionProgress, setIngestionProgress] = useState<IngestionProgress | null>(null);
   const [ingestionReport, setIngestionReport] = useState<{ total: number; success: number; duplicates: number; errors: number; details: string[] } | null>(null);
@@ -76,19 +76,17 @@ export const Library: React.FC<LibraryProps> = ({
     data?: { resource: any; sourceType: string; fileName?: string; fingerprint?: string; sectionCount: number; notesCount: number };
   }>({ isOpen: false });
 
-  // Búsqueda local unificada y organización de recursos huérfanos
+  // Unified local search and orphan-resource organization
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [unorganized, setUnorganized] = useState<UnorganizedResource[]>([]);
   const [organizeTarget, setOrganizeTarget] = useState<Record<string, string>>({});
   const [organizeFeedback, setOrganizeFeedback] = useState<string | null>(null);
 
-  // Creación de cursos
   const [isCreateCourseOpen, setIsCreateCourseOpen] = useState(false);
   const [courseForm, setCourseForm] = useState({ title: '', description: '', category: 'General', instructor: '' });
   const [courseError, setCourseError] = useState<string | null>(null);
 
-  // Edición de metadatos del libro
   const [editingBookMeta, setEditingBookMeta] = useState<string | null>(null);
   const [bookMetaForm, setBookMetaForm] = useState({ author: '', pageCount: '' });
 
@@ -119,8 +117,8 @@ export const Library: React.FC<LibraryProps> = ({
     return () => { cancelled = true; };
   }, [deferredQuery, courses, books]);
 
-  // Accesibilidad de teclado: Escape cierra el diálogo superior activo
-  // (previsualización, visor de origen o alta de curso).
+  // Keyboard accessibility: Escape closes the active top dialog
+  // (preview, source viewer, or course creation).
   useEffect(() => {
     const anyOpen = !!previewDoc || sourceViewerMeta.isOpen || isCreateCourseOpen;
     if (!anyOpen) return;
@@ -217,7 +215,7 @@ export const Library: React.FC<LibraryProps> = ({
     goal: Target
   };
 
-  /** Etiqueta en español del tipo de resultado de búsqueda. */
+  /** Localized label for the search-result type. Defaults to Spanish. */
   const SEARCH_TYPE_LABELS: Partial<Record<SearchResult['type'], string>> = {
     course: 'Curso',
     book: 'Libro',
@@ -230,7 +228,6 @@ export const Library: React.FC<LibraryProps> = ({
     goal: 'Meta'
   };
 
-  // Estado de arrastrar y soltar (Drag and Drop)
   const [isWindowDragging, setIsWindowDragging] = useState(false);
   const [isDropzoneDragging, setIsDropzoneDragging] = useState(false);
   const dragCounterRef = useRef(0);
@@ -246,15 +243,15 @@ export const Library: React.FC<LibraryProps> = ({
   };
 
   /**
-   * Procesa una lista de archivos seleccionados o arrastrados.
-   * Si es 1 archivo compatible, abre el modal de previsualización.
-   * Si son múltiples archivos, los ingesta en lote con reporte de progreso.
+   * Processes a list of selected or dropped files.
+   * With 1 compatible file, opens the preview modal.
+   * With multiple files, ingests them in a batch with a progress report.
    */
   const processIncomingFiles = useCallback(async (incoming: File[] | FileList | null | undefined) => {
     const validFiles = filterSupportedFiles(incoming);
     if (!validFiles || validFiles.length === 0) return;
 
-    // Si es un único archivo, abrir modal de preview con validación y elección de destino
+    // Single file: open the preview modal with validation and destination choice
     if (validFiles.length === 1) {
       const file = validFiles[0];
       try {
@@ -281,7 +278,7 @@ export const Library: React.FC<LibraryProps> = ({
       }
     }
 
-    // Si es lote múltiple, procesar en batch
+    // Multiple files: process as a batch
     setIsImporting(true);
     setIngestionReport(null);
     const controller = new AbortController();
@@ -345,7 +342,7 @@ export const Library: React.FC<LibraryProps> = ({
     await processIncomingFiles(files);
   };
 
-  // Eventos globales de ventana para arrastrar y soltar archivos
+  // Global window listeners for drag-and-drop file handling
   useEffect(() => {
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault();
@@ -509,7 +506,6 @@ export const Library: React.FC<LibraryProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Cabecera de página y acciones */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="type-display text-ink">Biblioteca</h1>
@@ -519,7 +515,7 @@ export const Library: React.FC<LibraryProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Input oculto para selección de archivos */}
+          {/* Hidden file-selection input */}
           <input
             type="file"
             ref={fileInputRef}
@@ -559,7 +555,6 @@ export const Library: React.FC<LibraryProps> = ({
         </div>
       </div>
 
-      {/* Progreso de importación de documentos */}
       {isImporting && ingestionProgress && (
         <InlineStatus tone="info" className="justify-between">
           <span className="flex items-center gap-3">
@@ -579,7 +574,6 @@ export const Library: React.FC<LibraryProps> = ({
         </InlineStatus>
       )}
 
-      {/* Reporte de importación */}
       {ingestionReport && (
         <InlineStatus tone={ingestionReport.errors > 0 ? 'warning' : 'success'} className="justify-between">
           <span className="min-w-0">
@@ -605,7 +599,6 @@ export const Library: React.FC<LibraryProps> = ({
         </InlineStatus>
       )}
 
-      {/* Reporte de escaneo de carpeta local */}
       {scanReport && (
         <InlineStatus tone="info" className="justify-between">
           <span className="flex min-w-0 items-start gap-3">
@@ -637,7 +630,6 @@ export const Library: React.FC<LibraryProps> = ({
         </InlineStatus>
       )}
 
-      {/* Zona visual para arrastrar y soltar archivos (Dropzone Card) */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -686,7 +678,6 @@ export const Library: React.FC<LibraryProps> = ({
         </p>
       </div>
 
-      {/* Búsqueda y filtros */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SearchInput
           label="Buscar por título, autor o tema"
@@ -704,7 +695,7 @@ export const Library: React.FC<LibraryProps> = ({
         </div>
       </div>
 
-      {/* Búsqueda local unificada (sin embeddings, funciona offline) */}
+      {/* Unified local search (no embeddings, works offline) */}
       {query.trim().length >= 2 && (
         <Panel className="p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -745,7 +736,6 @@ export const Library: React.FC<LibraryProps> = ({
         </Panel>
       )}
 
-      {/* Recursos sin organizar */}
       {unorganized.length > 0 && (
         <Panel className="border-warning/40 p-4">
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -806,7 +796,6 @@ export const Library: React.FC<LibraryProps> = ({
         </Panel>
       )}
 
-      {/* Cursos */}
       {(filter === 'all' || filter === 'courses') && (
         <section>
           <SectionHeading
@@ -854,7 +843,6 @@ export const Library: React.FC<LibraryProps> = ({
         </section>
       )}
 
-      {/* Libros */}
       {(filter === 'all' || filter === 'books') && (
         <section className="pt-2">
           <SectionHeading
@@ -898,7 +886,6 @@ export const Library: React.FC<LibraryProps> = ({
                     </h4>
                     <p className="type-meta truncate">{book.author}</p>
 
-                    {/* Acciones del recurso: fuentes, estudio, explicación y metadatos */}
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       <button
                         onClick={() => handleOpenSourceViewer(book.id)}
@@ -974,7 +961,6 @@ export const Library: React.FC<LibraryProps> = ({
                           </span>
                         </div>
 
-                        {/* Deslizador interactivo sincronizado */}
                         <div className="space-y-1">
                           <input
                             type="range"
@@ -994,7 +980,6 @@ export const Library: React.FC<LibraryProps> = ({
                           </div>
                         </div>
 
-                        {/* Botones de incremento rápido */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                           <button
                             type="button"
@@ -1030,7 +1015,6 @@ export const Library: React.FC<LibraryProps> = ({
                           </button>
                         </div>
 
-                        {/* Fila de entrada manual y botones de acción */}
                         <div className="flex items-center justify-between gap-2 border-t border-line/60 pt-2">
                           <div className="flex items-center gap-1.5">
                             <label htmlFor={`page-input-${book.id}`} className="text-micro text-muted">Pág:</label>
@@ -1085,7 +1069,7 @@ export const Library: React.FC<LibraryProps> = ({
         </section>
       )}
 
-      {/* Modal de previsualización de documento antes de persistir */}
+      {/* Document preview modal before persisting */}
       {previewDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
           <div role="dialog" aria-modal="true" aria-labelledby="preview-title" className="max-h-[90vh] w-full max-w-lg animate-fade-in space-y-4 overflow-y-auto rounded-xl border border-line bg-raised p-6 shadow-pop">
@@ -1136,7 +1120,6 @@ export const Library: React.FC<LibraryProps> = ({
                 </InlineStatus>
               )}
 
-              {/* Selector de destino */}
               <div className="space-y-1.5 pt-1">
                 <label className={LABEL_CLS} htmlFor="preview-destination">Destino del recurso:</label>
                 <select
@@ -1169,7 +1152,6 @@ export const Library: React.FC<LibraryProps> = ({
                 </div>
               )}
 
-              {/* Opción de indexación semántica */}
               <div className="flex items-center justify-between rounded-lg border border-line bg-canvas p-2.5">
                 <label htmlFor="preview-semantic" className="text-meta font-medium text-ink">
                   Indexación semántica en segundo plano
@@ -1197,7 +1179,6 @@ export const Library: React.FC<LibraryProps> = ({
         </div>
       )}
 
-      {/* Modal de origen de recursos */}
       {sourceViewerMeta.isOpen && sourceViewerMeta.data && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
           <div role="dialog" aria-modal="true" aria-labelledby="source-title" className="w-full max-w-md animate-fade-in space-y-4 rounded-xl border border-line bg-raised p-6 shadow-pop">
@@ -1246,7 +1227,6 @@ export const Library: React.FC<LibraryProps> = ({
         </div>
       )}
 
-      {/* Modal de creación de curso */}
       {isCreateCourseOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
           <form onSubmit={handleCreateCourse} role="dialog" aria-modal="true" aria-labelledby="create-course-title" className="max-h-[90vh] w-full max-w-md animate-fade-in space-y-4 overflow-y-auto rounded-xl border border-line bg-raised p-6 shadow-pop">
@@ -1324,7 +1304,7 @@ export const Library: React.FC<LibraryProps> = ({
         </div>
       )}
 
-      {/* Overlay a pantalla completa al arrastrar archivos sobre cualquier parte de la ventana */}
+      {/* Full-screen overlay while dragging files anywhere in the window */}
       {isWindowDragging && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/80 backdrop-blur-sm pointer-events-none animate-fade-in"

@@ -55,7 +55,7 @@ interface LoadedData {
 
 type ChartMetric = 'minutes' | 'reviews';
 
-/** Agrupa días cuando la serie es muy larga para caber en pantalla. */
+/** Buckets days when the series is too long to fit on screen. */
 function bucketSeries<T extends { minutes: number; reviews: number }>(
   points: T[],
   maxBuckets: number
@@ -79,12 +79,12 @@ function formatMinutes(total: number, lang: LanguageCode = 'es'): string {
 }
 
 /**
- * Vista de Análisis: agregaciones puras sobre los datos reales del usuario.
+ * Analytics view: pure aggregations over the user's real data.
  *
- * No hay métricas psicológicas ni puntuaciones inventadas: cada número es un
- * hecho medible (minutos, días, sesiones, tarjetas, preguntas, aciertos,
- * progreso de curso/libro/prácticas). Cuando un cociente no existe (cero
- * preguntas, cero lecciones), se muestra «-» con su explicación.
+ * No psychological metrics or invented scores: every number is a measurable
+ * fact (minutes, days, sessions, cards, questions, hits, course/book/practice
+ * progress). When a ratio does not exist (zero questions, zero lessons), a dash
+ * is shown with its explanation.
  */
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, practiceWork }) => {
   const { day: localDay } = resolveLocalDay();
@@ -212,7 +212,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
 
       {overview && (
         <>
-          {/* --- Cifras clave: una superficie, sin tarjetas de métricas. --- */}
+          {/* --- Key figures: one surface, no metric cards. --- */}
           <section aria-label={t('analytics.periodLabel')} className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
             <div className="px-4 py-3.5">
               <p className="type-micro flex items-center gap-1.5"><Clock size={12} aria-hidden="true" /> {t('analytics.studyTime')}</p>
@@ -268,7 +268,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
             </Panel>
           </div>
 
-          {/* --- Serie diaria con resumen textual accesible. --- */}
+          {/* --- Daily series with an accessible text summary. --- */}
           <Panel className="p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -333,7 +333,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
                   )}
                 </div>
 
-                {/* Resumen textual accesible: la misma información en tabla. */}
+                {/* Accessible text summary: the same information as a table. */}
                 <details className="mt-3">
                   <summary className="cursor-pointer text-meta text-muted focus-visible:underline">
                     {t('analytics.tableToggle')}
@@ -369,7 +369,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
             )}
           </Panel>
 
-          {/* --- Progreso de contenido: unidades separadas, nunca mezcladas. --- */}
+          {/* --- Content progress: separate units, never blended. --- */}
           <section aria-label={t('analytics.contentLabel')} className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <Panel className="p-4">
               <p className="type-micro flex items-center gap-1.5"><Activity size={12} aria-hidden="true" /> {t('analytics.courses')}</p>
@@ -438,7 +438,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
             </Panel>
           </section>
 
-          {/* --- Actividad por recurso. --- */}
           <Panel className="p-5 sm:p-6">
             <h2 className="type-section text-ink">{t('analytics.byResource')}</h2>
             <p className="type-meta mt-0.5">{t('analytics.byResourceSub')}</p>
@@ -469,7 +468,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
             )}
           </Panel>
 
-          {/* --- Actividad reciente. --- */}
           <Panel className="p-5 sm:p-6">
             <h2 className="type-section text-ink">{t('analytics.recent')}</h2>
             <p className="type-meta mt-0.5">{t('analytics.recentSub')}</p>

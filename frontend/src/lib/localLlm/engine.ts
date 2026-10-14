@@ -40,7 +40,7 @@ class LocalLlmEngine {
   private currentProgress: ModelLoadingProgress = { progress: 0, text: '' };
   private listeners: Set<(status: EngineStatus, progress: ModelLoadingProgress) => void> = new Set();
   
-  // Control de concurrencia y solicitudes obsoletas
+  // Concurrency and stale-request control
   private activeLoadPromise: Promise<void> | null = null;
   private loadSessionId: number = 0;
 
@@ -83,21 +83,21 @@ class LocalLlmEngine {
   }
 
   /**
-   * Carga perezosamente el motor WebLLM con el modelo especificado.
-   * Si ya está cargado con ese modelo, reutiliza la instancia existente.
-   * Previene duplicación de descargas concurrentes y maneja peticiones obsoletas.
+   * Lazily loads the WebLLM engine with the given model. When already loaded
+   * with that model it reuses the existing instance. It prevents duplicated
+   * concurrent downloads and handles stale requests.
    */
   public async loadModel(modelId: string = DEFAULT_LOCAL_MODEL_ID, onProgress?: ProgressCallback): Promise<void> {
     if (this.status === 'ready' && this.currentModelId === modelId && this.engineInstance) {
       return;
     }
 
-    // Si ya hay una carga en progreso para el MISMO modelo, reutilizar su promesa para evitar doble descarga
+    // When a load for the SAME model is already in flight, reuse its promise to avoid a double download
     if (this.activeLoadPromise && this.currentModelId === modelId && (this.status === 'loading' || this.status === 'checking')) {
       return this.activeLoadPromise;
     }
 
-    // Incrementar ID de sesión para invalidar cualquier callback asíncrono previo
+    // Bump the session id to invalidate any earlier async callback
     const sessionId = ++this.loadSessionId;
     this.currentModelId = modelId;
 
@@ -108,7 +108,7 @@ class LocalLlmEngine {
       this.notify();
 
       const gpuCap = await detectWebGPUCapability();
-      if (sessionId !== this.loadSessionId) return; // Sesión obsoleta
+      if (sessionId !== this.loadSessionId) return; // Stale session
 
       const modelDef = getLocalModelById(modelId);
       if (!modelDef) {
@@ -118,7 +118,7 @@ class LocalLlmEngine {
         throw new Error(this.lastError);
       }
 
-      // Validación de hardware según el backend requerido por el modelo
+      // Hardware validation against the backend the model requires
       if (modelDef.runtimeBackend === 'webgpu' && gpuCap.state !== 'supported') {
         this.status = 'unsupported';
         this.lastError = gpuCap.reason || 'WebGPU no está disponible en este dispositivo.';
@@ -126,14 +126,14 @@ class LocalLlmEngine {
         throw new Error(this.lastError);
       }
 
-      // Si había un modelo previo diferente o instancia existente, descargarlo primero limpiamente
+      // With a different prior model or an existing instance, unload it cleanly first
       if (this.engineInstance) {
         await this.disposeInstance();
         if (sessionId !== this.loadSessionId) return;
       }
 
       // -------------------------------------------------------------
-      // BACKEND CPU / WASM VÍA TRANSFORMERS.JS
+      // CPU / WASM BACKEND VIA TRANSFORMERS.JS
       // -------------------------------------------------------------
       if (modelDef.runtimeBackend === 'wasm') {
         this.status = 'loading';
@@ -205,7 +205,7 @@ class LocalLlmEngine {
       }
 
       // -------------------------------------------------------------
-      // BACKEND WEBGPU VÍA MLC WEB-LLM
+      // WEBGPU BACKEND VIA MLC WEB-LLM
       // -------------------------------------------------------------
       this.status = 'loading';
       this.lastError = null;
@@ -215,7 +215,7 @@ class LocalLlmEngine {
       this.notify();
 
       try {
-        // Importación dinámica para code-splitting
+        // Dynamic import for code-splitting
         const webllm = await import('@mlc-ai/web-llm');
         if (sessionId !== this.loadSessionId) return;
 
@@ -231,18 +231,17 @@ class LocalLlmEngine {
             try {
               onProgress(this.currentProgress);
             } catch {
-              // Ignorar errores del callback de progreso
+              // Ignore progress-callback errors
             }
           }
         };
 
-        // Crear instancia del motor MLC
         const instance = await webllm.CreateMLCEngine(modelId, {
           initProgressCallback
         });
 
         if (sessionId !== this.loadSessionId) {
-          // Si otra carga reemplazó a esta mientras se inicializaba, limpiar la instancia huérfana
+          // When another load superseded this one while initializing, dispose the orphan instance
           try {
             if (instance && typeof instance.unload === 'function') {
               await instance.unload();
@@ -281,15 +280,16 @@ class LocalLlmEngine {
   }
 
   /**
-   * Genera texto con el modelo local de forma conservadora.
+   * Generates text with the local model conservatively.
    *
-   * API CANÓNICA del contrato `LocalModelRuntime`. Acepta tanto las opciones
-   * canónicas (`maxTokens`) como el alias histórico (`max_tokens`, `stream`).
+   * CANONICAL API of the `LocalModelRuntime` contract. It accepts both the
+   * canonical options (`maxTokens`) and the historic alias (`max_tokens`,
+   * `stream`).
    *
-   * CONTRATO DE STREAMING: `onChunk` recibe SIEMPRE deltas. Los backends que
-   * generan texto acumulado (WASM, hilo principal o worker) pasan por
-   * `DeltaStream`, que calcula el delta antes de invocar el callback y evita
-   * emitir dos veces la respuesta final.
+   * STREAMING CONTRACT: `onChunk` ALWAYS receives deltas. Backends that
+   * produce accumulated text (WASM, main thread, or worker) go through
+   * `DeltaStream`, which computes the delta before invoking the callback and
+   * avoids emitting the final answer twice.
    */
   public async generate(
     messages: ChatMessage[],
@@ -302,7 +302,7 @@ class LocalLlmEngine {
     this.status = 'generating';
     this.notify();
 
-    // Parámetros conservadores pedagógicos
+    // Conservative pedagogical parameters
     const temperature = options?.temperature ?? 0.2;
     const requestedMaxTokens = options?.maxTokens ?? options?.max_tokens ?? 800;
     const max_tokens = Math.min(requestedMaxTokens, 1024);
@@ -310,19 +310,19 @@ class LocalLlmEngine {
 
     try {
       // -----------------------------------------------------------
-      // GENERACIÓN EN CPU / WASM VÍA TRANSFORMERS.JS CON STREAMING
+      // CPU / WASM GENERATION VIA TRANSFORMERS.JS WITH STREAMING
       // -----------------------------------------------------------
       if (this.currentBackend === 'wasm') {
         const prompt = messages
           .map(m => `<|im_start|>${m.role}\n${m.content}<|im_end|>`)
           .join('\n') + '\n<|im_start|>assistant\n';
 
-        // En CPU configuramos 220 tokens: respuesta pedagógica ágil sin saturar el hilo
+        // On CPU 220 tokens are configured: a brisk pedagogical answer without saturating the thread
         const wasmMaxTokens = Math.min(options?.max_tokens ?? 220, 250);
 
         if (this.wasmWorker.isSupported() && this.engineInstance?.backend === 'wasm-worker') {
-          // El worker entrega texto ACUMULADO: `DeltaStream` lo convierte en
-          // deltas y garantiza que la respuesta final no se emita dos veces.
+          // The worker delivers ACCUMULATED text: `DeltaStream` turns it into
+          // deltas and guarantees the final answer is not emitted twice.
           const stream = onChunk ? new DeltaStream(onChunk) : null;
           const cleanReply = await this.wasmWorker.generate(
             prompt,
@@ -338,8 +338,9 @@ class LocalLlmEngine {
 
         const { TextStreamer } = await import('@huggingface/transformers');
         let accumulatedText = '';
-        // Mismo contrato que en el worker: el streamer entrega deltas, se
-        // acumulan y `DeltaStream` decide qué se emite realmente al consumidor.
+        // Same contract as in the worker: the streamer delivers deltas, they are
+        // accumulated, and `DeltaStream` decides what is really emitted to the
+        // consumer.
         const deltaStream = onChunk ? new DeltaStream(onChunk) : null;
 
         const streamer = new TextStreamer(this.engineInstance.tokenizer, {
@@ -351,7 +352,7 @@ class LocalLlmEngine {
           }
         });
 
-        // Dar un respiro a la UI antes de arrancar los tensores de inferencia
+        // Give the UI a breather before starting inference tensors
         await new Promise(r => setTimeout(r, 10));
 
         const out = await this.engineInstance(prompt, {
@@ -367,8 +368,8 @@ class LocalLlmEngine {
           typeof generated === 'string' ? generated : String(generated)
         );
 
-        // Solo el sufijo que aún no se había entregado: la respuesta final no se
-        // reemite por completo.
+        // Only the suffix not yet delivered: the final answer is not re-emitted
+        // in full.
         deltaStream?.finish(cleanReply);
         this.status = 'ready';
         this.notify();
@@ -376,7 +377,7 @@ class LocalLlmEngine {
       }
 
       // -----------------------------------------------------------
-      // GENERACIÓN EN GPU VÍA WEB-LLM
+      // GPU GENERATION VIA WEB-LLM
       // -----------------------------------------------------------
       if ((options?.stream ?? !!onChunk) && onChunk) {
         const stream = await this.engineInstance.chat.completions.create({
@@ -386,7 +387,7 @@ class LocalLlmEngine {
           stream: true
         });
 
-        // WebGPU ya emite DELTAS: se entregan tal cual, sin reprocesar.
+        // WebGPU already emits DELTAS: they are forwarded as-is, unprocessed.
         let fullText = '';
         for await (const chunk of stream) {
           const delta = chunk.choices[0]?.delta?.content || '';
@@ -412,7 +413,6 @@ class LocalLlmEngine {
         return reply;
       }
     } catch (err: any) {
-      // Manejar fallo de GPU o contexto
       const isGpuLoss = err?.message?.toLowerCase().includes('device lost') ||
                         err?.message?.toLowerCase().includes('device destroyed') ||
                         err?.message?.toLowerCase().includes('out of memory');
@@ -423,7 +423,7 @@ class LocalLlmEngine {
         this.engineInstance = null;
         this.currentModelId = null;
       } else {
-        // En error de generación estándar, volver a 'ready' para permitir reintentos sin recarga completa
+        // On a standard generation error, return to 'ready' to allow retries without a full reload
         this.status = 'ready';
       }
       this.notify();
@@ -433,9 +433,9 @@ class LocalLlmEngine {
 
 
   /**
-   * Alias de compatibilidad: `generateChat` delega en `generate`. No es un segundo
-   * contrato; existe solo para no romper llamantes externos que usaban el nombre
-   * histórico.
+   * Compatibility alias: `generateChat` delegates to `generate`. It is not a
+   * second contract; it exists only so external callers using the historic name
+   * keep working.
    */
   public async generateChat(
     messages: ChatMessage[],
@@ -445,8 +445,8 @@ class LocalLlmEngine {
   }
 
   /**
-   * Iterador de deltas con el mismo contrato que `onChunk`: cada elemento es el
-   * texto nuevo, nunca el acumulado.
+   * Delta iterator with the same contract as `onChunk`: each element is the new
+   * text, never the accumulated text.
    */
   public async *generateStream(
     messages: ChatMessage[],
@@ -485,7 +485,7 @@ class LocalLlmEngine {
   }
 
   /**
-   * Libera internamente las instancias activas de inferencia sin alterar el contador de sesión de carga.
+   * Internally releases active inference instances without touching the load-session counter.
    */
   private async disposeInstance(): Promise<void> {
     if (this.currentBackend === 'wasm') {
@@ -509,10 +509,10 @@ class LocalLlmEngine {
   }
 
   /**
-   * Descarga el modelo y libera recursos de memoria/GPU limpiamente.
+   * Unloads the model and cleanly releases memory/GPU resources.
    */
   public async unload(): Promise<void> {
-    this.loadSessionId++; // Cancelar cargas activas
+    this.loadSessionId++; // Cancel active loads
     this.activeLoadPromise = null;
     this.status = 'unloading';
     this.notify();

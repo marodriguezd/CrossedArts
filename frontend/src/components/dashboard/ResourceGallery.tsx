@@ -4,7 +4,7 @@ import { Badge, ProgressBar, SectionHeading, cn } from '../ui/index.tsx';
 import type { ResourceStatus } from '../../types/models.ts';
 import { resourceInitials, type GalleryItem } from '../../services/galleryItems.ts';
 
-/** Elemento de la galería con su acción de apertura ya resuelta por la página. */
+/** Gallery entry with its open action already resolved by the page. */
 export interface GalleryEntry extends GalleryItem {
   onOpen: () => void;
 }
@@ -13,17 +13,17 @@ interface ResourceGalleryProps {
   items: GalleryEntry[];
   title?: string;
   description?: string;
-  /** Acción "ver todo" (normalmente navegar a la Biblioteca). */
+  /** "See all" action (usually navigating to the Library). */
   onSeeAll?: () => void;
-  /** Texto del enlace de `onSeeAll`. */
+  /** Label for the `onSeeAll` link. */
   seeAllLabel?: string;
-  /** Nº máximo de tarjetas visibles; el resto queda tras "ver todo". */
+  /** Max visible cards; the rest stays behind "see all". */
   limit?: number;
   emptyHint?: string;
   className?: string;
 }
 
-/** Etiqueta de estado en español, consistente en toda la aplicación. */
+/** Localized status label, consistent across the application. */
 const STATUS_LABELS: Record<ResourceStatus, { text: string; tone: 'neutral' | 'accent' | 'success' }> = {
   NOT_STARTED: { text: 'Sin empezar', tone: 'neutral' },
   IN_PROGRESS: { text: 'En progreso', tone: 'accent' },
@@ -31,22 +31,22 @@ const STATUS_LABELS: Record<ResourceStatus, { text: string; tone: 'neutral' | 'a
 };
 
 /**
- * Galería visual de artefactos de aprendizaje.
+ * Visual gallery of learning artifacts.
  *
- * Es agnóstica al dominio: solo conoce `GalleryItem`, así que sirve igual para
- * cursos, libros, documentos importados o trabajo práctico. Cada tarjeta es un
- * `<button>` con nombre accesible explícito y el progreso usa `ProgressBar`
- * (nunca color como único indicador).
+ * Domain-agnostic: it only knows `GalleryItem`, so it serves courses, books,
+ * imported documents, and practice work alike. Each card is a `<button>` with
+ * an explicit accessible name, and progress uses `ProgressBar` (never color as
+ * the only indicator).
  *
- * Dos tratamientos dentro de la MISMA lengua visual:
- *  - Portada (`cover`): cursos, libros y recursos, con portada 3:4 e iniciales de
- *    respaldo cuando no hay imagen.
- *  - Ficha (`row`): trabajo práctico, que no tiene portada; se presenta como
- *    artefacto con icono, estado y tipo.
+ * Two treatments within the SAME visual language:
+ *  - Cover (`cover`): courses, books, and resources, with a 3:4 cover and
+ *    fallback initials when there is no image.
+ *  - Row (`row`): practice work, which has no cover; presented as an artifact
+ *    with icon, status, and kind.
  *
- * El progreso solo se dibuja como barra cuando es `measured`. Si el modelo solo
- * guarda un estado (`status`), se muestra el estado y NUNCA un porcentaje
- * inventado (ver docs/PROGRESS.md).
+ * Progress is drawn as a bar only when `measured`. When the model stores just a
+ * state (`status`), the state is shown and NEVER an invented percentage (see
+ * docs/PROGRESS.md).
  */
 export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
   items,

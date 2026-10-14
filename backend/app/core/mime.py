@@ -1,22 +1,21 @@
-"""Resolución canónica de tipos MIME a partir de un nombre de archivo.
+"""Canonical MIME type resolution from a file name.
 
-Antes, cada servicio resolvía el MIME por su cuenta y el scanner asignaba
-``video/mp4`` a TODOS los vídeos (un .mkv o un .avi quedaban mal tipados). Aquí
-se centraliza una única función determinista que usan la ingesta y el scanner.
+Previously each service resolved MIME on its own and the scanner assigned
+``video/mp4`` to ALL videos (a .mkv or .avi ended up mistyped). A single
+deterministic function used by ingestion and the scanner is centralized here.
 """
 
 from pathlib import Path
 from typing import Union
 import mimetypes
 
-# Mapa curado de extensiones -> tipo MIME canónico.
+# Curated extension -> canonical MIME type map.
 #
-# Tiene prioridad sobre `mimetypes.guess_type` porque los valores de la stdlib
-# dependen del registro del sistema operativo: por ejemplo `.mkv` o `.md` no
-# resuelven igual en todas las instalaciones. Fijarlos aquí hace el tipado
-# reproducible en cualquier máquina y sistema operativo.
+# Takes precedence over `mimetypes.guess_type` because stdlib values depend on
+# the OS registry: e.g. `.mkv` or `.md` do not resolve the same on every
+# install. Pinning them here keeps typing reproducible on any machine and OS.
 _CANONICAL_MIME: dict[str, str] = {
-    # Vídeo
+    # Video
     ".mp4": "video/mp4",
     ".webm": "video/webm",
     ".mov": "video/quicktime",
@@ -30,20 +29,19 @@ _CANONICAL_MIME: dict[str, str] = {
     ".flac": "audio/flac",
     ".m4a": "audio/mp4",
     ".aac": "audio/aac",
-    # Documentos
+    # Documents
     ".pdf": "application/pdf",
     ".epub": "application/epub+zip",
     ".txt": "text/plain",
     ".md": "text/markdown",
 }
 
-# Prefijos/tipos aceptados desde la stdlib.
+# Prefixes/types accepted from the stdlib.
 #
-# `mimetypes.guess_type` consulta el registro del sistema operativo, así que
-# puede devolver tipos irrelevantes e inconsistentes entre máquinas (p. ej.
-# `.xyz` -> `chemical/x-xyz`). Sólo se aceptan los tipos de media/documento
-# relevantes para una biblioteca de aprendizaje; el resto degrada al tipo
-# binario genérico, que es determinista.
+# `mimetypes.guess_type` consults the OS registry, so it can return irrelevant
+# and machine-inconsistent types (e.g. `.xyz` -> `chemical/x-xyz`). Only media/
+# document types relevant to a learning library are accepted; the rest falls
+# back to the generic binary type, which is deterministic.
 _ACCEPTED_MIME_PREFIXES = ("video/", "audio/", "image/", "text/")
 _ACCEPTED_MIME_TYPES = frozenset(
     {
@@ -62,15 +60,15 @@ def _is_acceptable_mime(mime: str) -> bool:
 
 
 def guess_mime_type(filename: Union[str, Path]) -> str:
-    """Devuelve el tipo MIME de `filename` de forma determinista.
+    """Return the MIME type of `filename` deterministically.
 
-    Orden de resolución:
-      1. Mapa canónico curado (valores estables entre sistemas).
-      2. `mimetypes.guess_type` de la stdlib, sólo para tipos de media o
-         documento reconocidos (evita valores dependientes del sistema).
-      3. `application/octet-stream` si nada resuelve.
+    Resolution order:
+      1. Curated canonical map (stable values across systems).
+      2. Stdlib `mimetypes.guess_type`, only for recognized media or
+         document types (avoids system-dependent values).
+      3. `application/octet-stream` when nothing resolves.
 
-    La extensión se compara sin distinguir mayúsculas y se ignoran directorios.
+    The extension is compared case-insensitively; directories are ignored.
     """
     name = Path(filename).name
     suffix = Path(name).suffix.lower()

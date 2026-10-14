@@ -9,25 +9,25 @@ import { resolveSqliteWasmUrl, deployedSqliteWasmFilename } from './sqliteWasmUr
 
 const DB_STORE_NAME = 'crossedarts_sqlite_store';
 const DB_KEY = 'current_database_bytes';
-/** Registro de metadatos de coordinación multi-pestaña (revisión persistida). */
+/** Multi-tab coordination metadata record (persisted revision). */
 const DB_META_KEY = 'coordinator_meta';
 
 /**
- * Metadatos de coordinación persistidos JUNTO al snapshot en IndexedDB.
+ * Coordination metadata persisted ALONGSIDE the snapshot in IndexedDB.
  *
- * La revisión es la fuente de verdad compartida entre pestañas: al escribir,
- * cada pestaña confirma que la revisión persistida sigue siendo la que ella
- * conocía (comparar-y-swap). Si otra pestaña avanzó la revisión mientras tanto,
- * la escritura local se rechaza en lugar de pisar silenciosamente su snapshot.
+ * The revision is the shared source of truth across tabs: on write, each tab
+ * confirms the persisted revision is still the one it knew (compare-and-swap).
+ * When another tab advanced the revision meanwhile, the local write is rejected
+ * instead of silently clobbering its snapshot.
  */
 interface PersistedCoordinatorMeta {
   revision: number;
   lastWriterTabId: string;
   updatedAt: number;
 }  /**
-   * Error de escritura obsoleta (concurrency conflict). Lo lanza `persist()`
-   * cuando la revisión persistida ya no es la que esta pestaña conocía.
-   * `persistedRevision` es la revisión realmente persistida (la ganadora).
+   * Stale-write error (concurrency conflict). Thrown by `persist()` when the
+   * persisted revision is no longer the one this tab knew. `persistedRevision`
+   * is the actually persisted (winning) revision.
    */
 let dbLang: LanguageCode = resolveAppLanguage();
 
@@ -56,14 +56,13 @@ export type StorageState =
   | 'stale-other-tab';
 
 /**
- * Ciclo de vida terminal de la inicialización de SQLite. `failed` es un estado
- * real y observable: la aplicación no debe montar sus vistas contra una base de
- * datos ausente (eso era lo que hacía el grafo de conocimiento mostrar
- * "Database not initialized" en la aplicación ya renderizada).
+ * Terminal SQLite-init lifecycle. `failed` is a real, observable state: the app
+ * must not mount its views against a missing database (that was what made the
+ * knowledge graph show "Database not initialized" inside the rendered app).
  */
 export type InitState = 'idle' | 'initializing' | 'ready' | 'failed';
 
-/** Clases de fallo de inicialización conocidas, con texto controlado en español. */
+/** Known init-failure classes, with controlled Spanish-language text. */
 export type DbInitFailureCode =
   | 'wasm-unavailable'
   | 'storage-unavailable'
@@ -74,17 +73,17 @@ export type DbInitFailureCode =
 
 export interface DbInitFailure {
   code: DbInitFailureCode;
-  /** Mensaje en español apto para mostrar al usuario. Nunca texto interno en inglés. */
+  /** User-facing message in Spanish. Never internal English text. */
   message: string;
-  /** Si es cierto, reintentar tiene sentido. Nunca implicar borrado de datos. */
+  /** When true, retrying is worthwhile. Never implies data loss. */
   retryable: boolean;
-  /** Detalle técnico solo para la consola del desarrollador. */
+  /** Technical detail for the developer console only. */
   detail?: string;
 }
 
 /**
- * Error de inicialización portador de un mensaje controlado en español. Evita que
- * las vistas hijas muestren nunca el texto crudo de una excepción interna.
+ * Init error carrying a controlled Spanish-language message. Keeps child views
+ * from ever showing an inner exception's raw text.
  */
 export class DatabaseInitializationError extends Error {
   public readonly failure: DbInitFailure;
@@ -173,7 +172,7 @@ export function isValidSqliteBuffer(buffer: ArrayBuffer | Uint8Array): boolean {
   return header === SQLITE_HEADER_STRING;
 }
 
-/** Identificador único de esta pestaña, para ignorar nuestros propios mensajes. */
+/** Unique id for this tab, used to ignore its own broadcast messages. */
 const TAB_ID = `tab_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 class SQLiteBridge {
@@ -186,27 +185,26 @@ class SQLiteBridge {
   private broadcastChannel: BroadcastChannel | null = null;
   private stateListeners: Set<(report: StorageStatusReport) => void> = new Set();
   /**
-   * Promesa de inicialización compartida. Mientras exista, TODOS los llamantes
-   * reciben exactamente la misma operación: sin secuencias `init()` paralelas que
-   * compitan por escribir `this.db`.
+   * Shared init promise. While present, EVERY caller gets exactly the same
+   * operation: no parallel `init()` sequences racing to write `this.db`.
    */
   private initPromise: Promise<Database> | null = null;
   private initState: InitState = 'idle';
   private initFailure: DbInitFailure | null = null;
   /**
-   * Revisión monótona de la versión persistida. Se incrementa en cada `persist()`
-   * y viaja en el mensaje de coordinación para que otra pestaña pueda detectar que
-   * su estado en memoria puede estar obsoleto sin resolver conflictos.
+   * Monotone persisted-version revision. Bumped on every `persist()` and carried
+   * in the coordination message so another tab can tell its in-memory state may
+   * be stale, without resolving conflicts.
    */
   private persistedRevision = 0;
   private lastSeenRevision = 0;
-  /** Segunda revisión más alta observada en el canal: nuestra versión local es antigua. */
+  /** Second-highest revision seen on the channel: our local version is old. */
   private remoteRevision = 0;
   private reloadPromise: Promise<void> | null = null;
   /**
-   * Tamaño cacheado del último export. Evita llamar a `db.export()` (que cierra y
-   * reabre la conexión SQLite y restablece PRAGMAs como `foreign_keys`) solo para
-   * informar del tamaño en cada notificación de estado.
+   * Cached last-export size. Avoids calling `db.export()` (which closes and
+   * reopens the SQLite connection and resets PRAGMAs like `foreign_keys`) just
+   * to report the size on every status notice.
    */
   private databaseSizeBytes = 0;
   private persistentStorageGranted = false;
@@ -219,15 +217,15 @@ class SQLiteBridge {
         this.broadcastChannel.onmessage = (event) => {
           if (event.data?.type === 'DATABASE_MUTATED_ANOTHER_TAB') {
             const revision = Number(event.data.revision) || 0;
-            // Ignoramos nuestros propios mensajes y cualquier revisión que ya
-            // tengamos incorporada: así no Entramos en un bucle de recarga.
+            // Ignore our own messages and any already-absorbed revision: never
+            // enter a reload loop.
             if (event.data.origin === TAB_ID) return;
             this.lastSeenRevision = Math.max(this.lastSeenRevision, revision);
             if (revision > this.persistedRevision) {
-              // Otra pestaña persistió una versión más nueva que la nuestra: nuestro
-              // estado en memoria puede estar obsoleto. No se resuelve ningún
-              // conflicto aquí; solo se marca para recargar ANTES de la siguiente
-              // operación de datos (ver `ensureFresh`).
+              // Another tab persisted a newer version than ours: our in-memory
+              // state may be stale. No conflict is resolved here; it is only
+              // flagged for reload BEFORE the next data operation (see
+              // `ensureFresh`).
               this.remoteRevision = Math.max(this.remoteRevision, revision);
               this.setStorageState('stale-other-tab');
               console.info('[CrossedArts Storage] Otra pestaña guardó una versión más nueva; se recargará antes de la siguiente lectura.');
@@ -289,22 +287,21 @@ class SQLiteBridge {
   }
 
   private async getSqlJsOptions(): Promise<any> {
-    // En el navegador resolvemos el WASM contra la base REAL del documento
-    // desplegado (`document.baseURI`), no contra una ruta relativa al bundle.
-    // Así, en GitHub Pages bajo `/CrossedArts/`, la petición es
-    // `https://.../CrossedArts/sql-wasm.wasm` sin codificar el nombre del
-    // repositorio y sigue siendo portable a cualquier base estática.
+    // In the browser, resolve the WASM against the deployed document's REAL base
+    // (`document.baseURI`), not a bundle-relative path. On GitHub Pages under
+    // `/CrossedArts/` the request becomes `https://.../CrossedArts/sql-wasm.wasm`
+    // without hardcoding the repo name, staying portable to any static base.
     //
-    // Además normalizamos el nombre al fichero que realmente desplegamos: Vite
-    // resuelve `sql.js` por su condición `browser`, cuya build pide
-    // `sql-wasm-browser.wasm` (inexistente en `public/`). Ambos binarios son
-    // idénticos, así que apuntar a `sql-wasm.wasm` es correcto y determinista.
+    // Also normalize to the file actually deployed: Vite resolves `sql.js` via
+    // its `browser` condition, whose build asks for `sql-wasm-browser.wasm`
+    // (absent from `public/`). Both binaries are identical, so pointing at
+    // `sql-wasm.wasm` is correct and deterministic.
     let initOptions: any = {
       locateFile: (file: string) =>
         resolveSqliteWasmUrl(deployedSqliteWasmFilename(file), document.baseURI)
     };
 
-    // Soporte para entornos Node.js / CLI tests sin red (0 web access)
+    // Node.js / CLI test support without network (0 web access)
     if (typeof window === 'undefined') {
       try {
         const fs = await import('node:fs');
@@ -321,39 +318,36 @@ class SQLiteBridge {
   }
 
   /**
-   * Inicializa SQLite de forma CONCURRENCY-SAFE.
+   * Initialize SQLite CONCURRENCY-SAFELY.
    *
-   * Antes, cada llamada ejecutaba su propia secuencia completa (`initSqlJs`,
-   * `loadFromStorage`, migraciones, `persist`) porque la comprobación
-   * `if (this.db && this.isInitialized)` solo es válida si no hay `await`
-   * entre la comprobación y la asignación. Con varias llamadas solapadas
-   * (React StrictMode monta-desmonta-monta el efecto de `useAppData`, y las
-   * vistas perezosas como KnowledgeGraph piden datos por su cuenta), dos
-   * secuencias competían por escribir `this.db`: una podía sobrescribir a la
-   * otra y `getDatabase()` lanzaba "Database not initialized" aunque el resto
-   * de la aplicación ya estuviera renderizada.
+   * Every call used to run its own full sequence (`initSqlJs`, `loadFromStorage`,
+   * migrations, `persist`) because the `if (this.db && this.isInitialized)` check
+   * is only valid with no `await` between check and assignment. Under overlapping
+   * calls (React StrictMode mount-unmount-mounts the `useAppData` effect, and
+   * lazy views like KnowledgeGraph fetch on their own), two sequences raced to
+   * write `this.db`: one could clobber the other and `getDatabase()` threw
+   * "Database not initialized" while the rest of the app was already rendered.
    *
-   * Ahora la inicialización es una única promesa compartida: el primer llamante
-   * la crea, el resto la espera. Además hay estados terminales explícitos
-   * (`ready` / `failed`) para que la UI pueda distinguir "inicializando" de
-   * "falló" y mostrar un error en español controlado en lugar del texto crudo
-   * de una excepción interna.
+   * Init is now one shared promise: the first caller creates it, the rest await
+   * it. Explicit terminal states (`ready` / `failed`) let the UI tell
+   * "initializing" from "failed" and show a controlled Spanish-language error
+   * instead of an inner exception's raw text.
    */
   public async init(): Promise<Database> {
     if (this.db && this.isInitialized) return this.db;
 
-    // Un inicializador en curso se comparte; nunca se duplica.
+    // An in-flight initializer is shared, never duplicated.
     if (!this.initPromise) {
       this.initPromise = this.runInit().finally(() => {
-        // Se libera el slot solo si esta sigue siendo la promesa actual: un
-        // reintento explícito crea una promesa nueva y no debe ser pisada.
+        // Release the slot only while still the current promise: an explicit
+        // retry creates a new promise that must not be clobbered.
         this.initPromise = null;
       });
     }
     return this.initPromise;
   }
 
-  /** Ejecuta la secuencia real de inicialización (una sola vez por intento). */
+  /** Run the real init sequence (once per attempt). */
   private async runInit(): Promise<Database> {
     this.initState = 'initializing';
     this.initFailure = null;
@@ -365,8 +359,8 @@ class SQLiteBridge {
       try {
         SQL = await initSqlJs(options);
       } catch (err) {
-        // El WASM es un recurso crítico: si no carga, la inicialización falla de
-        // forma terminal y controlada, no se renderiza la aplicación a medias.
+        // The WASM is a critical resource: when it fails to load, init fails
+        // terminally and in a controlled way; the app never half-renders.
         throw new DatabaseInitializationError(classifyInitError(err));
       }
 
@@ -387,11 +381,11 @@ class SQLiteBridge {
             detail: msg
           });
         }
-        // Sin IndexedDB seguimos pudiendo trabajar en memoria: no es un fallo
-        // terminal, se informa del estado y se continúa.
+        // Without IndexedDB we can still work in memory: not a terminal
+        // failure, report the state and carry on.
         this.setStorageState('storage-unavailable', msg || 'IndexedDB no disponible');
         if (this.loadFromStorage !== SQLiteBridge.prototype['loadFromStorage']) {
-          // Si el método fue sustituido en un test para probar fallos de almacenamiento
+          // When the method is stubbed in a test to exercise storage failures.
           throw new DatabaseInitializationError(classifyInitError(err));
         }
       }
@@ -431,8 +425,8 @@ class SQLiteBridge {
           this.initState = 'ready';
           this.setStorageState('ready');
           if (migrated) {
-            // Persistir la migración fuera del bloque de recuperación: un fallo
-            // transitorio de almacenamiento no debe descartar los datos del usuario.
+            // Persist the migration outside the recovery block: a transient
+            // storage failure must not discard user data.
             try {
               await this.persist();
             } catch (err) {
@@ -450,13 +444,13 @@ class SQLiteBridge {
         this.isInitialized = true;
         this.initState = 'ready';
         this.setStorageState('ready');
-        // Si no hay IndexedDB, `persist()` degrada a `inMemoryBytes` sin lanzar.
+        // Without IndexedDB, `persist()` degrades to `inMemoryBytes` without throwing.
         await this.persist();
       }
 
       return this.db!;
     } catch (err) {
-      // Estado terminal de fallo. La aplicación no debe montar sus vistas.
+      // Terminal failure state. The app must not mount its views.
       this.db = null;
       this.isInitialized = false;
       this.initState = 'failed';
@@ -473,20 +467,20 @@ class SQLiteBridge {
     }
   }
 
-  /** Estado actual del ciclo de vida de inicialización. */
+  /** Current initialization lifecycle state. */
   public getInitState(): InitState {
     return this.initState;
   }
 
-  /** Detalle del último fallo de inicialización, si lo hubo. */
+  /** Detail of the last initialization failure, if any. */
   public getInitFailure(): DbInitFailure | null {
     return this.initFailure;
   }
 
   /**
-   * Permite a un hijoLazy (KnowledgeGraph) esperar la inicialización en curso en
-   * lugar de asumir que la base de datos ya existe. Es seguro con StrictMode y con
-   * varias llamadas simultáneas porque devuelve la misma promesa compartida.
+   * Lets a lazy child (KnowledgeGraph) await the in-flight init instead of
+   * assuming the database exists. Safe under StrictMode and concurrent calls
+   * because it returns the same shared promise.
    */
   public async ensureInitialized(): Promise<Database> {
     if (this.db && this.isInitialized) {
@@ -499,10 +493,10 @@ class SQLiteBridge {
   }
 
   /**
-   * Detecta estado obsoleto multi-pestaña y recarga desde IndexedDB ANTES de la
-   * siguiente operación de datos. No resuelve conflictos ni sobrescribe con
-   * información antigua: si nuestra revisión es menor que la remota, la versión
-   * de IndexedDB (escrita por la otra pestaña) es la ganadora por definición.
+   * Detect multi-tab staleness and reload from IndexedDB BEFORE the next data
+   * operation. Resolves no conflicts and never overwrites with old data: when
+   * our revision trails the remote one, the IndexedDB version (written by the
+   * other tab) wins by definition.
    */
   public async ensureFresh(): Promise<void> {
     if (this.remoteRevision <= this.persistedRevision) return;
@@ -520,8 +514,8 @@ class SQLiteBridge {
     let effectiveTargetRevision = target;
     try {
       bytes = await this.loadFromStorage();
-      // Adoptar la revisión compartida real junto al snapshot: los mensajes del
-      // canal son una pista, el registro persistido es la fuente de verdad.
+      // Adopt the real shared revision alongside the snapshot: channel messages
+      // are a hint, the persisted record is the source of truth.
       const meta = await this.loadPersistedMeta();
       if (meta && meta.revision > this.persistedRevision) {
         effectiveTargetRevision = meta.revision;
@@ -530,10 +524,10 @@ class SQLiteBridge {
       console.warn('[CrossedArts Storage] No se pudo releer IndexedDB tras otra pestaña:', err);
       return;
     }
-    // Si no hay nada legible, mantenemos el estado actual: es preferible servir
-    // datos posiblemente antiguos que perder la sesión por un fallo transitorio.
+    // Nothing readable: keep the current state. Serving possibly-stale data
+    // beats losing the session over a transient failure.
     if (!bytes || !bytes.length || !isValidSqliteBuffer(bytes)) return;
-    // Nunca sobrescribimos con una revisión más antigua que la que ya tenemos.
+    // Never overwrite with a revision older than the one already held.
     if (effectiveTargetRevision !== target && effectiveTargetRevision <= this.persistedRevision) return;
 
     const options = await this.getSqlJsOptions();
@@ -560,12 +554,12 @@ class SQLiteBridge {
   }
 
   /**
-   * Acceso síncrono a la base de datos.
+   * Synchronous database access.
    *
-   * Antes lanzaba el texto crudo en inglés "Database not initialized", que se
-   * escapaba a la interfaz (el grafo de conocimiento lo pintaba tal cual).
-   * Ahora distingue los dos casos reales y ambos mensajes son de clase conocida,
-   * en español y con una vía de recuperación accionable.
+   * It used to throw the raw English "Database not initialized", which leaked
+   * into the UI (the knowledge graph painted it verbatim). It now tells the two
+   * real cases apart, and both messages are known-class, Spanish-language, with
+   * an actionable recovery path.
    */
   public getDatabase(): Database {
     if (this.remoteRevision > this.persistedRevision) {
@@ -594,9 +588,9 @@ class SQLiteBridge {
   }
 
   /**
-   * Lee los metadatos de coordinación persistidos (revisión compartida).
-   * Devuelve revisión 0 si no existen aún: coincide con el arranque de cualquier
-   * pestaña y con bases creadas por versiones anteriores sin este registro.
+   * Read the persisted coordination metadata (shared revision). Returns revision
+   * 0 when still absent: matches any tab's boot and databases created by older
+   * versions without this record.
    */
   private async loadPersistedMeta(): Promise<PersistedCoordinatorMeta | null> {
     if (!this.hasIndexedDB()) return null;
@@ -614,14 +608,14 @@ class SQLiteBridge {
   }
 
   /**
-   * Escribe snapshot + metadatos en UNA SOLA transacción IndexedDB con
-   * comparar-y-swap sobre la revisión.
+   * Write snapshot + metadata in ONE IndexedDB transaction with revision
+   * compare-and-swap.
    *
-   * Invariante anti-pérdida de actualizaciones: si la revisión persistida ya no
-   * es `expectedRevision`, otra pestaña escribió después de que esta pestaña
-   * cargó su estado. La transacción se aborta SIN tocar los bytes persistidos y
-   * se lanza `StaleWriteError`: el snapshot de la otra pestaña queda intacto y
-   * el usuario recarga antes de volver a aplicar el cambio.
+   * Lost-update guard: when the persisted revision is no longer
+   * `expectedRevision`, another tab wrote after this tab loaded its state. The
+   * transaction aborts WITHOUT touching the persisted bytes and throws
+   * `StaleWriteError`: the other tab's snapshot stays intact and the user
+   * reloads before re-applying the change.
    */
   private async commitPersistedBytes(bytes: Uint8Array): Promise<void> {
     const nextRevision = this.persistedRevision + 1;
@@ -646,8 +640,8 @@ class SQLiteBridge {
   }
 
   private async saveToStorageWithCas(bytes: Uint8Array, nextRevision: number): Promise<boolean> {
-    // Sin IndexedDB no hay compartición entre pestañas: persistir es seguro y
-    // delega en la escritura simple (mismo punto de extensión para pruebas).
+    // Without IndexedDB there is no cross-tab sharing: persisting is safe and
+    // delegates to the plain write (same seam for tests).
     if (!this.hasIndexedDB()) {
       await this.saveToStorage(bytes);
       return true;
@@ -664,10 +658,10 @@ class SQLiteBridge {
         const persistedMeta = (casReq.result as PersistedCoordinatorMeta | undefined) || null;
         const persistedRevision = persistedMeta ? persistedMeta.revision : 0;
         if (persistedRevision !== this.persistedRevision) {
-          // Otra pestaña avanzó la revisión compartida: abortar sin escribir.
+          // Another tab advanced the shared revision: abort without writing.
           observedPersistedRevision = persistedRevision;
           committed = false;
-          try { tx.abort(); } catch { /* transacción ya abortada */ }
+          try { tx.abort(); } catch { /* already aborted */ }
           return;
         }
         committed = true;
@@ -683,7 +677,7 @@ class SQLiteBridge {
         if (committed) {
           reject(new Error(translateKey(dbLang, 'db.txnAbort')));
         } else {
-          // Conflicto CAS: la revisión persistida avanzó bajo nuestros pies.
+          // CAS conflict: the persisted revision moved under our feet.
           reject(new StaleWriteError(observedPersistedRevision));
         }
       };
@@ -696,14 +690,14 @@ class SQLiteBridge {
     this.setStorageState('persisting');
     try {
       const bytes = this.db.export();
-      // `export()` puede restablecer PRAGMAs de conexión.
+      // `export()` may reset connection PRAGMAs.
       this.db.run('PRAGMA foreign_keys = ON;');
       await this.commitPersistedBytes(bytes);
     } catch (err: any) {
       if (err instanceof StaleWriteError) {
-        // Conflicto real multi-pestaña: marcar obsoleto con la revisión REAL
-        // observada en el almacén para que `ensureFresh()` recargue el snapshot
-        // ganador antes de la siguiente operación.
+        // Real multi-tab conflict: mark stale with the REAL revision observed
+        // in the store so `ensureFresh()` reloads the winning snapshot before
+        // the next operation.
         this.remoteRevision = Math.max(this.remoteRevision, err.persistedRevision);
         this.setStorageState('stale-other-tab', err.message);
       } else {
@@ -766,11 +760,10 @@ class SQLiteBridge {
     }
   }
   /**
-   * Migración idempotente del espacio de trabajo del trabajo práctico.
-   * Añade las columnas `content` (Markdown) y `checklist` (JSON de ítems) a
-   * bases creadas por versiones anteriores, sin reconstruir la tabla ni tocar
-   * filas existentes. En bases ya al día no hace nada.
-   * @returns true si la tabla fue migrada y debe persistirse.
+   * Idempotent practice-work workspace migration. Adds `content` (Markdown) and
+   * `checklist` (item JSON) columns to databases from older versions, without
+   * rebuilding the table or touching existing rows. No-op on current databases.
+   * @returns true when the table was migrated and must persist.
    */
   private migratePracticeWorkspace(db: Database): boolean {
     const info = db.exec('PRAGMA table_info(practice_work)');
@@ -789,15 +782,14 @@ class SQLiteBridge {
   }
 
   /**
-   * Migración idempotente de los vínculos del trabajo práctico.
+   * Idempotent practice-work link migration.
    *
-   * Bases creadas por versiones anteriores declaraban `resource_id` y
-   * `lesson_id` con `ON DELETE CASCADE`: borrar una lección o un recurso
-   * destruía el trabajo del usuario. SQLite no permite alterar una clave foránea
-   * in situ, así que la tabla se reconstruye conservando TODAS las filas (solo
-   * cuando realmente hace falta) y se recrean sus índices.
+   * Databases from older versions declared `resource_id` and `lesson_id` with
+   * `ON DELETE CASCADE`: deleting a lesson or resource destroyed user work.
+   * SQLite cannot alter a foreign key in place, so the table is rebuilt keeping
+   * EVERY row (only when truly needed) and its indexes are recreated.
    *
-   * @returns true si la tabla fue reconstruida y debe persistirse.
+   * @returns true when the table was rebuilt and must persist.
    */
   private migratePracticeWorkParentCascade(db: Database): boolean {
     const fkInfo = db.exec('PRAGMA foreign_key_list(practice_work)');
@@ -818,7 +810,7 @@ class SQLiteBridge {
     ];
     const sharedColumns = targetColumns.filter((column) => existingColumns.has(column));
 
-    // `PRAGMA foreign_keys` no puede cambiarse dentro de una transacción.
+    // `PRAGMA foreign_keys` cannot change inside a transaction.
     db.run('PRAGMA foreign_keys = OFF;');
     try {
       db.run('BEGIN TRANSACTION;');
@@ -832,7 +824,7 @@ class SQLiteBridge {
       db.run(PRACTICE_WORK_INDEX_SQL);
       db.run('COMMIT;');
     } catch (err) {
-      try { db.run('ROLLBACK;'); } catch { /* la transacción ya pudo revertirse */ }
+      try { db.run('ROLLBACK;'); } catch { /* already rolled back */ }
       throw err;
     } finally {
       db.run('PRAGMA foreign_keys = ON;');
@@ -841,7 +833,7 @@ class SQLiteBridge {
   }
 
   private applyMigrationsAndCompleteSchema(db: Database): boolean {
-    // 1. Migraciones de tablas existentes antes de crear índices sobre columnas nuevas
+    // 1. Migrate existing tables before indexing new columns.
     const migratedSession = this.migrateLearningSession(db);
     const migratedLesson = this.migrateLessonContent(db);
     const migratedFlashcard = this.migrateFlashcardLessonId(db);
@@ -851,10 +843,10 @@ class SQLiteBridge {
     const migratedPractice = this.migratePracticeWorkspace(db);
     const migratedPracticeCascade = this.migratePracticeWorkParentCascade(db);
 
-    // 2. Crear cualquier tabla o índice base nuevo que falte (IF NOT EXISTS)
+    // 2. Create any missing new base table/index (IF NOT EXISTS).
     db.run(SCHEMA_SQL);
 
-    // 3. Re-verificar que los índices dependientes de columnas migradas existan
+    // 3. Re-check indexes depending on migrated columns.
     db.run('CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);');
     db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
 
@@ -897,10 +889,9 @@ class SQLiteBridge {
   }
 
   /**
-   * Migración idempotente de la tabla `lesson` (Iteración 15).
-   * Añade la columna de contenido de lección (texto/Markdown como datos) sin
-   * reconstruir la tabla ni perder datos existentes.
-   * @returns true si la tabla fue migrada y debe persistirse.
+   * Idempotent `lesson` table migration (Iteration 15). Adds the lesson-content
+   * column (text/Markdown as data) without rebuilding the table or losing data.
+   * @returns true when the table was migrated and must persist.
    */
   private migrateLessonContent(db: Database): boolean {
     const info = db.exec('PRAGMA table_info(lesson)');
@@ -912,9 +903,9 @@ class SQLiteBridge {
   }
 
   /**
-   * Migración idempotente de la columna lesson_id en flashcard.
-   * Permite asociar tarjetas de estudio directamente a lecciones de forma opcional.
-   * @returns true si la tabla fue migrada y debe persistirse.
+   * Idempotent flashcard lesson_id column migration. Allows optionally linking
+   * study cards straight to lessons.
+   * @returns true when the table was migrated and must persist.
    */
   private migrateFlashcardLessonId(db: Database): boolean {
     const info = db.exec('PRAGMA table_info(flashcard)');
@@ -930,8 +921,8 @@ class SQLiteBridge {
   }
 
   /**
-   * Migración idempotente para soporte de Oclusión de Imágenes en flashcard (card_type, extra_data).
-   * @returns true si la tabla fue migrada y debe persistirse.
+   * Idempotent Image-Occlusion support migration on flashcard (card_type, extra_data).
+   * @returns true when the table was migrated and must persist.
    */
   private migrateFlashcardOcclusion(db: Database): boolean {
     const info = db.exec('PRAGMA table_info(flashcard)');
@@ -950,9 +941,9 @@ class SQLiteBridge {
   }
 
   /**
-   * Migración idempotente de la columna lesson_id en note.
-   * Permite asociar notas directamente a lecciones de forma opcional.
-   * @returns true si la tabla fue migrada y debe persistirse.
+   * Idempotent note lesson_id column migration. Allows optionally linking notes
+   * straight to lessons.
+   * @returns true when the table was migrated and must persist.
    */
   private migrateNoteLessonId(db: Database): boolean {
     const info = db.exec('PRAGMA table_info(note)');
@@ -964,12 +955,11 @@ class SQLiteBridge {
   }
 
   /**
-   * Migración idempotente del índice único de conexiones del grafo.
-   * Deduplica primero las tripletas exactas (conservando la fila más antigua por
-   * id determinista) y después crea el índice único. Es seguro sobre datos
-   * existentes y no impone claves foráneas (los extremos siguen siendo
-   * polimórficos).
-   * @returns true si se creó el índice o se deduplicó algo.
+   * Idempotent graph-connection unique-index migration. Dedupes exact triplets
+   * first (keeping the oldest row by deterministic id), then creates the unique
+   * index. Safe on existing data; imposes no foreign keys (endpoints stay
+   * polymorphic).
+   * @returns true when the index was created or something deduped.
    */
   private migrateKnowledgeConnectionIndex(db: Database): boolean {
     const info = db.exec('PRAGMA table_info(knowledge_connection)');
@@ -986,12 +976,12 @@ class SQLiteBridge {
       migrated = true;
     }
 
-    // ¿Existe ya el índice único? Si existe, los tres índices ya se crearon antes.
+    // Unique index already there? Then all three indexes predate this run.
     const existing = db.exec("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_knowledge_connection_triple'");
     if (existing.length && existing[0].values.length) return migrated;
 
-    // Deduplicar tripletas exactas ANTES de crear el índice único, conservando
-    // de forma determinista la fila con el `id` menor.
+    // Deduplicate exact triplets BEFORE creating the unique index, keeping
+    // deterministically the row with the smallest `id`.
     const dupes = db.exec(`
       SELECT source_id, target_id, connection_type, COUNT(*) AS c
       FROM knowledge_connection
@@ -1013,7 +1003,7 @@ class SQLiteBridge {
       }
     }
 
-    // Índices de extremos (aceleran el podado) + índice único de tripleta.
+    // Endpoint indexes (speed up pruning) + unique triplet index.
     db.run('CREATE INDEX IF NOT EXISTS idx_knowledge_connection_source ON knowledge_connection(source_id);');
     db.run('CREATE INDEX IF NOT EXISTS idx_knowledge_connection_target ON knowledge_connection(target_id);');
     db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
@@ -1021,20 +1011,20 @@ class SQLiteBridge {
   }
 
   /**
-   * Migración idempotente de la tabla `learning_session`.
+   * Idempotent `learning_session` table migration.
    *
-   * Amplía la sesión de estudio con modo, contadores, estado y `scope` sin crear
-   * un segundo sistema de historial. Reconstruye la tabla solo si el esquema
-   * previo es incompatible (por ejemplo `resource_id NOT NULL`, que impedía el
-   * ámbito global).
+   * Extends the study session with mode, counters, status, and `scope` without
+   * creating a second history system. Rebuilds the table only when the prior
+   * schema is incompatible (e.g. `resource_id NOT NULL`, which blocked the
+   * global scope).
    *
-   * `scope` hace explícito el dominio de tres ámbitos (global / resource /
-   * lesson; ver `services/sessionScope.ts`). Los registros heredados que no lo
-   * declaraban se normalizan de forma DETERMINISTA a partir de sus anclas:
-   * lección si tiene `lesson_id`, recurso si solo tiene `resource_id`, y global
-   * en caso contrario. Ninguna fila existente cambia de significado.
+   * `scope` makes the three-scope domain explicit (global / resource / lesson;
+   * see `services/sessionScope.ts`). Legacy rows that never declared it are
+   * normalized DETERMINISTICALLY from their anchors: lesson with `lesson_id`,
+   * resource with only `resource_id`, global otherwise. No existing row changes
+   * meaning.
    *
-   * @returns true si la tabla fue migrada y debe persistirse.
+   * @returns true when the table was migrated and must be persisted.
    */
   private migrateLearningSession(db: Database): boolean {
     const info = db.exec('PRAGMA table_info(learning_session)');
@@ -1050,19 +1040,19 @@ class SQLiteBridge {
     const hasScope = columns.some(c => c.name === 'scope');
     const resourceNotNull = columns.find(c => c.name === 'resource_id')?.notNull === true;
 
-    // Esquema ya al día: modo + resource_id opcional + lesson_id + scope.
+    // Schema already current: mode + optional resource_id + lesson_id + scope.
     if (hasMode && !resourceNotNull && hasLessonId && hasScope) return false;
 
-    // Ampliación incremental: solo falta el ámbito explícito. Un ALTER TABLE es
-    // suficiente (no pierde datos) y el backfill es determinista.
+    // Incremental upgrade: only the explicit scope is missing. One ALTER TABLE
+    // suffices (no data loss) with a deterministic backfill.
     if (hasMode && !resourceNotNull && hasLessonId && !hasScope) {
       db.run("ALTER TABLE learning_session ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';");
       this.backfillSessionScope(db);
       return true;
     }
 
-    // Falta la columna de lección pero el resto del esquema es compatible: se
-    // añade también el ámbito explícito en la misma pasada.
+    // Lesson column missing but the rest is compatible: add the explicit scope
+    // in the same pass.
     if (hasMode && !resourceNotNull && !hasLessonId) {
       db.run('ALTER TABLE learning_session ADD COLUMN lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL;');
       db.run("ALTER TABLE learning_session ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';");
@@ -1091,12 +1081,12 @@ class SQLiteBridge {
         status TEXT DEFAULT 'completed'
       );
     `);
-    // Preservar el estado realmente persistido: si la base legada ya registraba
-    // modo, contadores o estado, se copian tal cual (COALESCE sólo cubre NULL).
-    // Así una sesión cancelada jamás se reconstruye como completada. Sólo cuando
-    // la columna no existía se aplica el valor por defecto histórico: 'completed'
-    // mantiene la compatibilidad con las bases antiguas, cuyas filas eran
-    // registros de estudio finalizados (sin concepto de cancelación).
+    // Preserve the actually persisted state: when the legacy DB already recorded
+    // mode, counters, or status, copy them verbatim (COALESCE only covers NULL).
+    // A cancelled session is thus never rebuilt as completed. Only for a missing
+    // column does the historic default apply: 'completed' keeps compatibility
+    // with old databases, whose rows were finalized study records (no
+    // cancellation concept).
     const legacyColumns = new Set(columns.map(c => c.name));
     const legacyExpr = (name: string, fallbackSql: string): string =>
       legacyColumns.has(name) ? `COALESCE(${name}, ${fallbackSql})` : fallbackSql;
@@ -1110,8 +1100,8 @@ class SQLiteBridge {
     const endedExpr = legacyExpr('ended_at', 'NULL');
     const durationExpr = legacyExpr('duration_minutes', '0');
     const inactiveExpr = legacyExpr('inactive_seconds', '0');
-    // El ámbito se deriva de las anclas: la lección manda sobre el recurso y la
-    // ausencia de anclas ES el ámbito global (repaso transversal explícito).
+    // Scope derives from anchors: lesson beats resource, and anchorless IS the
+    // global scope (explicit cross-cutting review).
     const scopeExpr = legacyColumns.has('scope')
       ? "COALESCE(scope, CASE WHEN lesson_id IS NOT NULL THEN 'lesson' WHEN resource_id IS NOT NULL THEN 'resource' ELSE 'global' END)"
       : `CASE WHEN ${lessonExpr} IS NOT NULL THEN 'lesson' WHEN resource_id IS NOT NULL THEN 'resource' ELSE 'global' END`;
@@ -1129,8 +1119,8 @@ class SQLiteBridge {
   }
 
   /**
-   * Rellena `learning_session.scope` de forma determinista a partir de las
-   * anclas presentes. Idempotente: sólo reescribe valores ausentes o inválidos.
+   * Backfill `learning_session.scope` deterministically from present anchors.
+   * Idempotent: only rewrites missing or invalid values.
    */
   private backfillSessionScope(db: Database): void {
     db.run(`
@@ -1151,7 +1141,7 @@ class SQLiteBridge {
     if (!this.db) throw new DatabaseInitializationError(this.initFailure || { ...initFailureMessages().unknown, code: 'unknown' });
     const bytes = this.db.export();
     this.databaseSizeBytes = bytes.byteLength;
-    // Reafirmar claves foráneas tras el cierre/reapertura implícita de export().
+    // Re-assert foreign keys after export()'s implicit close/reopen.
     this.db.run('PRAGMA foreign_keys = ON;');
     return bytes;
   }
@@ -1216,8 +1206,8 @@ class SQLiteBridge {
   }
 
   private async saveToStorage(bytes: Uint8Array): Promise<void> {
-    // Escritura simple sin CAS: solo para migraciones de arranque e importación,
-    // donde el snapshot local ya es la base sobre la que se trabaja.
+    // Plain write without CAS: only for boot migrations and imports, where the
+    // local snapshot is already the working base.
     if (!this.hasIndexedDB()) {
       this.inMemoryBytes = bytes;
       return;

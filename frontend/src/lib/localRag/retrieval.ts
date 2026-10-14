@@ -11,12 +11,11 @@ import { THRESHOLDS } from './types.ts';
 import type { RetrievedDocument, RetrievalResult, RetrievalScope } from './types.ts';
 
 /**
- * Tipos canónicos de la recuperación local.
+ * Canonical local-retrieval types.
  *
- * Viven en `types.ts` para que recuperación, diversificación, fusión y
- * empaquetado de contexto compartan EXACTAMENTE el mismo contrato. Aquí solo se
- * re-exportan, conservando la ruta de importación histórica
- * (`localRag/retrieval.ts`) usada por los llamantes.
+ * They live in `types.ts` so retrieval, diversification, fusion, and context
+ * packing share EXACTLY the same contract. They are only re-exported here,
+ * keeping the historic import path (`localRag/retrieval.ts`) callers use.
  */
 export type {
   RetrievedSourceType,
@@ -26,7 +25,7 @@ export type {
 } from './types.ts';
 
 /**
- * Normaliza y tokeniza una cadena de texto para comparación léxica sin acentos ni mayúsculas.
+ * Normalize and tokenize a string for accent/case-insensitive lexical matching.
  */
 export function tokenizeLexical(text: string): string[] {
   if (!text) return [];
@@ -36,11 +35,11 @@ export function tokenizeLexical(text: string): string[] {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
-    .filter(token => token.length > 2); // Palabras significativas de > 2 letras
+    .filter(token => token.length > 2); // Significant words only (> 2 letters).
 }
 
 /**
- * Calcula una puntuación de similitud léxica determinista entre una consulta y un texto objetivo.
+ * Deterministic lexical-similarity score between a query and a target text.
  */
 export function scoreLexicalRelevance(queryTokens: string[], targetText: string): number {
   if (!queryTokens.length || !targetText) return 0;
@@ -63,8 +62,8 @@ export function scoreLexicalRelevance(queryTokens: string[], targetText: string)
 }
 
 /**
- * Un acierto es sustantivo cuando los tokens de la consulta aparecen en el
- * CONTENIDO del artefacto (no solo en su título). Determinista y conservador.
+ * A hit is substantive when query tokens appear in the artifact's CONTENT (not
+ * just its title). Deterministic and conservative.
  */
 function isSubstantiveMatch(queryTokens: string[], content: string | null | undefined): boolean {
   const text = (content || '').trim();
@@ -73,21 +72,21 @@ function isSubstantiveMatch(queryTokens: string[], content: string | null | unde
 }
 
 /**
- * Umbrales de relevancia explícitos y calibrados.
+ * Explicit, calibrated relevance thresholds.
  *
- * El contrato vive en `types.ts` (única definición) y se re-exporta aquí para
- * conservar la ruta de importación histórica.
+ * The contract lives in `types.ts` (single definition) and is re-exported here
+ * to keep the historic import path.
  */
 export { THRESHOLDS } from './types.ts';
-// La fusión vive en `fusion.ts`; se re-exporta aquí porque la recuperación y
-// sus pruebas históricos la importaban desde este módulo.
+// Fusion lives in `fusion.ts`; re-exported here because retrieval and its
+// historic tests imported it from this module.
 export { computeRrfScore, normalizeScore } from './fusion.ts';
 
 /**
- * Contrato de vigencia de un vector cacheado: solo es utilizable si su
- * `contentHash` coincide con el hash actual del material. Un cambio de contenido
- * (por ejemplo editar una lección) invalida el vector antiguo de forma perezosa,
- * sin reconstruir todo el índice ni afectar a fragmentos sin cambios.
+ * Cached-vector freshness contract: usable only when its `contentHash` matches
+ * the material's current hash. A content change (e.g. editing a lesson) lazily
+ * invalidates the old vector, without rebuilding the whole index or touching
+ * unchanged chunks.
  */
 export function isCachedVectorFresh(
   entry: { contentHash: string; pipelineVersion?: string },
@@ -101,12 +100,11 @@ export function isCachedVectorFresh(
 }
 
 /**
- * Diversificación canónica de candidatos.
+ * Canonical candidate diversification.
  *
- * Es un alias estable de la política única (`diversification.ts`), que cuenta
- * por IDENTIFICADOR BASE de fuente y no por identificador de fragmento. Se
- * mantiene el nombre histórico porque varios llamantes y pruebas lo importan
- * desde este módulo; la lógica vive en un único sitio.
+ * A stable alias of the single policy (`diversification.ts`), which counts by
+ * source BASE ID, not chunk id. The historic name stays because several callers
+ * and tests import it from this module; the logic lives in one place.
  */
 export function deduplicateAndDiversify(
   candidates: RetrievedDocument[],
@@ -116,14 +114,14 @@ export function deduplicateAndDiversify(
 }
 
 /**
- * Recupera documentos relevantes de la base de datos local SQLite de CrossedArts
- * basándose en una estrategia HÍBRIDA (léxica + semántica con embeddings on-device).
+ * Retrieve relevant documents from the local CrossedArts SQLite database with a
+ * HYBRID strategy (lexical + on-device-embedding semantic).
  */
 export interface RetrievalOptions {
   /**
-   * Solicita recuperación semántica cuando aporte valor. La preparación de
-   * embeddings y la indexación de contenido faltante ocurren automáticamente;
-   * si no es posible, la recuperación léxica permanece intacta.
+   * Request semantic retrieval when it adds value. Embedding warm-up and
+   * missing-content indexing happen automatically; when impossible, lexical
+   * retrieval stays intact.
    */
   semantic?: boolean;
 }
@@ -156,9 +154,9 @@ export async function retrieveLocalContext(
   let lessonIndex: Awaited<ReturnType<typeof dao.getLessonIndex>> = [];
 
   try {
-    // Todas las fuentes se resuelven en paralelo y con un número FIJO de
-    // consultas. `getLessonIndex()` sustituye al patrón N+1
-    // (`getCourseById()` por curso, que además re-escanaba todos los recursos).
+    // Every source resolves in parallel with a FIXED query count. `getLessonIndex()`
+    // replaces the N+1 pattern (`getCourseById()` per course, which also
+    // re-scanned every resource).
     const results = await Promise.all([
       dao.getCourses(),
       dao.getBooks(),
@@ -179,10 +177,9 @@ export async function retrieveLocalContext(
     return emptyResult();
   }
 
-  // Mapa de candidatos léxicos
   const lexicalCandidates: Map<string, RetrievedDocument> = new Map();
 
-  // 1a. Cursos (metadatos del recurso, sin reconstruir su jerarquía)
+  // 1a. Courses (resource metadata, no hierarchy rebuild).
   for (const course of courses) {
     const courseText = `${course.title} ${course.description || ''} ${course.category}`;
     const score = scoreLexicalRelevance(tokens, courseText);
@@ -200,9 +197,9 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 1b. Lecciones desde el índice plano (antes se reconstruía curso por curso).
-  // El texto puntuado y el snippet se conservan idénticos para no alterar el
-  // ranking determinista ni la deduplicación por fuente.
+  // 1b. Lessons from the flat index (previously rebuilt course by course).
+  // Scored text and snippet stay byte-identical to preserve the deterministic
+  // ranking and per-source dedup.
   for (const entry of lessonIndex) {
     const lesText = `${entry.lessonTitle} ${entry.moduleTitle} ${entry.lessonContent || ''}`;
     const lScore = scoreLexicalRelevance(tokens, lesText);
@@ -223,7 +220,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 2. Libros
+  // 2. Books
   for (const book of books) {
     const bookText = `${book.title} ${book.author || ''} ${book.description || ''} ${book.category}`;
     const score = scoreLexicalRelevance(tokens, bookText);
@@ -241,7 +238,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 3. Notas
+  // 3. Notes
   for (const note of notes) {
     const noteText = `${note.title} ${note.content}`;
     const score = scoreLexicalRelevance(tokens, noteText);
@@ -277,7 +274,7 @@ export async function retrieveLocalContext(
         title: `Tarjeta: ${fc.front}`,
         snippet: `Anverso: ${fc.front} | Reverso: ${fc.back}`,
         score,
-        // El anverso y el reverso SON el contenido de la tarjeta.
+        // Front and back ARE the card content.
         substantive: true,
         resourceId: fc.resource_id || undefined,
         lessonId: fc.lesson_id || undefined
@@ -285,7 +282,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 5. Conceptos del Grafo
+  // 5. Graph concepts
   for (const node of graph.nodes) {
     const conceptText = `${node.name} ${node.description || ''}`;
     const score = scoreLexicalRelevance(tokens, conceptText);
@@ -301,9 +298,9 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 5b. Trabajo práctico: evidencia PRODUCIDA por el estudiante. Se recupera por
-  // su título, descripción, contenido y notas, y conserva la procedencia hacia
-  // su recurso/lección para que el ámbito pueda acotarlo.
+  // 5b. Practice work: student-PRODUCED evidence. Retrieved by title,
+  // description, content, and notes, keeping provenance to its resource/lesson
+  // so scope can narrow it.
   for (const work of practiceWork) {
     const bodySource = [work.description, work.content, work.notes]
       .map((value: string | null | undefined) => (value || '').trim())
@@ -325,12 +322,12 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 6. Búsqueda semántica usando el caché de vectores (si el motor o caché están disponibles)
+  // 6. Semantic search over the vector cache (when engine/cache available).
   let semanticMatches: { chunkId: string; score: number; entry: any }[] = [];
   let isSemanticReady = localEmbeddingEngine.getStatus() === 'ready';
 
-  // Preparación automática de embeddings cuando la recuperación semántica es
-  // útil. Si tarda o falla, se degrada inmediatamente a recuperación léxica en SQLite.
+  // Auto-warm embeddings when semantic retrieval pays off. On slowness or
+  // failure, degrade immediately to lexical SQLite retrieval.
   if (!isSemanticReady && options?.semantic) {
     try {
       const semanticPromise = localAiRuntime.ensureSemanticIndexReady();
@@ -347,30 +344,29 @@ export async function retrieveLocalContext(
   if (isSemanticReady) {
     try {
       const modelId = localEmbeddingEngine.getLoadedModelId() || DEFAULT_EMBEDDING_MODEL_ID;
-      // Consulta con prefijo explícito query:
+      // Query with the explicit query: prefix.
       const queryVector = await localEmbeddingEngine.embedText(query, true);
       const allCached = await embeddingCache.getAllEntriesForModel(modelId);
 
       if (allCached.length > 0) {
-        // El modo semántico solo se anuncia cuando existen coincidencias semánticas aceptables.
+        // Semantic mode is only advertised once acceptable semantic hits exist.
 
-        // Validación de vigencia (staleness) por hash de contenido: un vector
-        // cacheado solo es utilizable si su `contentHash` coincide con el hash
-        // ACTUAL del material. Así, editar la lección A invalida su vector
-        // antiguo (se excluye de la recuperación) sin reconstruir todo el índice
-        // y sin afectar a la lección B ni a otros recursos sin cambios.
+        // Content-hash freshness (staleness) check: a cached vector is usable
+        // only when its `contentHash` matches the material's CURRENT hash.
+        // Editing lesson A thus invalidates its old vector (excluded from
+        // retrieval) without rebuilding the whole index or touching lesson B
+        // and other unchanged resources.
         const currentHashes = new Map<string, string>();
         try {
-          // Se reutilizan los datos que esta misma recuperación ya cargó: antes se
-          // reconstruía toda la biblioteca con getAllLearningResources(), que
-          // volvía a consultar cursos/módulos y podía introducir trabajo N+1.
+          // Reuse what this same retrieval already loaded: it used to rebuild
+          // the whole library via getAllLearningResources(), re-querying
+          // courses/modules and risking N+1 work.
           //
-          // La identidad de contenido se resuelve por la frontera canónica
-          // (entidades de dominio -> KnowledgeDocument -> fragmentos) y a través
-          // del manifiesto local: los documentos sin cambios reutilizan su
-          // SHA-256, así que una consulta semántica no recalcula el hash de
-          // toda la biblioteca. La corrección NO depende del manifiesto: el
-          // hash devuelto siempre corresponde al texto actual.
+          // Content identity resolves through the canonical boundary (domain
+          // entities -> KnowledgeDocument -> chunks) and the local manifest:
+          // unchanged documents reuse their SHA-256, so a semantic query never
+          // rehashes the whole library. Correctness does NOT depend on the
+          // manifest: the returned hash always matches the current text.
           const lessonGroups = new Map<string, Map<string, any[]>>();
           for (const entry of lessonIndex) {
             if (!lessonGroups.has(entry.courseId)) lessonGroups.set(entry.courseId, new Map());
@@ -405,21 +401,21 @@ export async function retrieveLocalContext(
           }, modelId);
           for (const [chunkId, contentHash] of hashes) currentHashes.set(chunkId, contentHash);
         } catch {
-          /* Si no se pueden recalcular los hashes, no se usan vectores potencialmente obsoletos. */
+          /* When hashes cannot be recomputed, potentially stale vectors go unused. */
         }
 
         for (const entry of allCached) {
           const expectedHash = currentHashes.get(entry.chunkId);
-          // Sin hash actual conocido (material eliminado o no recalculable) el
-          // vector se considera obsoleto y se excluye: nunca se trata como vigente.
-          // La versión esperada es la del runtime, nunca la de la propia
-          // entrada: una entrada con una versión distinta debe caducar aunque
-          // se autoconsidere vigente.
+          // No known current hash (deleted or unhashable material): the vector
+          // counts as stale and is excluded, never treated as fresh. The
+          // expected version is the runtime's, never the entry's own: a
+          // version-mismatched entry must expire even when it deems itself
+          // fresh.
           if (!isCachedVectorFresh(entry, expectedHash, EMBEDDING_PIPELINE_VERSION)) {
             continue;
           }
           const sim = cosineSimilarity(queryVector, entry.vector);
-          // Umbral semántico mínimo calibrado
+          // Calibrated minimum semantic threshold.
           if (sim >= THRESHOLDS.MIN_SEMANTIC_SIMILARITY) {
             semanticMatches.push({ chunkId: entry.chunkId, score: sim, entry });
           }
@@ -430,8 +426,8 @@ export async function retrieveLocalContext(
     }
   }
 
-  // FUSIÓN (implementación canónica en `fusion.ts`): RRF como señal principal y
-  // similitud normalizada como desempate de calidad.
+  // FUSION (canonical implementation in `fusion.ts`): RRF as the primary signal,
+  // normalized similarity as the quality tiebreak.
   const lexicalEligible = Array.from(lexicalCandidates.entries())
     .filter(([, cand]) => cand.score >= THRESHOLDS.MIN_LEXICAL_CANDIDATE)
     .sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0]));
@@ -448,33 +444,33 @@ export async function retrieveLocalContext(
   const lexicalRankKeys = fused.lexicalRanks;
   const semanticRankKeys = fused.semanticRanks;
 
-  // CONTRATO DE ÁMBITO (frontera dura): con ámbito solicitado, solo el material
-  // dentro del perímetro resuelto (anclas + nodos conectados del grafo) puede
-  // convertirse en contexto. Un documento ajeno con puntuación alta JAMÁS entra
-  // por puntuación; sin ámbito la búsqueda sigue siendo global e intacta.
+  // SCOPE CONTRACT (hard boundary): under a requested scope, only material
+  // inside the resolved perimeter (anchors + connected graph nodes) may become
+  // context. A high-scoring foreign document NEVER enters on score alone;
+  // scopeless search stays global and intact.
   let scopeIds: Set<string> | null = null;
   if (scope && (scope.resourceId || scope.lessonId)) {
     scopeIds = await resolveScopeIds(scope);
   }
 
-  // Umbral de aceptación final
+  // Final acceptance threshold.
   let filtered = allMerged.filter(c => c.score >= THRESHOLDS.MIN_FINAL_ACCEPTANCE);
 
   if (scopeIds) {
     filtered = filtered.filter(c => isWithinScope({ sourceId: c.id, resourceId: c.resourceId, lessonId: c.lessonId }, scopeIds!));
     for (const cand of filtered) {
-      // Impulso determinista de ámbito, solo a candidatos ya dentro del perímetro.
+      // Deterministic scope boost, only for candidates already inside the perimeter.
       cand.score = Math.min(1, cand.score + THRESHOLDS.SCOPE_BOOST);
     }
   }
 
-  // Ordenar deterministamente
+  // Sort deterministically.
   filtered.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return a.id.localeCompare(b.id);
   });
 
-  // Deduplicar inteligentemente (máximo 2 fragmentos por recurso para diversidad)
+  // Smart dedup (max 2 chunks per resource for diversity).
   const diversified = diversifyResults(filtered, { maxChunksPerSource: DEFAULT_MAX_CHUNKS_PER_SOURCE });
 
   const selected = diversified.slice(0, Math.min(limit, 5));
@@ -484,9 +480,9 @@ export async function retrieveLocalContext(
     lexicalRankKeys.size === 0 ? 'semantic' :
     'hybrid';
 
-  // `totalCandidates` describe el conjunto de candidatos ACEPTADOS antes de
-  // diversificar; `diversifiedCandidates` los que quedan tras diversificar. Así
-  // el número es fiel a lo que representa en cada fase.
+  // `totalCandidates` is the ACCEPTED candidate set before diversification;
+  // `diversifiedCandidates` is what survives it. Each count stays faithful to
+  // its phase.
   return {
     documents: selected,
     hasContext: selected.length > 0,

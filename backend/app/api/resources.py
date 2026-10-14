@@ -18,12 +18,12 @@ router = APIRouter(prefix="/resources", tags=["Resources"])
 
 @router.get("", response_model=List[ResourceResponse])
 def list_resources(
-    type: Optional[str] = Query(None, description="Filtro por tipo: 'course' o 'book'"),
-    status: Optional[ResourceStatus] = Query(None, description="Filtro por estado de progreso"),
+    type: Optional[str] = Query(None, description="Filter by type: 'course' or 'book'"),
+    status: Optional[ResourceStatus] = Query(None, description="Filter by progress status"),
     db: Session = Depends(get_db)
 ):
     """
-    Lista todos los recursos de aprendizaje con filtros dinámicos.
+    List all learning resources with dynamic filters.
     """
     stmt = select(LearningResource)
 
@@ -39,7 +39,7 @@ def list_resources(
 @router.get("/in-progress", response_model=List[ResourceResponse])
 def list_in_progress_resources(db: Session = Depends(get_db)):
     """
-    Retorna la lista de recursos de aprendizaje actualmente en curso.
+    Return the currently in-progress learning resources.
     """
     stmt = (
         select(LearningResource)
@@ -51,15 +51,13 @@ def list_in_progress_resources(db: Session = Depends(get_db)):
 
 @router.get("/recent", response_model=List[ResourceResponse])
 def list_recent_resources(
-    limit: int = Query(5, ge=1, le=100, description="Número máximo de recursos a retornar"),
+    limit: int = Query(5, ge=1, le=100, description="Max resources to return"),
     db: Session = Depends(get_db)
 ):
     """
-    Retorna los recursos accedidos recientemente.
-
-    El límite está acotado (1..100): un valor sin cota permite pedir el catálogo
-    entero en una sola respuesta, lo que es una carga trivial de abusing en
-    lugar de un endpoint paginado.
+    Return recently accessed resources. The limit is bounded (1..100): an
+    unbounded value would let one response dump the whole catalog, a trivial
+    abuse vector instead of a paginated endpoint.
     """
     stmt = select(LearningResource).order_by(desc(LearningResource.updated_at)).limit(limit)
     return list(db.scalars(stmt).all())
@@ -92,14 +90,14 @@ def update_resource(
     db: Session = Depends(get_db)
 ):
     """
-    Actualiza los metadatos de un recurso de aprendizaje: título, categoría, descripción,
-    portada, estado y campos específicos de tipo (dificultad para cursos, autor para libros).
+    Update a learning resource's metadata: title, category, description, cover,
+    status, and type-specific fields (difficulty for courses, author for books).
     """
     resource = db.get(LearningResource, resource_id)
     if not resource:
         raise get_http_exception("RESOURCE_NOT_FOUND", f"El recurso con ID {resource_id} no existe.")
 
-    # Campos genéricos editables
+    # Generic editable fields.
     if payload.title is not None:
         resource.title = payload.title
     if payload.category is not None:
@@ -113,14 +111,14 @@ def update_resource(
     if payload.status is not None:
         resource.status = payload.status
 
-    # Campos específicos de Course
+    # Course-specific fields.
     if resource.type == "course" and payload.difficulty is not None:
         from backend.app.models.base import CourseDifficulty
         diff_str = payload.difficulty.upper()
         if diff_str in CourseDifficulty.__members__:
             resource.difficulty = CourseDifficulty[diff_str]
 
-    # Campos específicos de Book
+    # Book-specific fields.
     if resource.type == "book" and payload.author is not None:
         resource.author = payload.author
 
@@ -133,8 +131,8 @@ def update_resource(
 @router.delete("/{resource_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Elimina un recurso de aprendizaje y todos sus datos asociados (módulos, lecciones, assets, notas, sesiones).
-    La eliminación es en cascada por las relaciones configuradas en los modelos.
+    Delete a learning resource and all its data (modules, lessons, assets, notes,
+    sessions), cascading through the model relationships.
     """
     resource = db.get(LearningResource, resource_id)
     if not resource:
@@ -173,7 +171,7 @@ def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
     target_ids = list(note_ids) + list(media_asset_ids) + list(content_index_ids) + list(transcript_segment_ids) + list(lesson_ids) + [resource_id]
 
     if target_ids:
-        # Dividir en chunks de 500 para evitar superar el límite de variables de SQLite (999)
+        # Chunk in 500s to stay under SQLite's variable limit (999).
         chunk_size = 500
         for i in range(0, len(target_ids), chunk_size):
             chunk = target_ids[i:i + chunk_size]
@@ -187,7 +185,7 @@ def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
 
     db.delete(resource)
 
-    # Eliminar archivos físicos asociados
+    # Remove linked physical files.
     import shutil
     storage_dir = settings.media_dir / str(resource_id)
     if storage_dir.exists() and storage_dir.is_dir():

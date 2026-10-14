@@ -9,8 +9,8 @@ export interface ProviderExecutionRequest {
   hasSubstantiveContext: boolean;
   retrievalMode?: 'hybrid' | 'lexical' | 'semantic';
   /**
-   * Callback de streaming. CONTRATO: cada invocación entrega un DELTA (solo
-   * texto nuevo), nunca el acumulado ni la respuesta final completa.
+   * Streaming callback. CONTRACT: each invocation delivers a DELTA (new text
+   * only), never the accumulated text or the full final answer.
    */
   onChunk?: (delta: string) => void;
 }

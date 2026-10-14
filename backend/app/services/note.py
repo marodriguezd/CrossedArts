@@ -15,11 +15,11 @@ class NoteService:
         lesson_id: Optional[uuid.UUID] = None
     ) -> Note:
         """
-        Crea una nueva nota, opcionalmente asociada a un recurso y a una lección.
+        Create a new note, optionally linked to a resource and a lesson.
 
-        La nota AUTÓNOMA es válida: `resource_id=None` significa "nota suelta",
-        no "dato inválido". Si se indica un recurso o una lección, se verifica
-        que existan para no crear notas fantasma.
+        A STANDALONE note is valid: `resource_id=None` means "loose note", not
+        "invalid data". A given resource or lesson is verified to exist so no
+        ghost notes are created.
         """
         if resource_id is not None:
             resource = db.get(LearningResource, resource_id)
@@ -39,7 +39,7 @@ class NoteService:
         db.add(note)
         db.flush()
 
-        # Analizar y guardar relaciones conceptuales de la nota sin confirmar de forma fragmentada
+        # Parse and store the note's concept relations without piecemeal commits.
         from backend.app.services.knowledge_service import KnowledgeService
         KnowledgeService.parse_note_relations(db, note.id, commit=False)
 
@@ -50,7 +50,7 @@ class NoteService:
     @staticmethod
     def update_note(db: Session, note_id: uuid.UUID, content: str) -> Note:
         """
-        Actualiza el contenido de una nota existente.
+        Update an existing note's content.
         """
         note = db.get(Note, note_id)
         if not note:
@@ -60,7 +60,7 @@ class NoteService:
         db.add(note)
         db.flush()
 
-        # Analizar y guardar relaciones conceptuales actualizadas sin confirmar de forma fragmentada
+        # Parse and store updated concept relations without piecemeal commits.
         from backend.app.services.knowledge_service import KnowledgeService
         KnowledgeService.parse_note_relations(db, note.id, commit=False)
 
@@ -71,13 +71,13 @@ class NoteService:
     @staticmethod
     def delete_note(db: Session, note_id: uuid.UUID) -> bool:
         """
-        Elimina una nota por su ID.
+        Delete a note by ID.
         """
         note = db.get(Note, note_id)
         if not note:
             return False
 
-        # Eliminar conexiones asociadas
+        # Drop linked connections.
         from backend.app.models.knowledge import KnowledgeConnection
         from backend.app.models.content import EmbeddingRecord
         from sqlalchemy import or_, and_
@@ -99,7 +99,7 @@ class NoteService:
     @staticmethod
     def list_notes_by_resource(db: Session, resource_id: uuid.UUID) -> List[Note]:
         """
-        Retorna todas las notas vinculadas a un recurso de aprendizaje específico.
+        Return every note linked to a specific learning resource.
         """
         stmt = select(Note).where(Note.resource_id == resource_id).order_by(Note.created_at.desc())
         return list(db.scalars(stmt).all())
@@ -107,7 +107,7 @@ class NoteService:
     @staticmethod
     def list_notes_by_lesson(db: Session, lesson_id: uuid.UUID) -> List[Note]:
         """
-        Retorna todas las notas específicas vinculadas a una lección concreta.
+        Return every note linked to a specific lesson.
         """
         stmt = select(Note).where(Note.lesson_id == lesson_id).order_by(Note.created_at.desc())
         return list(db.scalars(stmt).all())

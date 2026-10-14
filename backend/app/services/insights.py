@@ -14,9 +14,9 @@ class LearningInsightsService:
     @staticmethod
     def get_concept_mastery_and_gaps(db: Session) -> Dict[str, Any]:
         """
-        Calcula la puntuación de maestría (0-100) y clasifica brechas de conocimiento
-        para todos los conceptos del sistema basándose en notas, repasos y sesiones.
-        Optimizado para evitar el problema N+7 queries pre-cargando los datos.
+        Score mastery (0-100) and classify knowledge gaps for every system concept
+        from notes, reviews, and sessions. Preloads data to avoid the N+7 query
+        problem.
         """
         concepts = db.scalars(select(Concept)).all()
 
@@ -72,7 +72,7 @@ class LearningInsightsService:
         stmt_sessions = select(LearningSession.resource_id, func.sum(LearningSession.duration_minutes)).group_by(LearningSession.resource_id)
         sessions_durations = {rid: (dur or 0) for rid, dur in db.execute(stmt_sessions).all()}
 
-        # 5. Consultas SQL agregadas de SQLAlchemy para agrupar y calcular resúmenes de ReviewItems y ReviewHistory
+        # 5. Aggregate SQLAlchemy queries summarizing ReviewItems and ReviewHistory.
         stmt_reviews = (
             select(
                 ReviewItem.note_id,
@@ -126,7 +126,7 @@ class LearningInsightsService:
             # 3. Minutos de estudio
             total_study_minutes = sum(sessions_durations.get(rid, 0) for rid in res_ids)
 
-            # 4. Datos de Repasos (SM-2) a partir de las estadísticas pre-agregadas
+            # 4. Review (SM-2) data from the pre-aggregated stats.
             total_reviews_count = 0
             total_repetitions = 0.0
             total_easiness = 0.0
@@ -152,7 +152,7 @@ class LearningInsightsService:
                 avg_repetitions = total_repetitions / total_reviews_count
                 avg_easiness = total_easiness / total_reviews_count
 
-                # Obtener calidad histórica agregada
+                # Aggregate historical quality.
                 total_qual_sum = 0.0
                 total_qual_count = 0
                 for nid in note_ids:
@@ -163,11 +163,11 @@ class LearningInsightsService:
                 if total_qual_count > 0:
                     avg_quality = total_qual_sum / total_qual_count
 
-                # Comprobar si está muy atrasado (más de 2 días)
+                # Overdue by more than 2 days.
                 if min_next_review:
                     is_overdue_long = (min_next_review + timedelta(days=2)) <= now
 
-            # 5. Fórmulas de puntuación de maestría
+            # 5. Mastery scoring formulas.
             notes_score = min(30, note_count * 10)
             sessions_score = min(30, total_study_minutes * 1.5)
             reviews_score = min(40, avg_repetitions * 5 + avg_quality * 5)
@@ -183,7 +183,7 @@ class LearningInsightsService:
             }
             mastery_list.append(concept_info)
 
-            # Clasificación de brechas (Gaps)
+            # Gap classification.
             if note_count > 0 and not has_reviews:
                 gaps["never_reviewed"].append(concept_info)
             if total_study_minutes < 15:
@@ -198,10 +198,10 @@ class LearningInsightsService:
     @staticmethod
     def generate_insights(db: Session) -> Dict[str, Any]:
         """
-        Genera un informe analítico detallado sobre patrones de estudio,
-        conceptos de maestría, brechas de conocimiento y recomendaciones para CrossedArts v1.
+        Build a detailed analytics report on study patterns, mastery concepts,
+        knowledge gaps, and recommendations for CrossedArts v1.
         """
-        # 1. Categorías más estudiadas
+        # 1. Most-studied categories.
         stmt_studied = (
             db.query(LearningResource.category, func.count(LearningResource.id))
             .where(LearningResource.status.in_([ResourceStatus.IN_PROGRESS, ResourceStatus.COMPLETED]))
@@ -229,7 +229,7 @@ class LearningInsightsService:
             for r in neglected
         ]
 
-        # 3. Próximo recurso recomendado (tema favorito)
+        # 3. Next recommended resource (favorite topic).
         recommended_next = None
         if top_categories:
             fav_cat = top_categories[0]["category"]
@@ -243,7 +243,7 @@ class LearningInsightsService:
             )
             recommended_next = db.scalars(stmt_rec).first()
 
-        # 4. Sesión de repaso recomendada (Recursos con notas)
+        # 4. Recommended review session (resources with notes).
         stmt_review = (
             db.query(Note.resource_id, func.count(Note.id))
             .group_by(Note.resource_id)
@@ -262,7 +262,7 @@ class LearningInsightsService:
                     "notes_count": review_row[1]
                 }
 
-        # 5. Patrón de estudio reciente
+        # 5. Recent study pattern.
         seven_days_ago = utc_now_naive() - timedelta(days=7)
         stmt_sessions = (
             select(func.sum(LearningSession.duration_minutes))
@@ -270,7 +270,7 @@ class LearningInsightsService:
         )
         total_minutes = db.scalar(stmt_sessions) or 0
 
-        # 6. Maestría e Inteligencia de Conocimiento
+        # 6. Mastery and knowledge intelligence.
         knowledge_intel = LearningInsightsService.get_concept_mastery_and_gaps(db)
 
         # 7. Construir recomendaciones de v1 personalizadas

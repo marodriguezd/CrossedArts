@@ -50,7 +50,7 @@ def deterministic_embedding_provider(monkeypatch):
 
 
 def _add_embedding(db, entity, entity_type: str, text: str, model: str = TEST_MODEL):
-    # La fixture `db` usa autoflush=False: hay que confirmar explícitamente.
+    # The `db` fixture uses autoflush=False: commit explicitly.
     db.add(EmbeddingRecord(
         entity_id=entity.id,
         entity_type=entity_type,
@@ -95,13 +95,13 @@ def test_vector_store_returns_sorted_top_k(db):
     db.commit()
 
     store = SQLiteVectorStore(db)
-    query = [1.0] + [0.0] * 15  # más similar a los índices i % 16 == 0
+    query = [1.0] + [0.0] * 15  # Closest to indexes i % 16 == 0.
     hits = store.search(query, model=TEST_MODEL, limit=5, threshold=0.0)
 
     assert len(hits) == 5
     scores = [h.score for h in hits]
     assert scores == sorted(scores, reverse=True)
-    # El mejor candidato debe ser un vector idéntico a la consulta.
+    # Top hit must be a query-identical vector.
     assert hits[0].score == pytest.approx(1.0)
 
 

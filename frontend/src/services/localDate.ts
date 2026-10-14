@@ -1,43 +1,42 @@
 /**
- * Definición del "día de estudio" lógico de CrossedArts.
+ * Definition of CrossedArts' logical "study day".
  *
- * ANTES: las consultas de "hoy" y de racha usaban `date('now')`, que en SQLite
- * significa UTC. Para un usuario en un huso horario negativo, una sesión de las
- * 23:30 locales se habría contabilizado en el día equivocado, y la racha podía
- * romperse o saltar un día justo en el límite de medianoche.
+ * BEFORE: the "today" and streak queries used `date('now')`, which in SQLite
+ * means UTC. For a user in a negative UTC offset, an 11:30 pm local session
+ * would have been counted on the wrong day, and the streak could break or skip
+ * a day right at the midnight boundary.
  *
- * AHORA (estrategia elegida y explícita): el día de estudio es el día calendario
- * LOCAL del reloj del usuario. No se introduce ningún framework de zonas
- * horarias: se deriva la fecha `YYYY-MM-DD` local en JavaScript y se pasa como
- * parámetro a consultas SQLite parametrizadas.
+ * NOW (deliberate, explicit strategy): the study day is the LOCAL calendar day
+ * of the user's clock. No timezone framework is introduced: the local
+ * `YYYY-MM-DD` date is derived in JavaScript and passed as a parameter to
+ * parameterized SQLite queries.
  *
- * Consecuencias deliberadas y documentadas:
- *  - Las marcas de tiempo persistidas (`datetime('now')`) siguen siendo UTC. No
- *    se migra ninguna fila existente: solo cambia cómo se las etiqueta al día.
- *  - El cálculo es determinista para una zona horaria dada y reproducible en
- *    tests (el offset se puede inyectar explícitamente).
- *  - No hay ambigüedad navegador/servidor: el backend no participa en estos KPI.
+ * Deliberate, documented consequences:
+ *  - Persisted timestamps (`datetime('now')`) remain UTC. No existing row is
+ *    migrated: only how rows are labeled to a day changes.
+ *  - The computation is deterministic for a given timezone and reproducible in
+ *    tests (the offset can be injected explicitly).
+ *  - No browser/server ambiguity: the backend takes no part in these KPIs.
  */
 
-/** Resultado de resolver el día calendario local a partir de un instante UTC. */
+/** Result of resolving the local calendar day from a UTC instant. */
 export interface LocalDayResolution {
-  /** Día local en formato `YYYY-MM-DD`. */
+  /** Local day in `YYYY-MM-DD` format. */
   day: string;
   /**
-   * Desplazamiento aplicado a la marca UTC para obtener el día local, como
-   * modificador aceptado por las funciones de fecha de SQLite (p. ej. `'-240 minutes'`).
+   * Shift applied to the UTC timestamp to obtain the local day, as a modifier
+   * accepted by SQLite date functions (e.g. `'-240 minutes'`).
    */
   utcOffsetModifier: string;
 }
 
 /**
- * Formatea un número de minutos como modificador de fecha de SQLite.
+ * Formats a number of minutes as a SQLite date modifier.
  *
- * IMPORTANTE: para un desplazamiento de 0 NO se devuelve una cadena vacía. SQLite
- * trata `''` como un modificador inválido y hace que `date(x, '')` devuelva NULL
- * para TODAS las filas, lo que dejaba el resumen de "hoy" y la racha siempre a
- * cero para cualquier usuario en UTC (huso +00:00). `'0 minutes'` es válido y
- * equivale a no desplazar nada.
+ * IMPORTANT: for a 0 offset an empty string is NOT returned. SQLite treats `''`
+ * as an invalid modifier and makes `date(x, '')` return NULL for ALL rows, which
+ * left the "today" summary and the streak permanently at zero for any user in
+ * UTC (offset +00:00). `'0 minutes'` is valid and equivalent to no shift at all.
  */
 function formatUtcOffsetModifier(offsetMinutes: number): string {
   if (offsetMinutes === 0) return '0 minutes';
@@ -46,8 +45,8 @@ function formatUtcOffsetModifier(offsetMinutes: number): string {
 }
 
 /**
- * Normaliza un desfase por hora en formato `±HH:MM` (el que devuelve la API de
- * zonas horarias) a minutos con signo respecto a UTC.
+ * Normalizes an hour offset in `±HH:MM` format (the one returned by the timezone
+ * API) into signed minutes relative to UTC.
  */
 export function parseUtcOffsetToMinutes(offset: string): number {
   const match = /^([+-])(\d{2}):?(\d{2})$/.exec(offset.trim());
@@ -57,21 +56,21 @@ export function parseUtcOffsetToMinutes(offset: string): number {
 }
 
 /**
- * Convierte un instante UTC a su día calendario local.
+ * Converts a UTC instant into its local calendar day.
  *
- * El algoritmo es intencionadamente simple y determinista: se calcula el
- * desfase local en ese instante concreto (`getTimezoneOffset`), se aplica a la
- * marca UTC y se lee la parte de fecha. Aplicar el desfase en el instante (y no
- * un offset fijo del "ahora") mantiene el resultado correcto también a mitad de
- * un cambio de horario de verano.
+ * The algorithm is intentionally simple and deterministic: the local offset at
+ * that specific instant (`getTimezoneOffset`) is computed, applied to the UTC
+ * timestamp, and the date part is read. Applying the offset at the instant
+ * (rather than a fixed offset captured from "now") keeps the result correct even
+ * in the middle of a daylight saving time change.
  */
 export function resolveLocalDay(now: Date = new Date(), utcOffset?: string): LocalDayResolution {
   let offsetMinutes: number;
   if (utcOffset !== undefined) {
-    // Offset explícito: ruta determinista para tests y para entornos sin reloj local fiable.
+    // Explicit offset: deterministic path for tests and environments without a reliable local clock.
     offsetMinutes = parseUtcOffsetToMinutes(utcOffset);
   } else {
-    // `getTimezoneOffset()` devuelve minutos A RESTAR de la hora local, por eso el signo invertido.
+    // `getTimezoneOffset()` returns minutes TO SUBTRACT from local time, hence the inverted sign.
     offsetMinutes = -now.getTimezoneOffset();
   }
 
@@ -81,10 +80,10 @@ export function resolveLocalDay(now: Date = new Date(), utcOffset?: string): Loc
 }
 
 /**
- * Desplaza un día calendario `YYYY-MM-DD` un número de días, en UTC puro.
+ * Shifts a `YYYY-MM-DD` calendar day by a number of days, in pure UTC.
  *
- * Se trabaja sobre la cadena, no sobre un `Date` local, para que el cambio de
- * día no dependa del huso horario del proceso que ejecuta el test.
+ * It works on the string, not on a local `Date`, so the day change does not
+ * depend on the timezone of the process running the test.
  */
 export function shiftIsoDay(day: string, deltaDays: number): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
@@ -99,20 +98,20 @@ export function shiftIsoDay(day: string, deltaDays: number): string {
 }
 
 /**
- * Calcula la racha activa contando días consecutivos hacia atrás desde `today`.
+ * Computes the active streak by counting consecutive days backwards from `today`.
  *
- * Función pura y determinista: recibe el conjunto de días de estudio y el día
- * local actual, y devuelve el número de días consecutivos. Si no hay actividad
- * hoy, se comprueba ayer (para que una racha abierta siga viva hasta que
- * termine el día); si tampoco hay actividad ayer, la racha es cero.
+ * Pure, deterministic function: it receives the set of study days and the
+ * current local day, and returns the number of consecutive days. Without
+ * activity today it checks yesterday (so an open streak stays alive until the
+ * day ends); without activity yesterday either, the streak is zero.
  */
 export function computeActiveStreak(studyDays: Iterable<string>, today: string): number {
   const days = studyDays instanceof Set ? studyDays : new Set(studyDays);
   if (days.has(today)) {
     return countBackwards(days, today);
   }
-  // Sin actividad hoy la racha sigue viva si hubo actividad ayer, y cuenta desde
-  // ayer (no se le suma un día artificial).
+  // Without activity today the streak stays alive if there was activity
+  // yesterday, and counts from yesterday (no artificial day is added).
   const yesterday = shiftIsoDay(today, -1);
   if (!days.has(yesterday)) return 0;
   return countBackwards(days, yesterday);

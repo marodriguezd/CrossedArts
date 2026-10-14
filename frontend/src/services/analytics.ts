@@ -1,16 +1,16 @@
 /**
- * Analítica de aprendizaje: agregaciones PURAS sobre los datos que CrossedArts
- * ya registra (`learning_session`, cursos, libros, trabajo práctico).
+ * Learning analytics: PURE aggregations over data CrossedArts already records
+ * (`learning_session`, courses, books, practice work).
  *
- * Reglas de honestidad de este módulo:
- *  - Solo se miden hechos reales: minutos, días activos, sesiones, tarjetas,
- *    preguntas, aciertos, progreso de curso/libro/prácticas.
- *  - NO existen puntuaciones psicológicas, de motivación, de inteligencia ni de
- *    productividad. Si algo no se puede derivar de los datos, no se muestra.
- *  - Cuando un cociente no tiene denominador (cero preguntas, cero lecciones),
- *    el resultado es `null` y la UI lo dice explícitamente.
- *  - El día de estudio es el día calendario LOCAL (services/localDate.ts),
- *    inyectable para que los tests sean deterministas sin importar el huso.
+ * Honesty rules for this module:
+ *  - Only real facts are measured: minutes, active days, sessions, cards,
+ *    questions, hits, course/book/practice progress.
+ *  - NO psychological, motivation, intelligence, or productivity scores. What
+ *    cannot be derived from data is never shown.
+ *  - When a ratio has no denominator (zero questions, zero lessons), the
+ *    result is `null` and the UI says so explicitly.
+ *  - Study days are LOCAL calendar days (services/localDate.ts), injectable so
+ *    tests stay deterministic in any timezone.
  */
 import type { Book, Course, LearningSession, PracticeWork, TimeRangeFilter } from '../types/models.ts';
 import { resolveLocalDay, shiftIsoDay, computeActiveStreak } from './localDate.ts';
@@ -19,7 +19,7 @@ import type { LanguageCode } from '../i18n/languages.ts';
 import { summarizePracticeWork, type PracticeWorkSummary } from './practiceWork.ts';
 import type { DailyActivityPoint } from '../types/models.ts';
 
-/** Rangos temporales disponibles en la vista de análisis. */
+/** Time ranges available in the analytics view. */
 export type AnalyticsRange = TimeRangeFilter;
 
 export const ANALYTICS_RANGES: AnalyticsRange[] = ['7d', '30d', '90d', 'all'];
@@ -37,7 +37,7 @@ export function analyticsRangeLabel(range: AnalyticsRange, lang: LanguageCode = 
   return translateKey(lang, `analytics.range.${range}`);
 }
 
-/** Días cubiertos por un rango fijo (null para 'all'). */
+/** Days covered by a fixed range (null for 'all'). */
 export function rangeDayCount(range: AnalyticsRange): number | null {
   if (range === '7d') return 7;
   if (range === '30d') return 30;
@@ -46,11 +46,9 @@ export function rangeDayCount(range: AnalyticsRange): number | null {
 }
 
 /**
- * Día calendario LOCAL de una marca de tiempo guardada por SQLite.
- *
- * `datetime('now')` escribe UTC sin marcador de zona, así que una cadena sin
- * zona se interpreta como UTC. Devuelve null para marcas ilegibles: esos
- * registros no se inventan en ningún día.
+ * LOCAL calendar day of a SQLite-stored timestamp. `datetime('now')` writes
+ * UTC with no zone marker, so a zoneless string parses as UTC. Returns null
+ * for unreadable stamps: those records are never assigned to any day.
  */
 export function sessionLocalDay(startedAt: string, utcOffset?: string): string | null {
   if (!startedAt) return null;
@@ -63,7 +61,7 @@ export function sessionLocalDay(startedAt: string, utcOffset?: string): string |
   return resolveLocalDay(parsed, utcOffset).day;
 }
 
-/** Totales agregados crudos de un conjunto de sesiones. */
+/** Raw aggregate totals for a session set. */
 export interface SessionTotals {
   studyMinutes: number;
   sessionsCompleted: number;
@@ -90,16 +88,16 @@ function addToTotals(totals: SessionTotals, session: LearningSession): void {
   totals.correctAnswers += session.correct_answers || 0;
 }
 
-/** Primera y última fecha `YYYY-MM-DD` de una ventana, ambas incluidas. */
+/** First and last `YYYY-MM-DD` dates of a window, both inclusive. */
 export interface RangeWindow {
-  /** Límite inferior inclusive (null en 'all'). */
+  /** Inclusive lower bound (null for 'all'). */
   start: string | null;
   end: string | null;
 }
 
 /**
- * Ventana del rango ACTUAL y del rango INMEDIATAMENTE ANTERIOR de igual
- * longitud (para comparativas). En 'all' no hay ventana ni comparativa.
+ * CURRENT range window plus the IMMEDIATELY PREVIOUS equal-length window (for
+ * comparisons). 'all' has neither window nor comparison.
  */
 export function resolveRangeWindows(range: AnalyticsRange, today: string): {
   current: RangeWindow;
@@ -118,7 +116,7 @@ export function resolveRangeWindows(range: AnalyticsRange, today: string): {
   };
 }
 
-/** Rango de sesiones dentro de una ventana (ambos extremos incluidos). */
+/** Sessions inside a window (both ends inclusive). */
 export function filterSessionsByWindow(
   sessions: readonly LearningSession[],
   window: RangeWindow | null,
@@ -136,7 +134,7 @@ export function filterSessionsByWindow(
   return out;
 }
 
-/** Precisión sobre preguntas contestadas; null cuando no se contestó nada. */
+/** Accuracy over answered questions; null when nothing was answered. */
 export function accuracyPercent(questionsAnswered: number, correctAnswers: number): number | null {
   if (!questionsAnswered || questionsAnswered <= 0) return null;
   const correct = Math.min(Math.max(correctAnswers, 0), questionsAnswered);
@@ -145,28 +143,26 @@ export function accuracyPercent(questionsAnswered: number, correctAnswers: numbe
 
 export interface AnalyticsOverview {
   range: AnalyticsRange;
-  /** Días cubiertos por el rango (null en 'all'). */
+  /** Days covered by the range (null for 'all'). */
   daysInRange: number | null;
   studyMinutes: number;
-  /** Días calendario locales con actividad registrada dentro del rango. */
+  /** Local calendar days with recorded activity inside the range. */
   activeDays: number;
   sessionsCompleted: number;
   flashcardsReviewed: number;
   questionsAnswered: number;
   correctAnswers: number;
-  /** null cuando no se contestaron preguntas en el rango. */
+  /** Null when no questions were answered in range. */
   accuracyPercent: number | null;
-  /** Racha actual calculada sobre TODOS los días de estudio (no sobre el rango). */
+  /** Current streak over ALL study days (not the range). */
   streakDays: number;
-  /** Minutos por día activo (0 sin días activos; siempre un hecho, no una meta). */
+  /** Minutes per active day (0 without active days; always a fact, never a goal). */
   avgMinutesPerActiveDay: number;
 }
 
 /**
- * Visión general determinista para un rango.
- *
- * `today` y `sessions` (con sus días locales) se inyectan para que el cálculo
- * sea 100 % reproducible en tests. `today` debe ser el día local actual.
+ * Deterministic overview for a range. `today` and `sessions` (with local days)
+ * are injected for 100% reproducible tests. `today` must be the current local day.
  */
 export function computeAnalyticsOverview(
   sessions: readonly LearningSession[],
@@ -203,20 +199,20 @@ export function computeAnalyticsOverview(
 }
 
 export interface PeriodComparison {
-  /** Totales del rango actual. */
+  /** Current-range totals. */
   current: SessionTotals;
-  /** Totales del periodo anterior de igual longitud; null en 'all'. */
+  /** Previous equal-length period totals; null for 'all'. */
   previous: SessionTotals | null;
-  /** Variación de minutos entre periodos; null si no hay periodo anterior. */
+  /** Minute delta across periods; null with no previous period. */
   deltaMinutes: number | null;
-  /** Variación porcentual de minutos; null si el periodo anterior fue 0. */
+  /** Percent minute delta; null when the previous period was 0. */
   deltaPercent: number | null;
 }
 
 /**
- * Comparativa del rango actual contra el periodo inmediatamente anterior de
- * igual longitud. Con periodo anterior en cero minutos, `deltaPercent` es null
- * (un "+100 %" inventado sería ruido, no información).
+ * Current range vs. the immediately previous equal-length period. With a
+ * zero-minute previous period, `deltaPercent` is null (an invented "+100%"
+ * would be noise, not information).
  */
 export function computeRangeComparison(
   sessions: readonly LearningSession[],
@@ -249,7 +245,7 @@ export function computeRangeComparison(
 }
 
 export interface ResourceActivityRow {
-  /** null cuando la sesión no tiene recurso asociado (estudio general). */
+  /** Null when the session has no linked resource (general study). */
   resourceId: string | null;
   label: string;
   minutes: number;
@@ -258,8 +254,8 @@ export interface ResourceActivityRow {
 }
 
 /**
- * Actividad por recurso dentro de un rango. Sesiones sin recurso se agrupan
- * como "Estudio general" (se cuenta lo real, sin inventar un destino).
+ * Per-resource activity in a range. Resourceless sessions group as general
+ * study (real counts, no invented target).
  */
 export function computeResourceActivity(
   sessions: readonly LearningSession[],
@@ -291,7 +287,7 @@ export function computeResourceActivity(
   );
 }
 
-/** Serie diaria continua para gráficos (días vacíos rellenos con cero). */
+/** Continuous daily series for charts (empty days zero-filled). */
 export function buildDailySeries(
   sessions: readonly LearningSession[],
   range: AnalyticsRange,
@@ -318,7 +314,7 @@ export function buildDailySeries(
   return generateDailyActivitySeries(history, range, today, lang);
 }
 
-/** Racha activa sobre los días locales con estudio registrado. */
+/** Active streak over local days with recorded study. */
 export function computeStreakFromSessions(
   sessions: readonly LearningSession[],
   today: string,
@@ -334,7 +330,7 @@ export function computeStreakFromSessions(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Progreso de contenido                                                       */
+/* Content progress                                                            */
 /* -------------------------------------------------------------------------- */
 
 export interface CourseProgressOverview {
@@ -342,10 +338,10 @@ export interface CourseProgressOverview {
   completed: number;
   inProgress: number;
   notStarted: number;
-  /** Suma real de lecciones completadas/registradas en cursos CON lecciones. */
+  /** Real sum of completed/recorded lessons in courses WITH lessons. */
   lessonsCompleted: number;
   lessonsTotal: number;
-  /** null cuando ningún curso tiene lecciones registradas. */
+  /** Null when no course has recorded lessons. */
   lessonPercent: number | null;
 }
 
@@ -353,11 +349,11 @@ export interface BookProgressOverview {
   total: number;
   reading: number;
   finished: number;
-  /** Solo libros con número de páginas conocido. */
+  /** Only books with a known page count. */
   booksWithPageCount: number;
   pagesRead: number;
   pagesTotal: number;
-  /** null cuando ningún libro declara número de páginas. */
+  /** Null when no book declares a page count. */
   pagePercent: number | null;
 }
 
@@ -368,9 +364,9 @@ export interface ContentProgressOverview {
 }
 
 /**
- * Progreso de contenido agregado. Cada colectivo mide lo suyo y NUNCA se mezcla
- * en un solo porcentaje: cursos miden lecciones, libros miden páginas y el
- * trabajo práctico cuenta piezas terminadas.
+ * Aggregate content progress. Each collection measures its own and they NEVER
+ * blend into one percent: courses count lessons, books count pages, practice
+ * work counts finished pieces.
  */
 export function computeContentProgress(
   courses: readonly Course[],
@@ -433,16 +429,16 @@ export function computeContentProgress(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Actividad reciente                                                          */
+/* Recent activity                                                             */
 /* -------------------------------------------------------------------------- */
 
 export interface RecentActivityEntry {
   session: LearningSession;
-  /** Día calendario local de la sesión. */
+  /** Local calendar day of the session. */
   day: string | null;
 }
 
-/** Sesiones recientes ordenadas de la más nueva a la más antigua. */
+/** Recent sessions, newest first. */
 export function recentActivity(
   sessions: readonly LearningSession[],
   limit: number,

@@ -1,7 +1,7 @@
 /**
- * Normaliza texto extraído de un documento sin fusionar palabras ni perder
- * fronteras de línea: colapsa espacios intra-línea, recorta cada línea y
- * limita los saltos consecutivos a dos.
+ * Normalizes text extracted from a document without gluing words together or
+ * losing line boundaries: collapses intra-line spaces, trims each line, and
+ * caps consecutive breaks at two.
  */
 export function normalizeExtractedText(raw: string): string {
   return raw

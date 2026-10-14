@@ -29,7 +29,7 @@ MEDIA_EXTENSIONS = {
 }
 
 def _get_media_type(ext: str) -> str:
-    """Determina el tipo de media a partir de la extensión."""
+    """Resolve the media type from the extension."""
     ext = ext.lower()
     for media_type, extensions in MEDIA_EXTENSIONS.items():
         if ext in extensions:
@@ -38,7 +38,7 @@ def _get_media_type(ext: str) -> str:
 
 
 def _get_lesson_type(ext: str) -> LessonType:
-    """Mapea extensión de archivo a LessonType."""
+    """Map a file extension to LessonType."""
     ext = ext.lower()
     if ext in MEDIA_EXTENSIONS["video"]:
         return LessonType.VIDEO
@@ -92,7 +92,7 @@ class IngestionService:
                     if mtype in media_files:
                         media_files[mtype].append(item.name)
 
-        # Escanear subdirectorios recursivamente buscando archivos multimedia (máx. 3 niveles para evitar DoS)
+        # Recursively scan subdirectories for media (max 3 levels, DoS guard).
         def scan_recursive(dir_path: Path, current_depth: int):
             nonlocal total_files
             if current_depth > 3:
@@ -187,7 +187,7 @@ class IngestionService:
             raise e
 
     def _resolve_storage_path(self, source_file: Path, strategy: StorageStrategy, dest_dir: Path) -> Path:
-        """Resuelve la ruta de almacenamiento según la estrategia elegida."""
+        """Resolve the storage path per the chosen strategy."""
         from backend.app.core.security import is_safe_path
         if not is_safe_path(source_file):
             raise ValueError("Acceso denegado a la ruta del archivo de origen especificado.")
@@ -224,7 +224,7 @@ class IngestionService:
         return source_file.resolve()
 
     def _import_course(self, request: ImportResourceRequest, source: Path, background_tasks: Optional[Any] = None) -> ImportResultResponse:
-        """Importa un curso con módulos y lecciones desde la estructura de carpetas."""
+        """Import a course with modules and lessons from the folder structure."""
         # Parsear dificultad
         diff_str = request.difficulty.upper()
         difficulty = CourseDifficulty[diff_str] if diff_str in CourseDifficulty.__members__ else CourseDifficulty.BEGINNER
@@ -252,7 +252,7 @@ class IngestionService:
         storage_base = settings.media_dir / str(course.id)
 
         if request.structure_strategy == StructureStrategy.AUTO_HIERARCHICAL:
-            # Buscar subdirectorios como módulos
+            # Treat subdirectories as modules.
             subdirs = sorted([d for d in source.iterdir() if d.is_dir() and not d.name.startswith('.')])
 
             if subdirs:
@@ -304,10 +304,10 @@ class IngestionService:
                         self.db.flush()
                         assets_created += 1
 
-                        # Extraer e indexar metadatos automáticamente
+                        # Queue automatic metadata extraction + indexing.
                         self._register_asset_for_extraction(asset.id, background_tasks)
 
-                # También procesar archivos sueltos en la raíz del source
+                # Also handle loose files at the source root.
                 root_media = sorted([
                     f for f in source.iterdir()
                     if f.is_file() and f.suffix.lower() in all_exts
@@ -354,7 +354,7 @@ class IngestionService:
                         self.db.flush()
                         assets_created += 1
 
-                        # Extraer e indexar metadatos automáticamente
+                        # Queue automatic metadata extraction + indexing.
                         self._register_asset_for_extraction(asset.id, background_tasks)
             else:
                 # No hay subdirectorios, tratar como flat
@@ -362,7 +362,7 @@ class IngestionService:
                     course, source, request.storage_strategy, storage_base, all_exts, warnings, background_tasks
                 )
         else:
-            # Estrategia FLAT explícita
+            # Explicit FLAT strategy.
             modules_created, lessons_created, assets_created, warnings = self._create_flat_module(
                 course, source, request.storage_strategy, storage_base, all_exts, warnings, background_tasks
             )
@@ -383,7 +383,7 @@ class IngestionService:
         all_exts: set, warnings: List[str],
         background_tasks: Optional[Any] = None
     ) -> Tuple[int, int, int, List[str]]:
-        """Crea un único módulo con todas las lecciones en orden plano."""
+        """Create a single module holding every lesson in flat order."""
         modules_created = 0
         lessons_created = 0
         assets_created = 0
@@ -439,7 +439,7 @@ class IngestionService:
             self.db.flush()
             assets_created += 1
 
-            # Extraer e indexar metadatos automáticamente
+            # Queue automatic metadata extraction + indexing.
             self._register_asset_for_extraction(asset.id, background_tasks)
 
         if not media_files:
@@ -468,14 +468,14 @@ class IngestionService:
         storage_base = settings.media_dir / str(book.id)
         book_exts = set(MEDIA_EXTENSIONS["pdf"] + MEDIA_EXTENSIONS["epub"])
 
-        # Buscar archivos de libro en la carpeta (nivel raíz primero)
+        # Find book files in the folder (root level first).
         book_files = sorted([
             f for f in source.iterdir()
             if f.is_file() and f.suffix.lower() in book_exts
         ])
 
         if not book_files:
-            # Buscar recursivamente si no hay nada en raíz
+            # Fall back to a recursive search when the root is empty.
             for root_dir, _, files in os.walk(source):
                 for f in sorted(files):
                     fp = Path(root_dir) / f
@@ -501,7 +501,7 @@ class IngestionService:
             self.db.flush()
             assets_created += 1
 
-            # Extraer e indexar metadatos automáticamente
+            # Queue automatic metadata extraction + indexing.
             self._register_asset_for_extraction(asset.id, background_tasks)
 
         if not book_files:

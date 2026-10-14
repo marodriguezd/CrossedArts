@@ -1,6 +1,6 @@
 /**
- * Servicio de Audio TTS (Text-to-Speech) y Reconocimiento de Voz (Speech-to-Text)
- * 100% nativo y offline mediante la Web Speech API del navegador.
+ * Native, offline TTS (Text-to-Speech) and STT (Speech-to-Text) service built
+ * on the browser Web Speech API.
  */
 
 import { translateKey } from '../i18n/dictionaries.ts';
@@ -107,9 +107,6 @@ class SpeechService {
     return this.voices;
   }
 
-  /**
-   * Lee un texto en voz alta con la voz y velocidad configuradas.
-   */
   public speak(text: string, onEnd?: () => void, onError?: (err: any) => void, lang: LanguageCode = 'es'): void {
     if (!this.isSpeechSynthesisSupported()) {
       onError?.(new Error(translateKey(lang, 'speech.ttsNo')));
@@ -122,7 +119,7 @@ class SpeechService {
       return;
     }
 
-    // Detener cualquier lectura previa en curso
+    // Cancel any speech already in progress
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
@@ -136,7 +133,7 @@ class SpeechService {
         utterance.voice = selectedVoice;
       }
     } else {
-      // Priorizar una voz en español si no se ha elegido ninguna
+      // Prefer a Spanish voice when none was chosen
       const esVoice = this.getAvailableVoices().find(v => v.lang.startsWith('es'));
       if (esVoice) utterance.voice = esVoice;
     }
@@ -146,7 +143,8 @@ class SpeechService {
     };
 
     utterance.onerror = (e) => {
-      // Si fue cancelado intencionalmente por un stopSpeaking, no reportar como error fatal
+      // A deliberate stopSpeaking() produces 'canceled'/'interrupted': the
+      // utterance ended by design, so it is not a fatal error.
       if (e.error === 'canceled' || e.error === 'interrupted') {
         onEnd?.();
       } else {
@@ -157,9 +155,6 @@ class SpeechService {
     window.speechSynthesis.speak(utterance);
   }
 
-  /**
-   * Detiene inmediatamente cualquier lectura de voz en curso.
-   */
   public stopSpeaking(): void {
     if (this.isSpeechSynthesisSupported()) {
       window.speechSynthesis.cancel();
@@ -171,9 +166,6 @@ class SpeechService {
     return window.speechSynthesis.speaking;
   }
 
-  /**
-   * Inicia el reconocimiento de voz continuo en tiempo real.
-   */
   public startDictation(
     onTranscript: (text: string, isFinal: boolean) => void,
     onError?: (errorMsg: string) => void,
@@ -218,7 +210,7 @@ class SpeechService {
         if (event.error === 'not-allowed') {
           msg = translateKey(lang, 'speech.micDenied');
         } else if (event.error === 'no-speech') {
-          return; // Silencio ignorado
+          return; // Silence: ignore, do not surface an error
         } else if (event.error === 'network') {
           msg = translateKey(lang, 'speech.sttNet');
         }
@@ -242,9 +234,6 @@ class SpeechService {
     }
   }
 
-  /**
-   * Detiene el dictado de voz activo.
-   */
   public stopDictation(): void {
     if (this.recognitionInstance) {
       try {

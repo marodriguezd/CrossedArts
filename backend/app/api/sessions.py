@@ -12,12 +12,10 @@ router = APIRouter(prefix="/sessions", tags=["Sessions"])
 @router.post("/start", response_model=LearningSessionResponse, status_code=status.HTTP_201_CREATED)
 def start_session(payload: StartSessionRequest, db: Session = Depends(get_db)):
     """
-    Inicializa una sesión de estudio en uno de los tres ámbitos canónicos:
-    lección, recurso o global (repaso transversal de la biblioteca).
-
-    El ámbito se deriva de las anclas y puede declararse explícitamente; un
-    ámbito declarado incoherente produce un 422 de validación. No existe una
-    sesión "sin ámbito": la sesión global ES el ámbito transversal.
+    Start a study session in one of the three canonical scopes: lesson,
+    resource, or global (cross-library review). Scope derives from anchors and
+    may be declared explicitly; an incoherent declared scope yields a 422. There
+    is no "scopeless" session: the global session IS the cross-cutting scope.
     """
     try:
         session = SessionService.start_session(
@@ -34,7 +32,7 @@ def start_session(payload: StartSessionRequest, db: Session = Depends(get_db)):
 @router.post("/{session_id}/heartbeat", response_model=LearningSessionResponse)
 def update_session_heartbeat(session_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Recibe el latido HTTP periódico (cada 10s) del cliente y recalcula el tiempo transcurrido.
+    Receive the client's periodic HTTP heartbeat (every 10s) and recompute elapsed time.
     """
     try:
         session = SessionService.update_session_heartbeat(db, session_id)
@@ -46,11 +44,9 @@ def update_session_heartbeat(session_id: uuid.UUID, db: Session = Depends(get_db
 @router.post("/{session_id}/end", response_model=LearningSessionResponse)
 def end_session(session_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Finaliza formalmente una sesión de estudio calculando la duración final en
-    minutos netos.
-
-    Idempotente: repetir la llamada devuelve el resultado ya persistido y no
-    vuelve a aplicar la actualización de metas.
+    Formally end a study session, computing the final net-minutes duration.
+    Idempotent: repeats return the persisted result without re-applying the
+    goal update.
     """
     try:
         session = SessionService.end_session(db, session_id)

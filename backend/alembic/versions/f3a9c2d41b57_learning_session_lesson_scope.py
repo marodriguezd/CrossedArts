@@ -48,8 +48,8 @@ def upgrade() -> None:
     existing_columns = {c['name'] for c in inspector.get_columns('learning_session')}
 
     if dialect == 'sqlite':
-        # Reconstrucción explícita y conservadora: SQLite no permite relajar
-        # NOT NULL con ALTER TABLE ni añadir un CHECK con ALTER.
+        # Explicit conservative rebuild: SQLite cannot relax NOT NULL via ALTER
+        # TABLE nor add a CHECK via ALTER.
         has_lesson_id = 'lesson_id' in existing_columns
         lesson_select = 'lesson_id' if has_lesson_id else 'NULL'
         conn.execute(sa.text("""
@@ -76,16 +76,16 @@ def upgrade() -> None:
         """))
         conn.execute(sa.text("DROP TABLE learning_session"))
         conn.execute(sa.text("ALTER TABLE learning_session_migrated RENAME TO learning_session"))
-        # Recrear TODOS los índices: al reconstruir la tabla, SQLite descarta los
-        # índices previos (incluidos los de a1b2c3d4e5f6, que conceptualmente
-        # siguen siendo de esa revisión). Sin esto, upgraded != fresh install.
+        # Recreate ALL indexes: rebuilding the table drops SQLite's prior indexes
+        # (including a1b2c3d4e5f6's, still conceptually owned by that revision).
+        # Without this, upgraded != fresh install.
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_learning_session_started_at ON learning_session (started_at)"))
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_learning_session_ended_at ON learning_session (ended_at)"))
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_learning_session_resource_id ON learning_session (resource_id)"))
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_learning_session_lesson_id ON learning_session (lesson_id)"))
         return
 
-    # Otros dialectos: ALTER TABLE incremental.
+    # Other dialects: incremental ALTER TABLE.
     if 'mode' not in existing_columns:
         op.add_column(
             'learning_session',
@@ -104,11 +104,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Restaura resource_id NOT NULL y elimina el soporte de lecciones.
+    """Restore resource_id NOT NULL and drop lesson support.
 
-    Downgrade destructivo por diseño: las sesiones acotadas solo a lección no
-    pueden representarse bajo el esquema anterior y se eliminan de forma
-    explícita (nunca en silencio) antes de reactivar la restricción.
+    Destructive downgrade by design: lesson-only sessions cannot be represented
+    under the old schema and are deleted explicitly (never silently) before
+    re-enabling the constraint.
     """
     conn = op.get_bind()
     dialect = conn.dialect.name
@@ -135,7 +135,7 @@ def downgrade() -> None:
         """))
         conn.execute(sa.text("DROP TABLE learning_session"))
         conn.execute(sa.text("ALTER TABLE learning_session_downgrade RENAME TO learning_session"))
-        # Restaurar los índices que existían antes de esta revisión (a1b2c3d4e5f6).
+        # Restore the pre-revision indexes (a1b2c3d4e5f6).
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_learning_session_started_at ON learning_session (started_at)"))
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_learning_session_ended_at ON learning_session (ended_at)"))
         return

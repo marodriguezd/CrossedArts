@@ -1,52 +1,47 @@
 /**
- * Normalización de artefactos de aprendizaje para la galería visual del panel.
- *
- * Lógica pura y agnóstica al dominio: cursos, libros, recursos importados y
- * trabajo práctico se traducen a la MISMA forma (`GalleryItem`) para que la
- * interfaz no tenga una tarjeta distinta por cada tipo. Al vivir fuera de React
- * se prueba con node:test sin DOM.
- *
- * Semántica de progreso (deliberadamente explícita):
- *  - `measured`: el progreso es un dato real y granular (lecciones completadas de
- *    un curso, páginas leídas de un libro). Se puede dibujar una barra.
- *  - `status`: el modelo NO guarda un porcentaje. Solo existe un estado
- *    (NOT_STARTED / IN_PROGRESS / COMPLETED). La interfaz NO muestra un
- *    porcentaje inventado: muestra el estado. Ver docs/PROGRESS.md.
+ * Learning-artifact normalization for the dashboard visual gallery. Pure
+ * domain-agnostic logic: courses, books, imported resources, and practice work
+ * all map to ONE shape (`GalleryItem`) so the UI needs no per-type card. Kept
+ * outside React for DOM-free node:test coverage. Deliberately explicit
+ * progress semantics: `measured` is real granular data (completed lessons,
+ * read pages) and may draw a bar; `status` stores NO percent, only a state
+ * (NOT_STARTED / IN_PROGRESS / COMPLETED) — the UI shows the state, never an
+ * invented percent. See docs/PROGRESS.md.
  */
 import type { Book, Course, LearningResource, PracticeWork, ResourceStatus } from '../types/models.ts';
 import { practiceWorkKindLabel } from './practiceWork.ts';
 import { clampPercent } from './mountainPath.ts';
 
-/** Categoría conceptual de un artefacto de aprendizaje en la galería. */
+/** Conceptual category of a gallery learning artifact. */
 import { translateKey } from '../i18n/dictionaries.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 export type ArtifactKind = 'course' | 'book' | 'resource' | 'practice';
 
-/** Cómo se obtiene el progreso de un artefacto (nunca se mezclan en silencio). */
+/** How an artifact's progress is sourced (never silently mixed). */
 export type GalleryProgressSource = 'measured' | 'status';
 
-/** Elemento ya normalizado de la galería. */
+/** Normalized gallery item. */
 export interface GalleryItem {
   id: string;
   title: string;
-  /** Prefijo estable usado también para resolver la acción de apertura. */
+  /** Stable prefix also used to resolve the open action. */
   kind: ArtifactKind;
-  /** Etiqueta de tipo ya traducida (p. ej. "Curso", "Libro", "Trabajo práctico"). */
+  /** Already translated kind label (e.g. course, book, practice work). */
   kindLabel: string;
-  /** Categoría libre del recurso ("Programación", "Música"…). Puede faltar. */
+  /** Free-form resource category. May be missing. */
   category?: string;
-  /** Ruta de portada resuelta por el servicio de miniaturas. */
+  /** Cover path resolved by the thumbnail service. */
   coverPath?: string;
-  /** Porcentaje de progreso propio (0..100). Solo significativo si es `measured`. */
+  /** Own progress percent (0..100). Meaningful only when `measured`. */
   progress: number;
-  /** Origen del progreso; la interfaz decide con esto si dibuja una barra o un estado. */
+  /** Progress origin; the UI uses it to pick bar vs. state. */
   progressSource?: GalleryProgressSource;
   status?: ResourceStatus;
-  /** Metadato corto ("5/12 lecciones", "Pág. 40/300"). */
+  /** Short metadata (lesson/page counts). */
   meta?: string;
 }
 
-/** Etiquetas en español de cada categoría de artefacto. */
+/** Localized labels per artifact category. */
 export const ARTIFACT_KIND_LABELS: Record<ArtifactKind, string> = {
   course: 'Curso',
   book: 'Libro',
@@ -59,7 +54,7 @@ export function artifactKindLabel(kind: ArtifactKind, lang: LanguageCode = 'es')
   return translateKey(lang, `gallery.kind.${kind}`);
 }
 
-/** Prefijo con el que se construye el id de cada artefacto normalizado. */
+/** Prefix used to build each normalized artifact id. */
 export const ARTIFACT_ID_PREFIX: Record<ArtifactKind, string> = {
   course: 'course:',
   book: 'book:',
@@ -67,23 +62,22 @@ export const ARTIFACT_ID_PREFIX: Record<ArtifactKind, string> = {
   practice: 'practice:'
 };
 
-/** Porcentaje de progreso de un curso (0 si no declara lecciones). */
+/** Course progress percent (0 when no lessons declared). */
 export function coursePercent(course: Pick<Course, 'completed_lessons' | 'total_lessons'>): number {
   const total = course.total_lessons || 0;
   if (total <= 0) return 0;
   return clampPercent(Math.round(((course.completed_lessons || 0) / total) * 100));
 }
 
-/** Porcentaje de lectura de un libro, acotado a [0, 100]. */
+/** Book reading percent, clamped to [0, 100]. */
 export function bookPercent(book: Pick<Book, 'reading_percentage'>): number {
   return clampPercent(Math.round(book.reading_percentage || 0));
 }
 
 /**
- * Indicador GRUESO de estado para artefactos sin porcentaje propio.
- *
- * No es una medida de avance: 50 significa "en marcha", no "a mitad". Solo se usa
- * para ordenar y para el marcador textual; la galería nunca lo pinta como barra.
+ * COARSE state indicator for artifacts without their own percent. Not a
+ * progress measure: 50 means "underway", not "halfway". For sorting and text
+ * badges only; the gallery never paints it as a bar.
  */
 export function statusPercent(status?: ResourceStatus): number {
   if (status === 'COMPLETED') return 100;
@@ -91,7 +85,7 @@ export function statusPercent(status?: ResourceStatus): number {
   return 0;
 }
 
-/** Traduce el estado de un trabajo práctico al vocabulario de estado compartido. */
+/** Maps practice-work status to the shared status vocabulary. */
 export function galleryStatusOfPracticeWork(status: PracticeWork['status']): ResourceStatus {
   if (status === 'DONE') return 'COMPLETED';
   if (status === 'IN_PROGRESS') return 'IN_PROGRESS';
@@ -99,8 +93,8 @@ export function galleryStatusOfPracticeWork(status: PracticeWork['status']): Res
 }
 
 /**
- * Iniciales para la portada tipográfica cuando el recurso no tiene imagen.
- * Ignora artículos/palabras vacías y nunca devuelve más de dos caracteres.
+ * Cover initials for imageless resources. Skips stop words and never returns
+ * more than two chars.
  */
 export function resourceInitials(title: string): string {
   const stopWords = new Set([
@@ -118,27 +112,26 @@ export function resourceInitials(title: string): string {
   return initials.toUpperCase() || '·';
 }
 
-/** Orden de atención: primero lo que está en progreso, al final lo completado. */
+/** Attention order: in-progress first, completed last. */
 export function resourceStatusRank(status?: string): number {
   if (status === 'IN_PROGRESS') return 0;
   if (status === 'NOT_STARTED') return 1;
   return 2;
 }
 
-/** Fuentes adicionales que la galería sabe proyectar además de cursos y libros. */
+/** Extra sources the gallery can project beyond courses and books. */
 export interface GallerySources {
-  /** Recursos importados (documentos) que aún no son cursos ni libros. */
+  /** Imported resources (documents) not yet courses or books. */
   resources?: LearningResource[];
-  /** Trabajo práctico producido por el estudiante. */
+  /** Learner-produced practice work. */
   practiceWork?: PracticeWork[];
 }
 
 /**
- * Construye la lista normalizada de la galería a partir de TODAS las fuentes
- * soportadas. `id` lleva prefijo de tipo para no colisionar entre tablas distintas.
- *
- * Los recursos con `type` course/book se omiten cuando llegan por `resources`
- * (ya se proyectan desde `courses`/`books`): la galería nunca duplica una fila.
+ * Builds the normalized gallery list from ALL supported sources. `id` carries
+ * a kind prefix to avoid cross-table collisions. Resources typed course/book
+ * arriving via `resources` are skipped (already projected from
+ * `courses`/`books`): the gallery never duplicates a row.
  */
 export function buildGalleryItems(
   courses: Course[],
@@ -209,9 +202,8 @@ export function buildGalleryItems(
 }
 
 /**
- * Ordena por atención. El algoritmo es ESTABLE (decoración con el índice
- * original), así que los recursos con el mismo estado conservan el orden en que
- * llegaron.
+ * Sorts by attention. The algorithm is STABLE (index decoration), so resources
+ * sharing a state keep arrival order.
  */
 export function sortGalleryItems(items: GalleryItem[]): GalleryItem[] {
   return items
@@ -224,18 +216,18 @@ export function sortGalleryItems(items: GalleryItem[]): GalleryItem[] {
 }
 
 /**
- * Reparto del panel por propósito. Cada artefacto aparece en UNA sola sección:
- * las secciones no son filtros independientes, son una partición, así que la
- * misma fila nunca se muestra dos veces (evita la galería "inflada").
+ * Panel split by purpose. Each artifact appears in ONE section only: sections
+ * are a partition, not independent filters, so no row ever shows twice
+ * (avoids the "bloated" gallery).
  */
 export interface GallerySections {
-  /** Cursos y libros con progreso medido, aún no completados. */
+  /** Courses and books with measured progress, not yet completed. */
   continueLearning: GalleryItem[];
-  /** Recursos importados (documentos) sin porcentaje propio. */
+  /** Imported resources (documents) with no progress percent of their own. */
   resources: GalleryItem[];
-  /** Trabajo práctico producido por el estudiante. */
+  /** Learner-produced practice work. */
   practice: GalleryItem[];
-  /** Cursos y libros completados, mostrados en último lugar. */
+  /** Completed courses and books, shown last. */
   completed: GalleryItem[];
 }
 

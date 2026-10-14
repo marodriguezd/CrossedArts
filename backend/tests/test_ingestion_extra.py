@@ -20,7 +20,6 @@ def setup_test_env(tmp_path: Path, monkeypatch):
 
 
 def test_import_course_flat_strategy(db: Session):
-    # Crear un directorio de origen con archivos multimedia sueltos en subcarpetas dentro de data_dir
     source_dir = settings.data_dir / "my_flat_course"
     source_dir.mkdir(parents=True, exist_ok=True)
     (source_dir / "intro.mp4").write_text("video 1")
@@ -55,7 +54,6 @@ def test_import_course_flat_strategy(db: Session):
 
 
 def test_import_course_with_root_media_files(db: Session):
-    # Crear un curso con subcarpetas y también archivos de video sueltos en la raíz dentro de data_dir
     source_dir = settings.data_dir / "mixed_course"
     source_dir.mkdir(parents=True, exist_ok=True)
     
@@ -63,7 +61,6 @@ def test_import_course_with_root_media_files(db: Session):
     mod_dir.mkdir(parents=True, exist_ok=True)
     (mod_dir / "video1.mp4").write_text("video 1")
 
-    # Archivo en la raíz
     (source_dir / "extra_material.mp4").write_text("video 2")
 
     request = ImportResourceRequest(
@@ -78,7 +75,6 @@ def test_import_course_with_root_media_files(db: Session):
     manager = IngestionService(db)
     result = manager.import_resource(request)
 
-    # Debe haber creado el Módulo Uno más el módulo "Material Adicional" para la raíz
     assert result.modules_created == 2
     assert result.lessons_created == 2
 

@@ -1,26 +1,23 @@
 """
-Almacén vectorial ligero sobre SQLite.
+Lightweight vector store over SQLite.
 
-Contexto y decisión:
-- CrossedArts es local-first: NO se introduce ninguna infraestructura externa
-  (ni bases vectoriales, ni extensiones binarias de SQLite) solo para resolver
-  la escalabilidad de la búsqueda semántica.
-- Los embeddings viven en la tabla `embedding_record` como vectores JSON. La
-  similitud se calcula en Python porque SQLite no ofrece funciones vectoriales.
-- Lo que sí se corrige es el COSTE de ese cálculo:
-    1. El filtro por modelo (y por ámbito/entidad) se aplica en SQL, no en
-       memoria: nunca se mezclan embeddings de modelos distintos.
-    2. Las filas se recorren en LOTES (`yield_per`) y solo se conserva el
-       top-k en un heap acotado, así la memoria es O(k) y no O(n).
-    3. La similitud se calcula en una sola pasada y con una única
-       normalización de la consulta.
-    4. El número de filas exploradas está acotado por `scan_limit` (límite
-       SQL), configurable, con el mismo valor por defecto que el
-       comportamiento anterior (3000 registros más recientes).
+Context and decision:
+- CrossedArts is local-first: NO external infrastructure (no vector DBs, no
+  SQLite binary extensions) is introduced just to scale semantic search.
+- Embeddings live in `embedding_record` as JSON vectors. Similarity runs in
+  Python because SQLite offers no vector functions.
+- What IS fixed is that computation's COST:
+    1. Model (and scope/entity) filtering happens in SQL, not memory: embeddings
+       from different models never mix.
+    2. Rows stream in BATCHES (`yield_per`) and only top-k survives in a bounded
+       heap, so memory is O(k), not O(n).
+    3. Similarity runs in a single pass with one query normalization.
+    4. Scanned rows are capped by `scan_limit` (SQL limit), configurable, with
+       the same default as the old behavior (3000 newest records).
 
-Este módulo define la interfaz `VectorStore` (punto de extensión) y la
-implementación `SQLiteVectorStore` usada por defecto. Una implementación con
-índice ANN real puede sustituirla sin cambiar a los consumidores.
+This module defines the `VectorStore` interface (extension point) and the default
+`SQLiteVectorStore`. A real-ANN-index implementation can replace it without
+touching consumers.
 """
 from __future__ import annotations
 
@@ -36,17 +33,17 @@ from backend.app.models.content import EmbeddingRecord
 
 logger = get_logger("services.vector_store")
 
-# Umbral por defecto de la búsqueda semántica (comportamiento existente).
+# Default semantic-search threshold (existing behavior).
 DEFAULT_SIMILARITY_THRESHOLD = 0.25
-# Tamaño de lote del recorrido (filas materializadas a la vez).
+# Scan batch size (rows materialized at once).
 DEFAULT_BATCH_SIZE = 250
-# Máximo de registros explorados por búsqueda (límite SQL, no en memoria).
+# Max records scanned per search (SQL limit, not in-memory).
 DEFAULT_SCAN_LIMIT = 3000
 
 
 @dataclass(frozen=True)
 class SimilarityHit:
-    """Resultado de similitud listo para enriquecer."""
+    """Similarity result ready for enrichment."""
 
     entity_id: str
     entity_type: str
@@ -55,7 +52,7 @@ class SimilarityHit:
 
 
 class VectorStore(Protocol):
-    """Punto de extensión para búsquedas por similitud."""
+    """Extension point for similarity searches."""
 
     def search(
         self,
@@ -73,9 +70,8 @@ class VectorStore(Protocol):
 
 def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
     """
-    Similitud coseno en una sola pasada.
-
-    Devuelve 0.0 si las dimensiones no coinciden o algún vector es nulo.
+    Single-pass cosine similarity. Returns 0.0 on dimension mismatch or null
+    vectors.
     """
     if len(a) != len(b) or not a:
         return 0.0
@@ -93,10 +89,10 @@ def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
 
 class SQLiteVectorStore:
     """
-    Búsqueda por similitud sobre `embedding_record` con memoria acotada.
+    Similarity search over `embedding_record` with bounded memory.
 
-    - El filtro por modelo/entidad se traduce a SQL.
-    - El recorrido usa `yield_per` (lotes) y un heap de tamaño k.
+    - Model/entity filtering compiles to SQL.
+    - Traversal uses `yield_per` (batches) plus a size-k heap.
     """
 
     def __init__(
@@ -151,14 +147,14 @@ class SQLiteVectorStore:
             if excluded:
                 query = query.filter(~EmbeddingRecord.entity_id.in_(excluded))
 
-        # Los más recientes primero, como antes; el límite se aplica en SQL.
+        # Newest first, as before; the limit applies in SQL.
         query = query.order_by(EmbeddingRecord.created_at.desc())
         if self.scan_limit is not None:
             logger.debug("Búsqueda semántica acotada a los %d registros más recientes (scan_limit)", self.scan_limit)
             query = query.limit(self.scan_limit)
 
-        # Heap de tamaño k: (score, contador, hit). El contador evita comparar
-        # SimilarityHit cuando dos puntuaciones coinciden exactamente.
+        # Size-k heap: (score, counter, hit). The counter avoids comparing
+        # SimilarityHit on exact score ties.
         heap: list[tuple[float, int, SimilarityHit]] = []
         counter = 0
 

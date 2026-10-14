@@ -13,9 +13,9 @@ router = APIRouter(tags=["Courses"])
 @router.get("/courses/{course_id}", response_model=CourseDetailResponse)
 def get_course_detail(course_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Retorna la estructura jerárquica completa de un curso (módulos, lecciones y tareas).
+    Return a course's full hierarchy (modules, lessons, tasks).
     """
-    # Usar Joined Load o consulta directa. SQLAlchemy mapea las relaciones automáticamente
+    # SQLAlchemy maps relationships automatically; direct lookup is enough.
     course = db.get(Course, course_id)
     if not course:
         raise get_http_exception("COURSE_NOT_FOUND", f"El curso con ID {course_id} no existe.")
@@ -29,7 +29,7 @@ def toggle_lesson_completion(
     db: Session = Depends(get_db)
 ):
     """
-    Marca una lección específica como completada o pendiente y actualiza el progreso del curso asociado.
+    Mark a lesson completed/pending and refresh its course progress.
     """
     try:
         new_progress = ProgressService.toggle_lesson_completion(db, lesson_id, payload.is_completed)

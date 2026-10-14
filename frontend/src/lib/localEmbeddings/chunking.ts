@@ -11,7 +11,7 @@ export interface SemanticChunk {
   chapter?: string;
 }
 
-/** Entradas normalizadas para el troceado semántico (frontera de datos externos). */
+/** Normalized inputs for semantic chunking (external-data boundary). */
 export interface LessonChunkInput {
   id: string;
   title: string;
@@ -62,10 +62,9 @@ export interface ConceptChunkInput {
 }
 
 /**
- * Trabajo práctico: evidencia PRODUCIDA por el estudiante. Es una fuente de
- * conocimiento de primera clase, no un anexo del recurso: se indexa con sus
- * campos significativos (título, descripción, contenido y notas) para que sea
- * recuperable por búsqueda local y conserve su procedencia.
+ * Practice work: learner-PRODUCED evidence. A first-class knowledge source,
+ * not a resource appendix: indexed with its meaningful fields (title,
+ * description, content, notes) for local-search recall with provenance intact.
  */
 export interface PracticeChunkInput {
   id: string;
@@ -88,14 +87,13 @@ export interface ChunkableResources {
 }
 
 // ---------------------------------------------------------------------------
-// SHA-256 real.
+// Real SHA-256.
 //
-// `computeSha256ContentHash` promete un SHA-256 y los consumidores (invalidación
-// de caché, identidad de fragmentos) dependen de esa propiedad criptográfica.
-// WebCrypto `crypto.subtle` no existe en todos los entornos soportados (p. ej.
-// contextos no seguros o workers restringidos), así que el fallback es una
-// implementación SHA-256 pura en TypeScript con el mismo resultado exacto
-// (digest idéntico byte a byte), nunca un hash ligero disfrazado de 64 hex.
+// `computeSha256ContentHash` promises SHA-256 and consumers (cache
+// invalidation, chunk identity) rely on that cryptographic property. WebCrypto
+// `crypto.subtle` is missing in some supported envs (e.g. insecure contexts or
+// restricted workers), so the fallback is a pure TypeScript SHA-256 with the
+// exact same output (byte-identical digest), never a light hash posing as 64 hex.
 // ---------------------------------------------------------------------------
 
 const SHA256_K = new Uint32Array([
@@ -114,9 +112,9 @@ function rotr(x: number, n: number): number {
 }
 
 /**
- * Implementación SHA-256 pura (FIPS 180-4) sobre UTF-8.
- * Determinista y sin dependencias: produce exactamente el mismo digest que
- * WebCrypto, por lo que ambas rutas son intercambiables.
+ * Pure SHA-256 implementation (FIPS 180-4) over UTF-8. Deterministic and
+ * dependency-free: yields exactly the WebCrypto digest, so both paths are
+ * interchangeable.
  */
 export function sha256Hex(input: string): string {
   const data = new TextEncoder().encode(input);
@@ -164,9 +162,9 @@ export function sha256Hex(input: string): string {
 }
 
 /**
- * Hash de contenido criptográfico SHA-256. Devuelve 64 caracteres hexadecimales.
- * Usa WebCrypto cuando está disponible y la implementación pura (idéntica) en
- * caso contrario: el resultado es el mismo digest en ambos caminos.
+ * Cryptographic SHA-256 content hash. Returns 64 hex chars. Uses WebCrypto
+ * when available and the identical pure fallback otherwise: both paths yield
+ * the same digest.
  */
 export async function computeSha256ContentHash(input: string): Promise<string> {
   if (typeof crypto !== 'undefined' && crypto.subtle && typeof crypto.subtle.digest === 'function') {
@@ -175,15 +173,15 @@ export async function computeSha256ContentHash(input: string): Promise<string> {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     } catch {
-      // Contextos con subtle degradado: caer a la implementación pura.
+      // Degraded-subtle contexts: fall back to the pure implementation.
     }
   }
   return sha256Hex(input);
 }
 
 /**
- * Función de hashing rápida síncrona (FNV-1a 32-bit) para IDs de UI o compatibilidad ligera.
- * NO es un hash criptográfico y jamás se presenta como SHA-256.
+ * Fast synchronous hash (FNV-1a 32-bit) for UI ids or light compat. NOT a
+ * cryptographic hash and never presented as SHA-256.
  */
 export function computeContentHash(input: string): string {
   let hash = 0x811c9dc5;
@@ -195,38 +193,37 @@ export function computeContentHash(input: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Troceado semántico acotado.
+// Bounded semantic chunking.
 //
-// Truncar el contenido de una lección o nota a un snippet pequeño hacía que la
-// recuperación semántica ignorase la mayor parte del texto. Ahora el contenido
-// largo se reparte en varios fragmentos acotados, con cortes en frontera de
-// párrafo/frase, solape pequeño para conservar contexto, IDs deterministas
-// (`<base>` para la parte 1 y `<base>_pN` para las siguientes) y orden estable.
+// Truncating lesson/note content to a small snippet made semantic retrieval
+// ignore most of the text. Long content now splits into bounded chunks with
+// paragraph/sentence-boundary cuts, small overlap for context, deterministic
+// ids (`<base>` for part 1, `<base>_pN` for the rest), and stable order.
 // ---------------------------------------------------------------------------
 
-/** Objetivo de caracteres por fragmento. Acotado para caber en el contexto del modelo de embeddings activo. */
+/** Target chars per chunk. Bounded to fit the active embedding model's context. */
 const CHUNK_CHAR_LIMIT = 600;
-/** Solape entre fragmentos contiguos: mantiene coherencia sin duplicar en exceso. */
+/** Overlap between adjacent chunks: keeps coherence without excess duplication. */
 const CHUNK_OVERLAP_CHARS = 80;
-/** Un resto más corto que esto se fusiona con el fragmento anterior (evita migajas). */
+/** A tail shorter than this merges into the previous chunk (avoids crumbs). */
 const MIN_TAIL_CHARS = 60;
 
 function splitAtBoundary(text: string, limit: number): number {
   if (text.length <= limit) return text.length;
   const window = text.slice(0, limit + 1);
-  // Preferir frontera de párrafo, luego fin de frase, luego espacio.
+  // Prefer paragraph boundary, then sentence end, then space.
   const paragraph = window.lastIndexOf('\n');
   if (paragraph >= Math.floor(limit * 0.5)) return paragraph + 1;
   const sentence = Math.max(window.lastIndexOf('. '), window.lastIndexOf('.\n'), window.lastIndexOf('? '), window.lastIndexOf('! '));
   if (sentence >= Math.floor(limit * 0.5)) return sentence + 1;
   const space = window.lastIndexOf(' ');
   if (space >= Math.floor(limit * 0.4)) return space + 1;
-  return limit; // Corte duro: sin espacios utilizables.
+  return limit; // Hard cut: no usable spaces.
 }
 
 /**
- * Reparte `text` en fragmentos acotados y deterministas con solape controlado.
- * El texto vacío o corto produce exactamente un fragmento (sin inflar la caché).
+ * Splits `text` into bounded deterministic chunks with controlled overlap.
+ * Empty or short text yields exactly one chunk (no cache bloat).
  */
 export function splitIntoBoundedParts(text: string): string[] {
   const trimmed = text.trim();
@@ -240,11 +237,11 @@ export function splitIntoBoundedParts(text: string): string[] {
     const part = trimmed.slice(cursor, end).trim();
     if (part) parts.push(part);
     if (end >= trimmed.length) break;
-    // Retroceso con solape para no perder contexto entre fragmentos.
+    // Overlapped step-back to preserve context across chunks.
     cursor = Math.max(end - CHUNK_OVERLAP_CHARS, cursor + 1);
   }
 
-  // Fusionar un resto demasiado pequeño con el fragmento anterior.
+  // Merge an undersized tail into the previous chunk.
   if (parts.length > 1 && parts[parts.length - 1].length < MIN_TAIL_CHARS) {
     const tail = parts.pop()!;
     parts[parts.length - 1] = `${parts[parts.length - 1]} ${tail}`.trim();
@@ -268,7 +265,7 @@ function buildChunksForSource(args: BuildChunkArgs): SemanticChunk[] {
   const { baseId, sourceType, sourceId, title, headerText, bodyText, page, chapter } = args;
   const bodyParts = splitIntoBoundedParts(bodyText);
   if (bodyParts.length === 0) {
-    // Sin cuerpo: el fragmento es solo la cabecera (metadatos del recurso).
+    // Bodiless: the chunk is just the header (resource metadata).
     const text = headerText.trim();
     if (!text) return [];
     return [{
@@ -307,13 +304,13 @@ function notePageFromTags(tags?: string | null): number | undefined {
 }
 
 /**
- * Divide y normaliza recursos de aprendizaje de CrossedArts en fragmentos semánticos acotados.
- * El contenido largo (lecciones, notas) se representa con varios fragmentos en lugar de truncarse.
+ * Splits and normalizes CrossedArts learning resources into bounded semantic chunks.
+ * Long content (lessons, notes) yields several chunks instead of truncation.
  */
 export function createSemanticChunksFromResources(resources: ChunkableResources): SemanticChunk[] {
   const chunks: SemanticChunk[] = [];
 
-  // 1. Cursos (y sus lecciones)
+  // 1. Courses (and their lessons)
   for (const c of resources.courses || []) {
     const courseHeader = `Curso: ${c.title}. Categoría: ${c.category || 'General'}.`;
     chunks.push(...buildChunksForSource({
@@ -328,8 +325,8 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     for (const m of c.modules || []) {
       for (const l of m.lessons || []) {
         const lessonHeader = `Lección: ${l.title} en módulo ${m.title} del curso ${c.title}. Duración: ${l.duration_minutes || 0}m.`;
-        // El contenido editable de la lección forma parte del texto canónico: un
-        // cambio de contenido produce un nuevo hash e invalida solo estos fragmentos.
+        // Editable lesson content belongs to the canonical text: a content change
+        // yields a new hash and invalidates only these chunks.
         chunks.push(...buildChunksForSource({
           baseId: `lesson_${l.id}`,
           sourceType: 'lesson',
@@ -342,7 +339,7 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }
   }
 
-  // 2. Libros
+  // 2. Books
   for (const b of resources.books || []) {
     const bookHeader = `Libro: ${b.title}. Autor: ${b.author || 'Desconocido'}. Categoría: ${b.category || 'General'}. Progreso: ${b.reading_percentage ?? 0}%.`;
     chunks.push(...buildChunksForSource({
@@ -355,7 +352,7 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }));
   }
 
-  // 3. Notas
+  // 3. Notes
   for (const n of resources.notes || []) {
     const noteHeader = `Nota: ${n.title}.`;
     chunks.push(...buildChunksForSource({
@@ -381,7 +378,7 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }));
   }
 
-  // 5. Conceptos
+  // 5. Concepts
   for (const con of resources.concepts || []) {
     chunks.push(...buildChunksForSource({
       baseId: `concept_${con.id}`,
@@ -393,11 +390,11 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }));
   }
 
-  // 6. Trabajo práctico del estudiante (evidencia producida, indexable).
+  // 6. Learner practice work (produced evidence, indexable).
   for (const pw of resources.practiceWork || []) {
     const practiceHeader = `Trabajo práctico: ${pw.title}. Tipo: ${pw.kind || 'exercise'}.`;
-    // Los campos se unen en un único texto canónico: un cambio en cualquiera de
-    // ellos altera el hash e invalida solo los fragmentos de este artefacto.
+    // Fields merge into one canonical text: a change in any of them alters the
+    // hash and invalidates only this artifact's chunks.
     const bodyText = [pw.description, pw.content, pw.notes]
       .map((value) => (value || '').trim())
       .filter(Boolean)
@@ -416,7 +413,7 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
 }
 
 /**
- * Divide y normaliza un KnowledgeDocument canónico en fragmentos semánticos acotados.
+ * Splits and normalizes one canonical KnowledgeDocument into bounded semantic chunks.
  */
 export function createSemanticChunksFromKnowledgeDocument(doc: {
   id: string;
@@ -441,7 +438,7 @@ export function createSemanticChunksFromKnowledgeDocument(doc: {
 }
 
 /**
- * Trocea un conjunto de KnowledgeDocuments de forma síncrona y determinista.
+ * Chunks a KnowledgeDocument set synchronously and deterministically.
  */
 export function createSemanticChunksFromKnowledgeDocuments(
   docs: Array<{
@@ -459,8 +456,8 @@ export function createSemanticChunksFromKnowledgeDocuments(
 }
 
 /**
- * Variante asíncrona: recalcula el hash de cada fragmento con SHA-256 real.
- * La identidad de contenido de la caché de vectores depende de esta propiedad.
+ * Async variant: recomputes each chunk hash with real SHA-256. Vector-cache
+ * content identity depends on this property.
  */
 export async function createSemanticChunksFromResourcesAsync(
   resources: ChunkableResources
@@ -475,11 +472,9 @@ export async function createSemanticChunksFromResourcesAsync(
 }
 
 /**
- * Estructura mínima de `KnowledgeDocument` que el troceado necesita.
- *
- * Se declara estructuralmente (no importando el tipo) para que el módulo de
- * troceado siga siendo la frontera baja y `ai/knowledge` pueda depender de él
- * sin ciclo en tiempo de ejecución.
+ * Minimal `KnowledgeDocument` shape chunking needs. Declared structurally
+ * (not by importing the type) so chunking stays the low-level boundary and
+ * `ai/knowledge` can depend on it with no runtime cycle.
  */
 export interface ChunkableKnowledgeDocument {
   id: string;
@@ -493,9 +488,9 @@ export interface ChunkableKnowledgeDocument {
 }
 
 /**
- * Trocea documentos canónicos YA ADAPTADOS y calcula su identidad de contenido
- * con SHA-256 real. Es la ruta de producción: el `KnowledgeDocument` es la
- * frontera semántica, y aquí solo se le aplica el troceado acotado.
+ * Chunks ALREADY-ADAPTED canonical documents and hashes their content identity
+ * with real SHA-256. Production path: `KnowledgeDocument` is the semantic
+ * boundary, and only bounded chunking applies here.
  */
 export async function createSemanticChunksFromKnowledgeDocumentsAsync(
   documents: ChunkableKnowledgeDocument[]

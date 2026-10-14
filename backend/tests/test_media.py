@@ -16,11 +16,11 @@ def test_thumbnail_resolution_precedence():
     url = ThumbnailService.resolve_cover_url("http://example.com/cover.png", None, "course")
     assert url == "http://example.com/cover.png"
 
-    # 2. Ruta /static/ que no existe en disco → placeholder
+    # 2. Missing on-disk /static/ path -> placeholder.
     placeholder = ThumbnailService.resolve_cover_url("/static/covers/test.jpg", None, "book")
     assert placeholder == "/static/placeholders/book_placeholder.png"
 
-    # 3. Ruta /static/ que SÍ existe → se devuelve tal cual
+    # 3. Existing /static/ path -> returned as is.
     covers_dir = ThumbnailService.STATIC_DIR / "covers"
     covers_dir.mkdir(parents=True, exist_ok=True)
     test_file = covers_dir / "test.jpg"
@@ -31,28 +31,28 @@ def test_thumbnail_resolution_precedence():
     finally:
         test_file.unlink()
 
-    # 4. Fallback a placeholder por defecto (curso)
+    # 4. Default placeholder fallback (course).
     assert ThumbnailService.resolve_cover_url(None, None, "course") == "/static/placeholders/course_placeholder.png"
 
-    # 5. Fallback a placeholder por defecto (libro)
+    # 5. Default placeholder fallback (book).
     assert ThumbnailService.resolve_cover_url(None, None, "book") == "/static/placeholders/book_placeholder.png"
 
 def test_video_discovery_and_idempotency(db: Session, tmp_path: Path):
-    # Crear un directorio temporal de curso con un video
+    # Temp course directory with one video.
     course_dir = tmp_path / "course_photography"
     course_dir.mkdir()
     
-    # Crear video de prueba
+    # Fixture video.
     video_file = course_dir / "01_introduction.mp4"
     video_file.write_bytes(b"dummy video content")
 
-    # Ejecutar scanner
+    # Run the scanner.
     scanner = CourseScanner()
-    # 1. Primer escaneo (Descubrimiento y creación)
+    # 1. First scan (discovery + creation).
     created, updated = scanner.scan(db, course_dir, None)
     assert created is True
     
-    # Verificar que el curso, la lección heurística y el MediaAsset fueron creados
+    # Course, heuristic lesson and MediaAsset must exist now.
     course = db.scalars(select(Course).where(Course.title == "course_photography")).first()
     assert course is not None
     
@@ -77,7 +77,6 @@ def test_video_discovery_and_idempotency(db: Session, tmp_path: Path):
 
 
 def test_pdf_discovery_and_epub_foundation(db: Session, tmp_path: Path):
-    # Crear directorio de libros temporal
     books_dir = tmp_path / "books"
     books_dir.mkdir()
     book_folder = books_dir / "atomic_habits"
@@ -107,7 +106,7 @@ def test_pdf_discovery_and_epub_foundation(db: Session, tmp_path: Path):
 
 
 def test_media_api_streaming_range_requests(client: TestClient, db: Session):
-    # Crear archivo real temporal dentro de ~/.domestik/ para pasar la validación de is_safe_path
+    # Real temp file under the data dir so is_safe_path validation passes.
     from backend.app.core.settings import settings
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     dummy_file = settings.data_dir / f"stream_video_{uuid.uuid4().hex[:6]}.mp4"
@@ -115,7 +114,7 @@ def test_media_api_streaming_range_requests(client: TestClient, db: Session):
     dummy_file.write_bytes(dummy_content)
 
     try:
-        # Crear curso y media asset
+        # Fixture course + media asset.
         course = Course(id=uuid.uuid4(), title="Test Stream Course", status=ResourceStatus.NOT_STARTED)
         db.add(course)
         db.commit()
@@ -132,13 +131,13 @@ def test_media_api_streaming_range_requests(client: TestClient, db: Session):
         db.add(asset)
         db.commit()
 
-        # Petición normal sin cabecera Range
+        # Plain request without a Range header.
         response = client.get(f"/api/v1/media/{asset.id}/stream")
         assert response.status_code in (200, 206)
         assert response.headers["Content-Length"] == str(len(dummy_content))
         assert response.content == dummy_content
 
-        # Petición con cabecera Range bytes=0-9
+        # Range request bytes=0-9.
         response_range = client.get(f"/api/v1/media/{asset.id}/stream", headers={"Range": "bytes=0-9"})
         assert response_range.status_code == 206
         assert response_range.headers["Content-Range"] == f"bytes 0-9/{len(dummy_content)}"
@@ -150,7 +149,7 @@ def test_media_api_streaming_range_requests(client: TestClient, db: Session):
 
 
 def test_media_playback_progress_and_completion_threshold(client: TestClient, db: Session):
-    # Configurar curso -> módulo -> lección -> media asset
+    # Fixture course -> module -> lesson -> media asset.
     course = Course(id=uuid.uuid4(), title="Progress Course", status=ResourceStatus.NOT_STARTED)
     module = Module(id=uuid.uuid4(), course_id=course.id, title="Module 1")
     lesson = Lesson(id=uuid.uuid4(), module_id=module.id, title="Lesson 1", is_completed=False, duration_minutes=10)
@@ -171,28 +170,28 @@ def test_media_playback_progress_and_completion_threshold(client: TestClient, db
     db.add(asset)
     db.commit()
 
-    # 1. Guardar progreso al 50%
+    # 1. Save 50% progress.
     response = client.post(f"/api/v1/media/{asset.id}/progress?position=50.0&duration=100.0")
     assert response.status_code == 200
     data = response.json()
     assert data["last_position"] == 50.0
     assert data["is_watched"] is False
 
-    # Verificar que el progreso esté guardado en BD
+    # Progress must be persisted.
     db.expire_all()
     progress = db.scalars(select(MediaProgress).where(MediaProgress.media_asset_id == asset.id)).first()
     assert progress is not None
     assert progress.last_position == 50.0
     
-    # La lección asociada NO debe estar completada todavía
+    # Linked lesson must NOT be completed yet.
     db.refresh(lesson)
     assert lesson.is_completed is False
 
-    # 2. Guardar progreso al 91% (supera el umbral del 90%)
+    # 2. Save 91% progress (past the 90% threshold).
     response_completion = client.post(f"/api/v1/media/{asset.id}/progress?position=91.0&duration=100.0")
     assert response_completion.status_code == 200
     assert response_completion.json()["is_watched"] is True
 
-    # La lección debe haberse completado automáticamente
+    # Lesson must be auto-completed now.
     db.refresh(lesson)
     assert lesson.is_completed is True

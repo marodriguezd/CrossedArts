@@ -1,11 +1,11 @@
 /**
- * Matemática determinista de la "vista de progreso tipo montaña" y del panel de
- * galería visual. Vive fuera del componente React a propósito: son cálculos
- * puros (sin DOM, sin red) y por tanto se prueban directamente con node:test.
+ * Deterministic math for the "mountain-style progress view" and the visual
+ * gallery panel. Deliberately kept outside the React component: these are pure
+ * calculations (no DOM, no network) and are therefore tested directly with
+ * node:test.
  *
- * Convención de coordenadas: espacio normalizado 0..100 con el eje Y hacia
- * abajo (igual que un viewBox SVG), de modo que la cima de la montaña tiene un
- * valor de `y` pequeño.
+ * Coordinate convention: normalized 0..100 space with the Y axis pointing down
+ * (like an SVG viewBox), so the mountain summit has a small `y` value.
  */
 
 export interface TrailPoint {
@@ -13,7 +13,7 @@ export interface TrailPoint {
   y: number;
 }
 
-/** Sendero ascendente de la montaña: base (izquierda-abajo) → cumbre. */
+/** Ascending mountain trail: base (bottom-left) -> summit. */
 export const MOUNTAIN_TRAIL: readonly TrailPoint[] = [
   { x: 8, y: 92 },
   { x: 24, y: 78 },
@@ -25,21 +25,21 @@ export const MOUNTAIN_TRAIL: readonly TrailPoint[] = [
 ];
 
 export interface MountainMilestone {
-  /** Porcentaje de progreso que marca el hito (0..100). */
+  /** Progress percent marking the milestone (0..100). */
   percent: number;
-  /** Etiqueta corta en español. */
+  /** Short localized label. */
   label: string;
-  /** true cuando el progreso actual ya alcanzó el hito. */
+  /** True when the current progress already reached the milestone. */
   reached: boolean;
 }
 
 /**
- * Hitos genéricos del camino (vista global de la biblioteca).
+ * Generic trail milestones (library-wide view).
  *
- * Son posiciones honestas sobre el recorrido, NO etapas psicológicas: el modelo
- * de datos no guarda "fundamentos" ni "nivel intermedio", así que no se finge
- * que existan. Cuando hay estructura real (los módulos de un curso), se usa esa
- * estructura en su lugar: ver `deriveStagesFromModules`. */
+ * They are honest positions along the route, NOT psychological stages: the data
+ * model stores neither "fundamentals" nor "intermediate level", so their
+ * existence is never faked. When real structure exists (a course's modules),
+ * that structure is used instead: see `deriveStagesFromModules`. */
 export const MOUNTAIN_MILESTONES: readonly MountainStageDefinition[] = [
   { percent: 0, label: 'Inicio' },
   { percent: 25, label: 'Base' },
@@ -48,17 +48,17 @@ export const MOUNTAIN_MILESTONES: readonly MountainStageDefinition[] = [
   { percent: 100, label: 'Cumbre' }
 ];
 
-/** Definición de un hito del camino: posición (0..100) y etiqueta en español. */
+/** Trail milestone definition: position (0..100) and localized label. */
 export interface MountainStageDefinition {
   percent: number;
   label: string;
 }
 
 /**
- * Deriva hitos REALES a partir de la estructura de un curso: cada módulo ocupa
- * el tramo de lecciones que contiene, de modo que el hito marca el final de ese
- * módulo. Si el curso no declara lecciones se devuelve `[]` y la vista conserva
- * sus hitos genéricos: nunca se inventan etapas.
+ * Derives REAL milestones from a course structure: each module covers the
+ * lesson span it contains, so the milestone marks that module's end. A course
+ * declaring no lessons returns `[]` and the view keeps its generic milestones:
+ * stages are never invented.
  */
 export function deriveStagesFromModules(
   modules: readonly { title: string; lessons?: readonly { is_completed: boolean }[] }[],
@@ -87,7 +87,7 @@ export function deriveStagesFromModules(
   return stages;
 }
 
-/** Acota un valor al rango [0, 100] y descarta NaN/Infinity. */
+/** Clamps a value to [0, 100] and discards NaN/Infinity. */
 export function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
   if (value < 0) return 0;
@@ -95,12 +95,12 @@ export function clampPercent(value: number): number {
   return value;
 }
 
-/** Distancia euclídea entre dos puntos del sendero. */
+/** Euclidean distance between two trail points. */
 export function distanceBetween(a: TrailPoint, b: TrailPoint): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
-/** Longitud total del sendero (suma de segmentos). */
+/** Total trail length (sum of segments). */
 export function trailLength(points: readonly TrailPoint[]): number {
   let total = 0;
   for (let i = 1; i < points.length; i += 1) {
@@ -110,11 +110,11 @@ export function trailLength(points: readonly TrailPoint[]): number {
 }
 
 /**
- * Punto del sendero a una fracción de avance `0..1`.
+ * Trail point at an advance fraction `0..1`.
  *
- * Recorre los segmentos acumulando longitud y devuelve la posición
- * interpolada. Sin dependencias del DOM (no usa `getPointAtLength`), por lo que
- * el marcador puede calcularse sin medir el SVG renderizado.
+ * Walks the segments accumulating length and returns the interpolated position.
+ * No DOM dependencies (it does not use `getPointAtLength`), so the marker can
+ * be computed without measuring the rendered SVG.
  */
 export function pointAtFraction(points: readonly TrailPoint[], fraction: number): TrailPoint {
   if (points.length === 0) return { x: 0, y: 0 };
@@ -142,12 +142,12 @@ export function pointAtFraction(points: readonly TrailPoint[], fraction: number)
   return { ...points[points.length - 1] };
 }
 
-/** Punto del sendero a un porcentaje de progreso (0..100). */
+/** Trail point at a progress percent (0..100). */
 export function pointAtPercent(points: readonly TrailPoint[], percent: number): TrailPoint {
   return pointAtFraction(points, clampPercent(percent) / 100);
 }
 
-/** Hitos del camino con su estado `reached` resuelto para un progreso dado. */
+/** Trail milestones with their `reached` state resolved for a given progress. */
 export function resolveMilestones(
   progress: number,
   definitions: readonly MountainStageDefinition[] = MOUNTAIN_MILESTONES
@@ -160,19 +160,19 @@ export function resolveMilestones(
   }));
 }
 
-/** Cadena del atributo `points` de un `<polyline>` SVG. */
+/** Value of the `points` attribute of an SVG `<polyline>`. */
 export function toPolylinePoints(points: readonly TrailPoint[]): string {
   return points.map((point) => `${point.x},${point.y}`).join(' ');
 }
 
 export interface ProgressSource {
-  /** Porcentaje propio del recurso (0..100). */
+  /** The resource's own percent (0..100). */
   percent: number;
 }
 
 /**
- * Progreso global de la biblioteca: media de los porcentajes de cada recurso.
- * Devuelve 0 con una biblioteca vacía (nunca divide por cero ni inventa datos).
+ * Library-wide progress: mean of each resource's percent. Returns 0 for an
+ * empty library (never divides by zero or invents data).
  */
 export function computeOverallProgress(inputs: readonly ProgressSource[]): number {
   if (inputs.length === 0) return 0;

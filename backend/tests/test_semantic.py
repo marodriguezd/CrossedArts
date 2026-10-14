@@ -19,7 +19,6 @@ def test_cosine_similarity():
     v2 = [0.0, 1.0, 0.0]
     assert CosineSimilarityCalculator.cosine_similarity(v1, v2) == 0.0
 
-    # Vectores idénticos
     v3 = [1.0, 2.0, 3.0]
     assert pytest.approx(CosineSimilarityCalculator.cosine_similarity(v3, v3)) == 1.0
 
@@ -32,7 +31,6 @@ def test_embedding_generation_and_caching(db: Session):
     note_id = uuid.uuid4()
     content = "Aprender Rust y WebAssembly para construir widgets rápidos."
     
-    # 1. Generar e indexar
     EmbeddingService.index_entity(db, note_id, "note", content)
 
     record = db.scalars(select(EmbeddingRecord).where(
@@ -45,7 +43,7 @@ def test_embedding_generation_and_caching(db: Session):
     assert record.hash_content == EmbeddingService.compute_hash(content)
     assert len(json.loads(record.vector)) == 384
 
-    # 2. Intentar indexar de nuevo con idéntico contenido (debe usar caché)
+    # 2. Re-index identical content (must hit the cache).
     created_at_before = record.created_at
     EmbeddingService.index_entity(db, note_id, "note", content)
     
@@ -68,10 +66,8 @@ def test_semantic_search_retrieval(db: Session):
     EmbeddingService.index_entity(db, note_rust.id, "note", note_rust.content)
     EmbeddingService.index_entity(db, note_unrelated.id, "note", note_unrelated.content)
 
-    # Buscar "programación de software"
     results = SemanticSearchService.search(db, "programación de software")
     
-    # Debe clasificar más alto a Rust
     assert len(results) > 0
     assert results[0]["resource_id"] == course.id
     assert results[0]["match_type"] == "note"
@@ -106,7 +102,7 @@ def test_semantic_related_resources(db: Session):
     related = SemanticSearchService.get_related_resources(db, course1.id)
 
     assert len(related) > 0
-    # El primer relacionado debe ser Sistemas Seguros, no Repostería
+    # Top related hit must be the secure-systems course, not the baking one.
     assert related[0]["id"] == course2.id
     assert related[0]["type"] == "course"
 

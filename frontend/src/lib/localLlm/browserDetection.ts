@@ -7,7 +7,8 @@ export function detectBrowserFamily(
   if (!nav) return 'other';
   const ua = nav.userAgent || '';
 
-  // Brave detection (navigator.brave API o userAgent)
+  // Brave masks its user agent, so the dedicated `navigator.brave` probe is
+  // authoritative and the UA string is only a fallback.
   const isBrave = Boolean(
     nav.brave && typeof nav.brave.isBrave === 'function'
   ) || /\bBrave\b/i.test(ua);

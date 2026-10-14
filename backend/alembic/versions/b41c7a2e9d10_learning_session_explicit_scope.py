@@ -118,7 +118,7 @@ def upgrade() -> None:
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_learning_session_lesson_id ON learning_session (lesson_id)"))
         return
 
-    # Otros dialectos: se sueltan las restricciones antiguas y se añaden las nuevas.
+    # Other dialects: drop the old constraints and add the new ones.
     op.drop_constraint('ck_learning_session_scope', 'learning_session', type_='check')
     op.add_column(
         'learning_session',
@@ -145,9 +145,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Restore the previous contract: a session must keep a scope anchor.
 
-    Downgrade DESTRUCTIVO por diseño: las sesiones globales (repaso transversal)
-    no pueden representarse bajo el esquema anterior, así que se eliminan de
-    forma explícita antes de reactivar la restricción. Nunca en silencio.
+    DESTRUCTIVE downgrade by design: global sessions (cross-cutting review)
+    cannot be represented under the old schema, so they are deleted explicitly
+    before re-enabling the constraint. Never silently.
     """
     conn = op.get_bind()
     dialect = conn.dialect.name

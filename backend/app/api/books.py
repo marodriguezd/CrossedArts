@@ -13,7 +13,7 @@ router = APIRouter(prefix="/books", tags=["Books"])
 @router.get("/{book_id}", response_model=BookDetailResponse)
 def get_book_detail(book_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Retorna el detalle y el progreso de lectura de un libro específico.
+    Return a specific book's detail and reading progress.
     """
     book = db.get(Book, book_id)
     if not book:

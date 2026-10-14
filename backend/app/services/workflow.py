@@ -194,8 +194,8 @@ class WorkflowService:
         change_amount: float = 1.0
     ):
         """
-        Escucha eventos del sistema (ej: sesión completada, lección terminada)
-        e incrementa el valor de las metas que correspondan.
+        Listen for system events (e.g. session completed, lesson finished) and
+        bump the matching goals.
         """
         stmt = select(Goal).where(
             and_(
@@ -305,7 +305,7 @@ class WorkflowService:
     def record_habit_completion(db: Session, habit_id: uuid.UUID, target_date: Optional[datetime] = None) -> HabitRecord:
         if not target_date:
             target_date = utc_now_naive()
-        # Verificar si ya existe registro para ese día (mismo año/mes/día)
+        # Skip when a record already exists for that calendar day.
         start_of_day = datetime(target_date.year, target_date.month, target_date.day)
         end_of_day = start_of_day + timedelta(days=1)
 
@@ -337,7 +337,7 @@ class WorkflowService:
         if not habit:
             return {}
 
-        # Limitar la carga de registros en memoria a los últimos 60 días para optimizar
+        # Keep only the last 60 days in memory.
         records = db.scalars(
             select(HabitRecord)
             .where(HabitRecord.habit_id == habit_id)
@@ -350,7 +350,7 @@ class WorkflowService:
         current_date = utc_now_naive().date()
         recorded_dates = {r.date.date() for r in records}
 
-        # Si el hábito fue completado hoy, empezamos desde hoy, sino desde ayer
+        # Start the streak today when done today, else yesterday.
         if current_date in recorded_dates:
             streak = 1
             check_date = current_date - timedelta(days=1)
@@ -364,7 +364,7 @@ class WorkflowService:
                 streak += 1
                 check_date -= timedelta(days=1)
 
-        # Tasa de completación de los últimos 30 días
+        # Last-30-days completion rate.
         thirty_days_ago = utc_now_naive() - timedelta(days=30)
         stmt_count = select(func.count(HabitRecord.id)).where(
             and_(
@@ -375,7 +375,7 @@ class WorkflowService:
         total_30_days = db.scalar(stmt_count) or 0
         completion_rate = min(1.0, total_30_days / 30.0)
 
-        # Completados esta semana (últimos 7 días)
+        # Completions this week (last 7 days).
         seven_days_ago = utc_now_naive() - timedelta(days=7)
         stmt_week = select(func.count(HabitRecord.id)).where(
             and_(

@@ -7,7 +7,6 @@ from backend.app.models.activity import Note
 
 
 def test_api_learning_paths(client: TestClient, db: Session):
-    # Crear Path
     response = client.post("/api/v1/workflow/paths", json={"title": "FastAPI Path", "description": "Ruta rápida"})
     assert response.status_code == 201
     data = response.json()
@@ -86,7 +85,6 @@ def test_api_habits(client: TestClient):
 
 
 def test_api_spaced_repetition(client: TestClient, db: Session):
-    # Sembrar recurso y nota
     book = Book(id=uuid.uuid4(), title="Clean Architecture")
     db.add(book)
     db.commit()
@@ -98,7 +96,6 @@ def test_api_spaced_repetition(client: TestClient, db: Session):
     assert response.status_code == 201
     item_id = response.json()["id"]
 
-    # Probar la evaluación
     response = client.post(f"/api/v1/workflow/reviews/{item_id}/submit", json={"quality": 4})
     assert response.status_code == 200
     assert response.json()["repetitions"] == 1

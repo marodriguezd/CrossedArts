@@ -10,21 +10,20 @@ export interface RetrievedDocument {
   page?: number;
   chapter?: string;
   /**
-   * Verdadero cuando la coincidencia se apoya en CONTENIDO real (cuerpo de una
-   * nota/lección, descripción de un recurso, trabajo práctico, o un vector
-   * semántico) y no únicamente en metadatos como el título. Un acierto de solo
-   * título nunca debe presentarse como fundamentación sólida.
+   * True when the match rests on real CONTENT (note/lesson body, resource
+   * description, practice work, or a semantic vector), not metadata such as
+   * the title alone. A title-only hit must never pose as solid grounding.
    */
   substantive?: boolean;
   /**
-   * Ruta de procedencia navegable, p. ej. `[Curso, Módulo, Lección]`.
-   * Solo se rellena cuando la recuperación conoce el contexto REAL del
-   * fragmento: nunca se reconstruye ni se adivina.
+   * Navigable provenance path, e.g. `[Course, Module, Lesson]`. Only filled
+   * when retrieval knows the fragment's REAL context: never reconstructed or
+   * guessed.
    */
   path?: string[];
-  /** Recurso propietario del fragmento (curso, libro o recurso de la nota). */
+  /** Owning resource of the fragment (course, book, or the note's resource). */
   resourceId?: string;
-  /** Lección de origen cuando el fragmento pertenece a una. */
+  /** Source lesson when the fragment belongs to one. */
   lessonId?: string;
 }
 
@@ -32,17 +31,17 @@ export interface RetrievalResult {
   documents: RetrievedDocument[];
   hasContext: boolean;
   /**
-   * Candidatos ACEPTADOS tras el umbral de aceptación y el filtro de ámbito,
-   * ANTES de la diversificación y del recorte a `limit`. Es el tamaño real del
-   * conjunto de candidatos considerados, no el número de resultados devueltos.
+   * ACCEPTED candidates after the acceptance threshold and scope filter,
+   * BEFORE diversification and truncation to `limit`. This is the real size of
+   * the candidate set considered, not the number of returned results.
    */
   totalCandidates: number;
-  /** Candidatos que sobreviven a la diversificación (≤2 fragmentos por fuente). */
+  /** Candidates surviving diversification (<=2 fragments per source). */
   diversifiedCandidates: number;
   /**
-   * Verdadero solo si al menos un documento devuelto se apoya en contenido real
-   * (no en una coincidencia débil de título/metadatos). Cuando es falso, la
-   * generación no debe afirmar una fundamentación sólida.
+   * True only when at least one returned document rests on real content (not a
+   * weak title/metadata match). When false, generation must not claim solid
+   * grounding.
    */
   hasSubstantiveContext: boolean;
   modeUsed: 'lexical' | 'hybrid' | 'semantic';

@@ -19,7 +19,7 @@ def setup_test_env(tmp_path: Path, monkeypatch):
 
 
 def test_validate_directory_endpoint(client: TestClient):
-    """Prueba la validación de un directorio con subcarpetas y archivos multimedia."""
+    """Directory validation with subfolders and media files."""
     course_dir = settings.data_dir / "my_test_course"
     course_dir.mkdir(parents=True, exist_ok=True)
     
@@ -41,7 +41,7 @@ def test_validate_directory_endpoint(client: TestClient):
 
 
 def test_validate_directory_endpoint_invalid_or_unsafe(client: TestClient):
-    """Prueba la validación de directorios inexistentes o fuera del workspace."""
+    """Validation of missing or out-of-workspace directories."""
     non_existent = settings.data_dir / "does_not_exist"
     response = client.post(f"/api/v1/content/validate-directory?path={non_existent}")
     assert response.status_code == 200
@@ -53,7 +53,7 @@ def test_validate_directory_endpoint_invalid_or_unsafe(client: TestClient):
 
 
 def test_import_course_reference(client: TestClient, db: Session):
-    """Prueba la importación de un curso utilizando la estrategia de referencia."""
+    """Course import using the reference strategy."""
     course_dir = settings.data_dir / "reference_course"
     course_dir.mkdir(parents=True, exist_ok=True)
     mod_dir = course_dir / "Modulo Introduccion"
@@ -105,7 +105,7 @@ def test_import_course_reference(client: TestClient, db: Session):
 
 
 def test_import_course_copy(client: TestClient, db: Session):
-    """Prueba la importación de un curso utilizando la estrategia de copia física."""
+    """Course import using the physical-copy strategy."""
     course_dir = settings.data_dir / "copy_course"
     course_dir.mkdir(parents=True, exist_ok=True)
     mod_dir = course_dir / "Modulo Copy"
@@ -139,7 +139,6 @@ def test_import_course_copy(client: TestClient, db: Session):
     stmt_les = select(Lesson).where(Lesson.module_id == modules[0].id)
     lessons = db.scalars(stmt_les).all()
 
-    # Verificar que el asset fue copiado al directorio media de la app
     stmt_asset = select(MediaAsset).where(MediaAsset.lesson_id == lessons[0].id)
     asset = db.scalars(stmt_asset).first()
     assert asset is not None
@@ -150,7 +149,7 @@ def test_import_course_copy(client: TestClient, db: Session):
 
 
 def test_import_book_reference_and_copy(client: TestClient, db: Session):
-    """Prueba la importación de un libro con estrategias de referencia y copia."""
+    """Book import with the reference and copy strategies."""
     # Estrategia Referencia
     book_dir_ref = settings.data_dir / "ref_book_folder"
     book_dir_ref.mkdir(parents=True, exist_ok=True)

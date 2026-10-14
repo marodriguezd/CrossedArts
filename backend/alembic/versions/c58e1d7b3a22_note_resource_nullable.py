@@ -43,9 +43,9 @@ def upgrade() -> None:
     """Make note.resource_id nullable and stop deleting notes with their parent."""
     conn = op.get_bind()
     if conn.dialect.name == 'sqlite':
-        # SQLite no puede alterar nulabilidad ni la acción referencial: la tabla
-        # se reconstruye conservando todas las filas (técnica explícita, la
-        # misma que usa la migración de ámbito de sesión).
+        # SQLite cannot alter nullability or referential actions: the table is
+        # rebuilt preserving every row (same explicit technique as the
+        # session-scope migration).
         conn.execute(sa.text("""
             CREATE TABLE note_migrated (
                 id GUID NOT NULL,
@@ -66,9 +66,8 @@ def upgrade() -> None:
         """))
         conn.execute(sa.text("DROP TABLE note"))
         conn.execute(sa.text("ALTER TABLE note_migrated RENAME TO note"))
-        # Reconstruir la tabla descarta sus índices en SQLite: se recrean para
-        # que una base actualizada tenga exactamente los mismos índices que una
-        # instalación nueva (sin duplicados y sin pérdidas).
+        # Rebuilding drops SQLite indexes: recreate them so an upgraded database
+        # matches a fresh install exactly (no duplicates, no losses).
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_note_created_at ON note (created_at)"))
         return
 
@@ -87,9 +86,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Restaura `resource_id NOT NULL` con `ON DELETE CASCADE`.
 
-    Downgrade DESTRUCTIVO por diseño: las notas autónomas (sin recurso) y las
-    notas huérfanas no pueden representarse bajo el esquema anterior. Se
-    eliminan de forma explícita y el resto conserva su contenido.
+    DESTRUCTIVE downgrade by design: standalone notes (resourceless) and
+    orphan notes cannot be represented under the old schema. They are deleted
+    explicitly; everything else keeps its content.
     """
     conn = op.get_bind()
     if conn.dialect.name == 'sqlite':

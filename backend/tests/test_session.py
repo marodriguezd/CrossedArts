@@ -8,7 +8,6 @@ from backend.app.models.resource import Book
 from backend.app.services.session import SessionService
 
 def test_session_lifecycle_and_duration(db: Session):
-    # 1. Crear un recurso para asociarle la sesión
     book = Book(
         id=uuid.uuid4(),
         title="Libro de Estudio",
@@ -17,21 +16,18 @@ def test_session_lifecycle_and_duration(db: Session):
     db.add(book)
     db.commit()
 
-    # 2. Iniciar sesión
     session = SessionService.start_session(db, book.id)
     assert session.ended_at is None
     assert session.duration_minutes == 0
 
-    # 3. Forzar cambio de tiempo de inicio para simular transcurso de 15 minutos
+    # Backdate the start to simulate 15 elapsed minutes.
     session.started_at = utc_now_naive() - timedelta(minutes=15)
     db.add(session)
     db.commit()
 
-    # 4. Registrar heartbeat (debe calcular aproximadamente 15 mins)
     SessionService.update_session_heartbeat(db, session.id)
     assert session.duration_minutes == 15
 
-    # 5. Finalizar sesión
     SessionService.end_session(db, session.id)
     assert session.ended_at is not None
     assert session.duration_minutes >= 15
@@ -41,15 +37,13 @@ def test_session_aggregations(db: Session):
     r1_id = uuid.uuid4()
     r2_id = uuid.uuid4()
     
-    # Crear dos recursos
     b1 = Book(id=r1_id, title="Libro A")
     b2 = Book(id=r2_id, title="Libro B")
     db.add_all([b1, b2])
     db.commit()
 
-    # Crear sesiones ficticias de distintas duraciones y días.
-    # Usamos fechas ancladas a mediodía para que el test no cambie de resultado
-    # cuando CI se ejecuta cerca de medianoche.
+    # Fixture sessions with different lengths and days. Dates are pinned to noon
+    # so the test stays deterministic when CI runs near midnight.
     now = utc_now_naive()
     today = now.date()
     yesterday = today - timedelta(days=1)
@@ -74,7 +68,6 @@ def test_session_aggregations(db: Session):
 
     db.commit()
 
-    # Verificar agregaciones
     total_time = SessionService.get_total_study_minutes(db)
     assert total_time == (20 + 30 + 10)
 
@@ -82,5 +75,4 @@ def test_session_aggregations(db: Session):
     assert resource_time == (20 + 30)
 
     daily_report = SessionService.get_study_minutes_by_day(db)
-    # Deben haber 2 días diferentes registrados
-    assert len(daily_report) == 2
+    assert len(daily_report) == 2  # Two distinct days recorded.

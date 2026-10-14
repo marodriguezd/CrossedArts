@@ -41,9 +41,9 @@ def test_sync_client_lifecycle():
 def test_startup_migration_mode(monkeypatch, tmp_path):
     """Verify that lifespan respects AUTO_CREATE_TABLES setting without throwing.
 
-    A-1: AUTO_CREATE_TABLES=1 ejecuta `Base.metadata.create_all` sobre el engine
-    referenciado por el módulo. Para que esta prueba nunca toque la base real
-    del usuario, el engine del módulo `main` se sustituye por uno temporal.
+    A-1: AUTO_CREATE_TABLES=1 runs `Base.metadata.create_all` on the module's
+    engine. To keep this test off the user's real database, the `main`
+    module's engine is swapped for a temp one.
     """
     from fastapi.testclient import TestClient
     from sqlalchemy import create_engine
@@ -67,4 +67,4 @@ def test_startup_migration_mode(monkeypatch, tmp_path):
     from sqlalchemy import inspect
     assert "learning_resource" in inspect(isolated_engine).get_table_names()
     isolated_engine.dispose()
-    _ = Base  # mantiene la importación usada por el contexto del parche
+    _ = Base  # Keep the patch-context import referenced.

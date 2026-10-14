@@ -1,15 +1,15 @@
 /**
- * Utilidades para fingerprinting SHA-256 de archivos y datos binarios locales.
+ * SHA-256 fingerprinting utilities for local files and binary data.
  *
- * Estrategia criptográfica:
- *   - Utiliza la Web Cryptography API nativa (`crypto.subtle.digest('SHA-256')`)
- *     cuando está disponible en el entorno del navegador o Node.
- *   - En entornos sin WebCrypto o contextos degradados, utiliza una implementación
- *     pura en TypeScript de SHA-256 (FIPS 180-4), garantizando exactamente el
- *     mismo digest de 256 bits (64 caracteres hexadecimales) sin depender de librerías
- *     externas pesadas ni comprometer la compatibilidad offline.
- *   - Separa explícitamente cualquier algoritmo no criptográfico (FNV-1a) para evitar
- *     que sea confundido con un hash criptográfico.
+ * Cryptographic strategy:
+ *   - Uses the native Web Cryptography API (`crypto.subtle.digest('SHA-256')`)
+ *     when available in the browser or Node environment.
+ *   - In environments without WebCrypto, or degraded contexts, uses a pure
+ *     TypeScript SHA-256 implementation (FIPS 180-4), guaranteeing exactly the
+ *     same 256-bit digest (64 hex characters) with no heavy external
+ *     dependencies and without compromising offline support.
+ *   - Explicitly separates any non-cryptographic algorithm (FNV-1a) so it can
+ *     never be mistaken for a cryptographic hash.
  */
 
 const SHA256_K = new Uint32Array([
@@ -28,8 +28,8 @@ function rotr(x: number, n: number): number {
 }
 
 /**
- * Implementación SHA-256 pura (FIPS 180-4) sobre arrays de bytes Uint8Array.
- * Determinista y sin dependencias: genera el digest oficial estándar de 64 hexchars.
+ * Pure SHA-256 implementation (FIPS 180-4) over Uint8Array byte arrays.
+ * Deterministic and dependency-free: produces the official standard 64-hexchar digest.
  */
 export function sha256BinaryPure(data: Uint8Array): string {
   const bitLen = data.length * 8;
@@ -76,8 +76,8 @@ export function sha256BinaryPure(data: Uint8Array): string {
 }
 
 /**
- * Hash no criptográfico FNV-1a para usos de compatibilidad rápida.
- * NO es un digest SHA-256 ni debe utilizarse como prueba criptográfica de integridad.
+ * Non-cryptographic FNV-1a hash for fast compatibility uses.
+ * It is NOT a SHA-256 digest and must never be used as cryptographic integrity proof.
  */
 export function computeNonCryptographicFallbackHash(bytes: Uint8Array): string {
   let hash1 = 0x811c9dc5;
@@ -95,8 +95,8 @@ export function computeNonCryptographicFallbackHash(bytes: Uint8Array): string {
 }
 
 /**
- * Calcula la huella digital SHA-256 de un buffer o array de bytes binario.
- * Garantiza coincidencia criptográfica FIPS 180-4 mediante WebCrypto o el fallback puro.
+ * Computes the SHA-256 fingerprint of a binary buffer or byte array.
+ * Guarantees FIPS 180-4 cryptographic match through WebCrypto or the pure fallback.
  */
 export async function computeBinarySha256(data: ArrayBuffer | Uint8Array): Promise<string> {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
@@ -108,7 +108,7 @@ export async function computeBinarySha256(data: ArrayBuffer | Uint8Array): Promi
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     } catch {
-      // Si falla WebCrypto (por ej. buffer desalineado o contexto restringido), caer al motor puro
+      // If WebCrypto fails (e.g. misaligned buffer or restricted context), fall back to the pure engine
     }
   }
 

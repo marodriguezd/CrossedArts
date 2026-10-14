@@ -6,9 +6,9 @@ import type { KPIMetrics, Course, Book, Flashcard, Note, LearningSession, Learni
 export interface AppDataState {
   loading: boolean;
   /**
-   * Fallo terminal de inicialización. Mientras no sea null la aplicación NO debe
-   * renderizar sus vistas de datos: hacerlo llevaba al grafo de conocimiento a
-   * llamar a `getDatabase()` y a mostrar "Database not initialized".
+   * Terminal initialization failure. While non-null the app must NOT render its
+   * data views: doing so led the knowledge graph to call `getDatabase()` and
+   * show "Database not initialized".
    */
   initError: DbInitFailure | null;
   kpis: KPIMetrics | null;
@@ -16,12 +16,12 @@ export interface AppDataState {
   books: Book[];
   flashcards: Flashcard[];
   notes: Note[];
-  /** Recursos importados (documentos) que no son cursos ni libros. */
+  /** Imported resources (documents) that are neither courses nor books. */
   resources: LearningResource[];
-  /** Trabajo práctico producido por el estudiante (evidencia de aprendizaje). */
+  /** Learner-produced practice work (learning evidence). */
   practiceWork: PracticeWork[];
   recentSessions: LearningSession[];
-  /** Metas de aprendizaje (planificación personal derivada de datos reales). */
+  /** Learning goals (personal planning derived from real data). */
   goals: LearningGoal[];
   selectedCourse: Course | null;
   refreshData: () => Promise<void>;
@@ -46,11 +46,11 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
 
   const refreshData = useCallback(async () => {
     try {
-      // Si otra pestaña ha persistido una versión más nueva, `ensureFresh()` recarga
-      // el estado en memoria ANTES de que leamos, para no servir lecturas obsoletas.
+      // If another tab persisted a newer version, `ensureFresh()` reloads the
+      // in-memory state BEFORE we read, so no stale reads are served.
       await dbBridge.ensureFresh();
-      // El grafo de conocimiento se carga de forma perezosa solo al abrir su vista
-      // (KnowledgeGraph.tsx), no en el arranque de la aplicación.
+      // The knowledge graph loads lazily only when its view opens
+      // (KnowledgeGraph.tsx), not at app startup.
       const [k, c, b, f, n, s, r, pw, g] = await Promise.all([
         dao.getKPIs(),
         dao.getCourses(),
@@ -91,16 +91,16 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
   }, []);
 
   /**
-   * Inicialización de la aplicación.
+   * Application initialization.
    *
-   * `dbBridge.init()` es concurrency-safe y devuelve una promesa compartida, de
-   * modo que el doble montaje de StrictMode (montar -> desmontar -> montar) y
-   * cualquier vista perezosa que se monte a la vez esperan la MISMA operación.
+   * `dbBridge.init()` is concurrency-safe and returns a shared promise, so
+   * StrictMode's double mount (mount -> unmount -> mount) and any lazily mounted
+   * view awaiting at the same time share the SAME operation.
    *
-   * Clave del defecto corregido: antes el `finally` hacia `setLoading(false)`
-   * incluso cuando `init()` fallaba, así que la aplicación se renderizaba contra
-   * una base de datos inexistente y el fallo aflora meses tarde como un error de
-   * una vista hija. Ahora un fallo de inicialización es un estado de primer clase.
+   * Key to the fixed defect: previously `finally` ran `setLoading(false)` even
+   * when `init()` failed, so the app rendered against a nonexistent database and
+   * the failure surfaced months later as an error in a child view. Now an
+   * initialization failure is a first-class state.
    */
   useEffect(() => {
     let mounted = true;
@@ -133,7 +133,7 @@ export function useAppData(selectedCourseId: string | null): AppDataState {
     };
   }, [refreshData, retryToken]);
 
-  /** Reintenta la inicialización tras un fallo recuperable (acción del usuario). */
+  /** Retries initialization after a recoverable failure (user action). */
   const retryInit = useCallback(async () => {
     setLoading(true);
     setInitError(null);

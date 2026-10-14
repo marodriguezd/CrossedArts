@@ -23,7 +23,7 @@ class LearningResource(Base, TimestampMixin):
     )
     source_path: Mapped[Optional[str]] = mapped_column(String(1024), unique=True, nullable=True, index=True)
 
-    # Campo discriminador para Joined Table Inheritance
+    # Discriminator column for Joined Table Inheritance.
     type: Mapped[str] = mapped_column(String(50), nullable=False)
 
     __mapper_args__ = {
@@ -31,15 +31,14 @@ class LearningResource(Base, TimestampMixin):
         "polymorphic_identity": "learning_resource"
     }
 
-    # Relaciones genéricas aplicables a cualquier recurso de aprendizaje
     sessions: Mapped[List["LearningSession"]] = relationship(
         "LearningSession",
         back_populates="resource",
         cascade="all, delete-orphan"
     )
 
-    # Sin `delete-orphan`: una nota es trabajo del usuario y puede ser autónoma.
-    # Al borrar el recurso, `ON DELETE SET NULL` la desvincula y la conserva.
+    # No `delete-orphan`: a note is user work and can stand alone. Deleting the
+    # resource unlinks it via `ON DELETE SET NULL` and preserves it.
     notes: Mapped[List["Note"]] = relationship(
         "Note",
         back_populates="resource",
@@ -73,7 +72,6 @@ class MediaAsset(Base):
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
-    # Relaciones
     resource: Mapped["LearningResource"] = relationship("LearningResource", back_populates="media_assets")
     lesson: Mapped[Optional["Lesson"]] = relationship("Lesson", back_populates="media_assets")
     progress: Mapped[Optional["MediaProgress"]] = relationship(
@@ -114,7 +112,6 @@ class Course(LearningResource):
         "polymorphic_identity": "course"
     }
 
-    # Relaciones específicas del curso
     modules: Mapped[List["Module"]] = relationship(
         "Module",
         back_populates="course",

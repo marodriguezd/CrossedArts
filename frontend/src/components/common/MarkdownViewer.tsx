@@ -23,7 +23,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Ignorar fallo de portapapeles
+      // Ignore clipboard failure (unavailable or denied)
     }
   };
 
@@ -58,8 +58,8 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
 };
 
 /**
- * Renderiza texto enriquecido en línea (negrita, cursiva, código en línea y marcas de tiempo).
- * Construido con nodos puros de React (sin innerHTML ni dependencias externas).
+ * Renders inline rich text (bold, italic, inline code, and timestamps). Built
+ * from pure React nodes (no innerHTML, no external dependencies).
  */
 export function renderInlineMarkdown(
   text: string,
@@ -102,9 +102,9 @@ export function renderInlineMarkdown(
 }
 
 /**
- * Visor de Markdown seguro, local y ligero.
- * Soporta títulos (#..###), negrita, cursiva, listas, bloques de código con botón de copia,
- * citas y marcas de tiempo interactivas sin dependencias de red.
+ * Safe, local, lightweight Markdown viewer. Supports headings (#..###), bold,
+ * italic, lists, fenced code blocks with a copy button, quotes, and
+ * interactive timestamps with no network dependencies.
  */
 export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   content,
@@ -122,7 +122,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   while (i < lines.length) {
     const line = lines[i];
 
-    // 1. Bloque de código con valla triple ```
+    // 1. Fenced triple-backtick code block
     if (line.trim().startsWith('```')) {
       const language = line.trim().slice(3).trim();
       const codeLines: string[] = [];
@@ -142,7 +142,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 2. Títulos
+    // 2. Headings
     if (line.startsWith('# ')) {
       elements.push(
         <h1 key={`h1-${i}`} className="mt-4 mb-2 font-serif text-2xl font-bold text-ink border-b border-line pb-1">
@@ -171,14 +171,14 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 3. Regla horizontal
+    // 3. Horizontal rule
     if (/^(\-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
       elements.push(<hr key={`hr-${i}`} className="my-4 border-line" />);
       i++;
       continue;
     }
 
-    // 4. Citas / Blockquotes
+    // 4. Blockquotes
     if (line.startsWith('>')) {
       const quoteLines: string[] = [];
       while (i < lines.length && lines[i].startsWith('>')) {
@@ -197,7 +197,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 5. Listas no ordenadas (- o *)
+    // 5. Unordered lists (- or *)
     if (/^[\-\*]\s/.test(line.trim())) {
       const listItems: string[] = [];
       while (i < lines.length && /^[\-\*]\s/.test(lines[i].trim())) {
@@ -214,7 +214,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 6. Listas numeradas (1. 2. etc.)
+    // 6. Ordered lists (1. 2. ...)
     if (/^\d+\.\s/.test(line.trim())) {
       const listItems: string[] = [];
       while (i < lines.length && /^\d+\.\s/.test(lines[i].trim())) {
@@ -231,14 +231,14 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 7. Línea vacía
+    // 7. Blank line
     if (!line.trim()) {
       elements.push(<div key={`sp-${i}`} className="h-2" />);
       i++;
       continue;
     }
 
-    // 8. Párrafo común
+    // 8. Regular paragraph
     elements.push(
       <p key={`p-${i}`} className="leading-relaxed text-ink">
         {renderInlineMarkdown(line, onSeekTimestamp)}

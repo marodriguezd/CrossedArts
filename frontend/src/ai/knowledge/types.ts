@@ -1,73 +1,74 @@
 import type { SemanticSourceType } from '../../lib/localEmbeddings/chunking.ts';
 
 /**
- * Tipos de artefacto indexables por el pipeline semántico.
+ * Artifact types indexable by the semantic pipeline.
  *
- * Se toma la definición canónica del troceado (`SemanticSourceType`) para que el
- * `KnowledgeDocument` sea asignable a la entrada de troceado sin conversión ni
- * `any`: la frontera semántica no admite tipos que el troceado no sepa manejar.
- * Los tipos declarativos que aún no se indexan (`module`, `transcript`,
- * `document`) quedan fuera del conjunto indexable.
+ * The canonical chunking definition (`SemanticSourceType`) is reused so a
+ * `KnowledgeDocument` is assignable to the chunking input with no conversion or
+ * `any`: the semantic boundary admits no type chunking cannot handle.
+ * Declarative types not indexed yet (`module`, `transcript`, `document`) stay
+ * outside the indexable set.
  */
 export type KnowledgeSourceType = SemanticSourceType;
 
 /**
- * Representación canónica unificada y derivada de cualquier entidad de conocimiento
- * del dominio para indexación semántica, troceado, vectorización y recuperación RAG.
+ * Unified, derived canonical representation of any domain knowledge entity for
+ * semantic indexing, chunking, vectorization, and RAG retrieval.
  *
- * Invariantes:
- * - Es una representación derivada sobre lectura, NUNCA fuente canónica de verdad.
- * - No duplica persistencia en SQLite.
- * - Preserva procedencia exacta y navegación hacia el artefacto original.
- * - `contentHash` es determinista (SHA-256) y permite invalidar vectores con granularidad exacta.
+ * Invariants:
+ * - It is a read-time derived representation, NEVER the canonical source of truth.
+ * - It duplicates no SQLite persistence.
+ * - It preserves exact provenance and navigation back to the original artifact.
+ * - `contentHash` is deterministic (SHA-256) and allows invalidating vectors at
+ *   exact granularity.
  */
 export interface KnowledgeDocument {
-  /** Identificador canónico del documento derivado (p. ej. `lesson_123` o `note_456`). */
+  /** Canonical id of the derived document (e.g. `lesson_123` or `note_456`). */
   id: string;
 
-  /** Tipo de artefacto de origen del dominio. */
+  /** Domain source artifact type. */
   sourceType: KnowledgeSourceType;
 
-  /** Identificador primario de la entidad de origen. */
+  /** Primary id of the source entity. */
   sourceId: string;
 
-  /** Recurso propietario (curso o libro), si existe. */
+  /** Owning resource (course or book), when present. */
   resourceId?: string;
 
-  /** Módulo propietario, si pertenece a la jerarquía de un curso. */
+  /** Owning module, when it belongs to a course hierarchy. */
   moduleId?: string;
 
-  /** Lección propietaria, si pertenece a una lección. */
+  /** Owning lesson, when it belongs to a lesson. */
   lessonId?: string;
 
-  /** Título descriptivo o ruta jerárquica del artefacto. */
+  /** Descriptive title or hierarchical path of the artifact. */
   title: string;
 
-  /** Encabezado estructurado del documento (categoría, metadatos clave). */
+  /** Structured document header (category, key metadata). */
   headerText: string;
 
-  /** Texto principal o cuerpo sustantivo del contenido. */
+  /** Main text or substantive body of the content. */
   bodyText: string;
 
-  /** Texto completo combinado (encabezado + cuerpo). */
+  /** Combined full text (header + body). */
   text: string;
 
-  /** Ruta de navegación jerárquica (p. ej. `['Curso React', 'Módulo 1', 'Hooks']`). */
+  /** Hierarchical navigation path (e.g. `['React Course', 'Module 1', 'Hooks']`). */
   path?: string[];
 
-  /** Página de origen cuando procede de un libro o documento paginado. */
+  /** Source page when it comes from a book or paginated document. */
   page?: number;
 
-  /** Capítulo o sección de origen cuando aplica. */
+  /** Source chapter or section when applicable. */
   chapter?: string;
 
-  /** Metadatos adicionales estructurados. */
+  /** Additional structured metadata. */
   metadata?: Record<string, string | number | boolean | null>;
 
-  /** Si el documento contiene cuerpo sustantivo o solo metadatos de título. */
+  /** Whether the document carries a substantive body or title metadata only. */
   substantive: boolean;
 
-  /** Hash criptográfico SHA-256 del contenido canónico del documento. */
+  /** SHA-256 cryptographic hash of the document's canonical content. */
   contentHash: string;
 }
 

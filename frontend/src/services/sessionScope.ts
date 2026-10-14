@@ -1,37 +1,35 @@
 /**
- * Ámbito de una sesión de estudio: regla de dominio ÚNICA y canónica.
+ * Study-session scope: SINGLE canonical domain rule.
  *
- * CrossedArts tiene TRES ámbitos de sesión, todos legítimos y explícitos:
+ * CrossedArts has THREE session scopes, all legitimate and explicit:
  *
- *  - `lesson`   — sesión acotada a una lección. `lesson_id` obligatorio;
- *                  `resource_id` es opcional (el curso puede estar o no resuelto).
- *  - `resource` — sesión acotada a un recurso (curso o libro). `resource_id`
- *                  obligatorio y `lesson_id` nulo: no es una sesión de lección.
- *  - `global`   — repaso transversal de la biblioteca (repaso de tarjetas
- *                  pendientes sin recurso ni lección seleccionados). NO es una
- *                  sesión "sin ámbito": es un ámbito explícito y de primera clase,
- *                  y así se persiste y se presenta.
+ *  - `lesson`   — session bound to one lesson. `lesson_id` required;
+ *                  `resource_id` optional (the course may or may not resolve).
+ *  - `resource` — session bound to a resource (course or book). `resource_id`
+ *                  required and `lesson_id` null: not a lesson session.
+ *  - `global`   — cross-library review (due cards with no resource or lesson
+ *                  selected). NOT a "scopeless" session: an explicit
+ *                  first-class scope, persisted and presented as such.
  *
- * Invariante: el ámbito se DERIVA de los anclas presentes y nunca se infiere de
- * la ausencia de datos. Al escribir, el DAO valida que el ámbito declarado sea
- * coherente con sus anclas y la base rechaza los casos que rompen el dominio de
- * valores o que dan ancla a un ámbito `global`.
+ * Invariant: scope DERIVES from the present anchors and is never inferred from
+ * missing data. On write, the DAO checks the declared scope against its
+ * anchors, and the store rejects domain violations or anchored `global` scopes.
  *
- * Reclasificación honesta: `ON DELETE SET NULL` puede desvincular la lección de
- * una sesión de lección YA TERMINADA (el historial no se destruye). En ese caso
- * el ámbito efectivo se vuelve a derivar de las anclas que quedan
- * (`resolveEffectiveStudySessionScope`), de modo que la interfaz nunca muestra
- * "Lección" para una sesión a la que ya no se le puede abrir una lección.
+ * Honest reclassification: `ON DELETE SET NULL` may unlink the lesson from an
+ * ALREADY FINISHED lesson session (history is preserved). The effective scope
+ * then re-derives from the remaining anchors
+ * (`resolveEffectiveStudySessionScope`), so the UI never shows "Lesson" for a
+ * session whose lesson can no longer be opened.
  */
 
-/** Los tres ámbitos canónicos de una sesión de estudio. */
+/** The three canonical study-session scopes. */
 import { translateKey } from '../i18n/dictionaries.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 import { daoLang } from '../db/daoLanguage.ts';
 
 export type StudySessionScope = 'global' | 'resource' | 'lesson';
 
-/** Conjunto ordenado de ámbitos válidos (para validación y para la UI). */
+/** Ordered set of valid scopes (for validation and the UI). */
 export const STUDY_SESSION_SCOPES: readonly StudySessionScope[] = ['global', 'resource', 'lesson'] as const;
 
 export interface StudySessionScopeInput {
@@ -40,8 +38,8 @@ export interface StudySessionScopeInput {
 }
 
 /**
- * Deriva el ámbito a partir de las anclas presentes. Determinista:
- * la lección es el ámbito más específico y manda sobre el recurso.
+ * Derives scope from the present anchors. Deterministic: the lesson is the
+ * most specific scope and outranks the resource.
  */
 export function resolveStudySessionScope(input: StudySessionScopeInput): StudySessionScope {
   if (input.lessonId) return 'lesson';
@@ -50,12 +48,12 @@ export function resolveStudySessionScope(input: StudySessionScopeInput): StudySe
 }
 
 /**
- * Ámbito EFECTIVO de una sesión ya persistida.
+ * EFFECTIVE scope of an already persisted session.
  *
- * Acepta el ámbito declarado y las anclas realmente presentes. Si el ámbito
- * declarado ya no es representable (su ancla desapareció al borrar el material,
- * que no se destruye por conservar el historial), se devuelve el ámbito derivado
- * de las anclas restantes. Determinista y sin adivinar títulos.
+ * Takes the declared scope plus the anchors actually present. When the declared
+ * scope is no longer representable (its anchor vanished with deleted material,
+ * which is kept out of history preservation), returns the scope derived from
+ * the remaining anchors. Deterministic, no title guessing.
  */
 export function resolveEffectiveStudySessionScope(
   declaredScope: StudySessionScope | undefined,
@@ -69,7 +67,7 @@ export function resolveEffectiveStudySessionScope(
   return declaredScope;
 }
 
-/** Es el ámbito global (repaso transversal) cuando no hay ninguna ancla. */
+/** True for the global scope (cross-cutting review) when no anchor exists. */
 export function isGlobalStudySessionScope(scope: StudySessionScope): boolean {
   return scope === 'global';
 }
@@ -80,12 +78,12 @@ export interface StudySessionScopeConsistency {
 }
 
 /**
- * Comprueba que un ámbito declarado sea coherente con sus anclas.
+ * Checks a declared scope for consistency with its anchors.
  *
- * Reglas:
- *  - `global`  -> NO puede tener recurso ni lección.
- *  - `resource`-> DEBE tener recurso y NO puede tener lección.
- *  - `lesson`  -> DEBE tener lección; el recurso es opcional.
+ * Rules:
+ *  - `global`   -> must NOT carry resource or lesson.
+ *  - `resource` -> MUST carry a resource and must NOT carry a lesson.
+ *  - `lesson`   -> MUST carry a lesson; the resource is optional.
  */
 export function validateStudySessionScope(
   scope: StudySessionScope,
@@ -124,7 +122,7 @@ export function validateStudySessionScope(
   return { ok: true };
 }
 
-/** Etiqueta en español del ámbito. Nunca vacía: un ámbito desconocido degrada a global. */
+/** Localized scope label. Never empty: an unknown scope falls back to global. */
 export function studySessionScopeLabel(scope: StudySessionScope, lang: LanguageCode = 'es'): string {
   switch (scope) {
     case 'lesson':
@@ -134,8 +132,6 @@ export function studySessionScopeLabel(scope: StudySessionScope, lang: LanguageC
     case 'global':
     default:
       return translateKey(lang, 'scope.global');
-      return translateKey(lang, 'scope.global');
-      return 'Repaso general';
   }
 }
 
@@ -146,8 +142,8 @@ export interface StudySessionScopeDescriptionInput {
 }
 
 /**
- * Descripción legible de una sesión a partir de su ámbito y sus títulos
- * resueltos. No inventa títulos: sin título conocido describe el ámbito.
+ * Readable session description from scope plus resolved titles. Never invents
+ * titles: without a known title it describes the scope.
  */
 export function describeStudySessionScope(input: StudySessionScopeDescriptionInput, lang: LanguageCode = 'es'): string {
   const { scope, resourceTitle, lessonTitle } = input;

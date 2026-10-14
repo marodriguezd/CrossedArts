@@ -42,7 +42,7 @@ def delete_concept(concept_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.post("/connections", status_code=status.HTTP_201_CREATED)
 def create_connection(payload: ConnectionCreatePayload, db: Session = Depends(get_db)):
-    """Establece una nueva arista/relación semántica."""
+    """Create a new semantic edge/relation."""
     return KnowledgeService.create_connection(
         db,
         source_id=payload.source_id,

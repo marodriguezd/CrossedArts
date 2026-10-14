@@ -4,7 +4,7 @@ import { AlertTriangle } from 'lucide-react';
 interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
-  /** Descripción explícita de la consecuencia de la acción. */
+  /** Explicit description of the action's consequence. */
   consequence: string;
   confirmLabel?: string;
   cancelLabel?: string;
@@ -14,15 +14,15 @@ interface ConfirmDialogProps {
 }
 
 /**
- * Diálogo de confirmación accesible y reutilizable para acciones destructivas.
- * No es un framework de diálogos: solo cubre la confirmación segura.
+ * Accessible reusable confirmation dialog for destructive actions. Not a
+ * dialog framework: it only covers safe confirmation.
  *
- * Accesibilidad:
- * - `role="dialog"` + `aria-modal` con título y consecuencia enlazados.
- * - Escape cancela.
- * - El foco inicial va al botón Cancelar, de modo que pulsar Enter nunca
- *   confirma por accidente.
- * - Al cerrar, el foco se restaura al elemento que lo abrió.
+ * Accessibility:
+ * - `role="dialog"` + `aria-modal` with title and consequence linked.
+ * - Escape cancels.
+ * - Initial focus goes to the Cancel button, so Enter never confirms by
+ *   accident.
+ * - On close, focus returns to the element that opened it.
  */
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isOpen,

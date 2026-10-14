@@ -5,28 +5,28 @@ from pathlib import Path
 
 
 class StorageStrategy(str, enum.Enum):
-    SYMLINK = "symlink"       # Enlace simbólico (recomendado, 0 bytes extra)
-    COPY = "copy"             # Copia física de archivos
-    REFERENCE = "reference"   # Referencia directa a la ruta original
+    SYMLINK = "symlink"       # Symlink (recommended, 0 extra bytes)
+    COPY = "copy"             # Physical file copy
+    REFERENCE = "reference"   # Direct reference to the original path
 
 
 class StructureStrategy(str, enum.Enum):
-    AUTO_HIERARCHICAL = "auto_hierarchical"  # Subcarpetas = Módulos
-    FLAT = "flat"                              # Todo en un único módulo
+    AUTO_HIERARCHICAL = "auto_hierarchical"  # Subfolders = modules
+    FLAT = "flat"                              # Everything in one module
 
 
 class ImportResourceRequest(BaseModel):
-    """Esquema de entrada para importar un recurso desde una carpeta local."""
+    """Input schema for importing a resource from a local folder."""
     title: str
-    resource_type: str  # "course" o "book"
+    resource_type: str  # "course" or "book"
     category: str = "General"
     description: Optional[str] = None
-    difficulty: str = "BEGINNER"  # Solo para cursos
-    author: Optional[str] = None  # Solo para libros
-    source_path: str  # Ruta absoluta al directorio fuente
+    difficulty: str = "BEGINNER"  # Courses only
+    author: Optional[str] = None  # Books only
+    source_path: str  # Absolute path to the source directory
     storage_strategy: StorageStrategy = StorageStrategy.REFERENCE
     structure_strategy: StructureStrategy = StructureStrategy.AUTO_HIERARCHICAL
-    cover_path: Optional[str] = None  # URL o ruta resuelta de la portada
+    cover_path: Optional[str] = None  # Cover URL or resolved path
 
     @field_validator('source_path')
     @classmethod
@@ -38,7 +38,7 @@ class ImportResourceRequest(BaseModel):
 
 
 class ImportResultResponse(BaseModel):
-    """Respuesta tras importar un recurso."""
+    """Response after importing a resource."""
     resource_id: str
     resource_type: str
     title: str
@@ -49,7 +49,7 @@ class ImportResultResponse(BaseModel):
 
 
 class DirectoryValidationResponse(BaseModel):
-    """Respuesta de validación de un directorio."""
+    """Directory validation response."""
     exists: bool
     is_directory: bool
     total_files: int = 0

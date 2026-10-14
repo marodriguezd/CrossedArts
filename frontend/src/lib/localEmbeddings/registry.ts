@@ -20,7 +20,7 @@ export interface EmbeddingModelDefinition {
 }
 
 /**
- * Modelos de embeddings verificados para ejecución local con Transformers.js.
+ * Verified embedding models for local execution with Transformers.js.
  */
 export const LOCAL_EMBEDDING_MODELS: EmbeddingModelDefinition[] = [
   {

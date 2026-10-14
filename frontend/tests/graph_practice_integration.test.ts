@@ -156,12 +156,19 @@ test('32.7 explainIsolation is honest when nothing is filtered', () => {
 });
 
 test('32.8 the graph page offers the practice filter and explains view isolation', () => {
-  // La lista de tipos filtrables vive ahora en el módulo de presentación del
-  // grafo (extracción pura); se inspecciona en su fuente real.
+  // La lista de tipos filtrables vive en el módulo de presentación del grafo
+  // (extracción pura) y la redacción en español vive en el catálogo i18n: cada
+  // hecho se audita en su fuente real, no en un comentario del componente.
   const page = readSource('../src/pages/KnowledgeGraph.tsx')
     + readSource('../src/components/graph/graphPresentation.ts');
   assert.ok(page.includes('explainIsolation'), 'Debe distinguir aislamiento real de aislamiento en la vista');
   assert.ok(page.includes("'practice'"), 'El trabajo práctico debe poder filtrarse como tipo de nodo');
-  assert.ok(page.includes('aislado') || page.includes('aislados'), 'Debe explicar en español el aislamiento de la vista');
-  assert.ok(page.includes('grafo completo'), 'Debe aclarar que la conectividad se mide sobre el grafo completo');
+  assert.ok(
+    page.includes('graph.legendViewOne') && page.includes('graph.legendViewWhy'),
+    'La vista debe mostrar la explicación del aislamiento en la vista'
+  );
+
+  const spanish = readSource('../src/i18n/locales/es.ts');
+  assert.ok(/aparece aislado|aparecen aislados/.test(spanish), 'Debe explicar en español el aislamiento de la vista');
+  assert.ok(spanish.includes('en el grafo completo'), 'Debe aclarar que la conectividad se mide sobre el grafo completo');
 });

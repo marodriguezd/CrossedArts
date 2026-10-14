@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 from backend.app.schemas.common import BaseResponse
 
 class NoteResponse(BaseResponse):
-    """Respuesta de nota. `resource_id`/`lesson_id` pueden ser nulos: la nota
-    autónoma es un concepto válido (mismo contrato que el frontend SQLite)."""
+    """Note response. `resource_id`/`lesson_id` may be null: a standalone note
+    is a valid concept (same contract as the SQLite frontend)."""
     id: uuid.UUID
     resource_id: Optional[uuid.UUID] = None
     lesson_id: Optional[uuid.UUID] = None
@@ -15,8 +15,8 @@ class NoteResponse(BaseResponse):
     updated_at: datetime
 
 class CreateNoteRequest(BaseModel):
-    """Creación de nota. El recurso es opcional: una nota puede nacery
-    permanecer autónoma. Si se indica lección, se conserva su vínculo."""
+    """Note creation. The resource is optional: a note can be born and stay
+    standalone. When a lesson is given, its link is preserved."""
     resource_id: Optional[uuid.UUID] = None
     lesson_id: Optional[uuid.UUID] = None
     content: str = Field(..., min_length=1)

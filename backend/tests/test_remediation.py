@@ -41,11 +41,11 @@ from backend.app.services.session import SessionService
 
 
 # ===========================================================================
-# E — Contrato de sesión de estudio
+# E - Study-session contract.
 # ===========================================================================
 
 def test_model_allows_lesson_scoped_session_without_resource(db: Session):
-    """Una sesión acotada SOLO a lección es estado válido (contrato frontend)."""
+    """A lesson-only session is valid state (frontend contract)."""
     course = Course(id=uuid.uuid4(), title="Curso Sesiones E", status=ResourceStatus.NOT_STARTED)
     module = Module(id=uuid.uuid4(), course_id=course.id, title="Módulo E", order_index=1)
     lesson = Lesson(id=uuid.uuid4(), module_id=module.id, title="Lección E", order_index=1, duration_minutes=10, is_completed=False)
@@ -59,7 +59,7 @@ def test_model_allows_lesson_scoped_session_without_resource(db: Session):
 
 
 def test_model_allows_resource_and_lesson_scoped_session(db: Session):
-    """Una sesión con recurso Y lección sigue siendo válida."""
+    """A session with both resource AND lesson stays valid."""
     course = Course(id=uuid.uuid4(), title="Curso E2", status=ResourceStatus.NOT_STARTED)
     module = Module(id=uuid.uuid4(), course_id=course.id, title="Módulo E2", order_index=1)
     lesson = Lesson(id=uuid.uuid4(), module_id=module.id, title="Lección E2", order_index=1, duration_minutes=5, is_completed=False)
@@ -72,12 +72,12 @@ def test_model_allows_resource_and_lesson_scoped_session(db: Session):
 
 
 def test_global_scoped_session_is_a_first_class_scope(db: Session):
-    """CONTRATO ACTUALIZADO: la sesión GLOBAL es un ámbito explícito.
+    """UPDATED CONTRACT: the GLOBAL session is an explicit scope.
 
-    Antes se rechazaba toda sesión sin anclas porque el backend exigía un ancla
-    de ámbito, mientras el frontend SQLiteWAS M trata el repaso transversal
-    (iniciado sin recurso ni lección seleccionados) como una sesión legítima.
-    Ahora hay una regla única de tres ámbitos: `lesson`, `resource` y `global`.
+    Anchorless sessions used to be rejected because the backend demanded a scope
+    anchor, while the SQLite WASM frontend treats cross-cutting review (started
+    with no resource or lesson selected) as a legitimate session. There is now
+    one three-scope rule: `lesson`, `resource`, and `global`.
     """
     session = SessionService.start_session(db)
     assert session.resource_id is None
@@ -89,7 +89,7 @@ def test_global_scoped_session_is_a_first_class_scope(db: Session):
 
 
 def test_declared_scope_must_be_coherent_with_its_anchors(db: Session):
-    """Un ámbito declarado que no corresponde a sus anclas es un error."""
+    """A declared scope mismatching its anchors is an error."""
     course = Course(id=uuid.uuid4(), title="Curso Ámbito", status=ResourceStatus.NOT_STARTED)
     module = Module(id=uuid.uuid4(), course_id=course.id, title="Módulo Ámbito", order_index=1)
     lesson = Lesson(id=uuid.uuid4(), module_id=module.id, title="Lección Ámbito", order_index=1, duration_minutes=5, is_completed=False)
@@ -134,7 +134,7 @@ def test_schema_derives_scope_and_rejects_incoherent_declarations():
     from backend.app.schemas.session import StartSessionRequest
     from pydantic import ValidationError
 
-    # Sin anclas el ámbito derivado es `global`: una petición válida.
+    # No anchors: derived scope is `global`, a valid request.
     assert StartSessionRequest().scope == "global"
     assert StartSessionRequest(resource_id=None, lesson_id=None).scope == "global"
 
@@ -143,7 +143,7 @@ def test_schema_derives_scope_and_rejects_incoherent_declarations():
     assert ok.resource_id is None and ok.lesson_id is not None
     assert ok.scope == "lesson"
 
-    # Un ámbito declarado incoherente con sus anclas se rechaza (422).
+    # A declared scope inconsistent with anchors is rejected (422).
     with pytest.raises(ValidationError):
         StartSessionRequest(resource_id=uuid.uuid4(), scope="global")
     with pytest.raises(ValidationError):
@@ -167,7 +167,7 @@ def test_api_start_lesson_scoped_session(client: TestClient, db: Session):
     assert data["lesson_id"] == str(lesson.id)
     assert data["resource_id"] is None
 
-    # El ciclo completo (heartbeat + end) funciona para sesiones de lección.
+    # Full cycle (heartbeat + end) works for lesson sessions.
     hb = client.post(f"/api/v1/sessions/{data['id']}/heartbeat")
     assert hb.status_code == 200
     end = client.post(f"/api/v1/sessions/{data['id']}/end")
@@ -176,24 +176,24 @@ def test_api_start_lesson_scoped_session(client: TestClient, db: Session):
 
 
 def test_api_start_global_session_returns_201(client: TestClient):
-    """CONTRATO ACTUALIZADO: una petición sin anclas inicia el repaso global."""
+    """UPDATED CONTRACT: an anchorless request starts the global review."""
     response = client.post("/api/v1/sessions/start", json={})
     assert response.status_code == 201
     data = response.json()
     assert data["scope"] == "global"
     assert data["resource_id"] is None and data["lesson_id"] is None
 
-    # Un ámbito incoherente declarado explícitamente sigue siendo un 422.
+    # An explicitly declared incoherent scope is still a 422.
     invalid = client.post("/api/v1/sessions/start", json={"resource_id": str(uuid.uuid4()), "scope": "global"})
     assert invalid.status_code == 422
 
 
 def test_scope_check_constraints_are_declared_on_model():
-    """Los CHECK de ámbito del modelo (y por tanto de la base recreada).
+    """Model scope CHECKs (hence of the recreated database).
 
-    `ck_learning_session_scope` ya NO exige un ancla: el ámbito global existe.
-    Lo que la base garantiza es el dominio de valores y que un ámbito global
-    nunca lleve anclas (una regla que ninguna ruta de escritura puede violar).
+    `ck_learning_session_scope` NO longer demands an anchor: the global scope
+    exists. What the database guarantees is the value domain plus that a global
+    scope never carries anchors (a rule no write path can violate).
     """
     from backend.app.models.activity import LearningSession as LS
     checks = {
@@ -232,7 +232,7 @@ def test_aggregations_ignore_null_resource_gracefully(db: Session):
 # ===========================================================================
 
 def test_no_index_is_declared_by_two_migrations():
-    """Cada índice tiene exactamente UNA migración propietaria."""
+    """Each index has exactly ONE owning migration."""
     import os
     import re
     versions_dir = os.path.join(os.path.dirname(__file__), "..", "alembic", "versions")
@@ -254,8 +254,8 @@ def test_second_index_migration_no_longer_repeats_indexes():
     path = os.path.join(versions_dir, "d8d6741e257c_add_performance_indexes.py")
     with open(path) as f:
         content = f.read()
-    # Solo el bloque INDEXES cuenta: los comentarios históricos pueden citar los
-    # nombres de los índices duplicados que fueron eliminados.
+    # Only the INDEXES block counts: historical comments may cite the removed
+    # duplicate index names.
     code_body = content.split('INDEXES = [', 1)[1].split(']', 1)[0]
     for duplicated in ("ix_learning_resource_status", "ix_learning_session_ended_at", "ix_task_is_completed", "ix_note_created_at"):
         assert duplicated not in code_body, f"{duplicated} pertenece a a1b2c3d4e5f6, no a d8d6741e257c"
@@ -263,7 +263,7 @@ def test_second_index_migration_no_longer_repeats_indexes():
 
 
 def test_migration_upgrade_downgrade_roundtrip(tmp_path):
-    """upgrade -> downgrade -> upgrade converge al mismo esquema, sin duplicados."""
+    """upgrade -> downgrade -> upgrade converges to the same schema, no duplicates."""
     import os
     import sqlite3
     import subprocess
@@ -290,7 +290,7 @@ def test_migration_upgrade_downgrade_roundtrip(tmp_path):
         "resource_id debe ser nullable tras la migración"
     assert "ck_learning_session_scope" in ddl
     assert "scope IN ('global', 'resource', 'lesson')" in ddl
-    # Sin duplicados y con los índices esperados exactamente una vez.
+    # No duplicates; each expected index exactly once.
     assert len(names_up) == len(set(names_up))
     for expected in ("ix_learning_resource_status", "ix_learning_session_ended_at",
                      "ix_task_is_completed", "ix_note_created_at",
@@ -313,7 +313,7 @@ def test_migration_upgrade_downgrade_roundtrip(tmp_path):
 
 
 # ===========================================================================
-# G — Idioma de transcriptos
+# G - Transcript language.
 # ===========================================================================
 
 def test_normalize_language_accepts_codes_and_rejects_free_text():
@@ -333,15 +333,15 @@ def test_infer_transcript_language_prefers_metadata_then_und():
     assert infer_transcript_language({"language": "en"}, Path("x.json")) == "en"
     assert infer_transcript_language({"languages": ["fr", "en"]}, Path("x.json")) == "fr"
     assert infer_transcript_language({"lang": "de"}, Path("x.json")) == "de"
-    # Pista en el nombre de archivo: lecture.en.srt -> en
+    # Filename hint: lecture.en.srt -> en.
     assert infer_transcript_language(None, Path("lecture.en.srt")) == "en"
-    # Sin ninguna pista: indeterminado, nunca español por defecto.
+    # No hint at all: undetermined, never default Spanish.
     assert infer_transcript_language(None, Path("lecture.srt")) == UNDETERMINED_LANGUAGE
     assert infer_transcript_language({}, Path("lecture.srt")) == UNDETERMINED_LANGUAGE
 
 
 def test_transcript_without_metadata_is_und_not_spanish(db: Session, tmp_path):
-    """Un SRT sin metadatos NO se etiqueta falsamente como español."""
+    """An SRT without metadata is NOT falsely labeled as Spanish."""
     srt = "1\n00:00:01,000 --> 00:00:04,000\nThe photosynthetic membrane.\n"
     srt_path = tmp_path / "lesson.srt"
     srt_path.write_text(srt, encoding="utf-8")
@@ -363,7 +363,7 @@ def test_transcript_without_metadata_is_und_not_spanish(db: Session, tmp_path):
 
 
 def test_transcript_json_metadata_language_is_honored(db: Session, tmp_path):
-    """El idioma declarado en metadatos JSON se respeta (inglés aquí)."""
+    """The JSON-metadata declared language is honored (English here)."""
     import json as _json
     payload = {
         "language": "en",
@@ -394,7 +394,7 @@ def test_transcript_json_metadata_language_is_honored(db: Session, tmp_path):
 
 
 # ===========================================================================
-# H — Validación de salida del LLM en el backend
+# H - Backend LLM-output validation.
 # ===========================================================================
 
 VALID_QUIZ = [

@@ -1,7 +1,7 @@
 /**
- * Máquina de estados pura del temporizador Pomodoro.
- * Usa marcas de tiempo absolutas (`endsAt`) en lugar de contadores para que
- * sobreviva a recargas y a la limitación de temporizadores en pestañas en segundo plano.
+ * Pure state machine for the Pomodoro timer.
+ * Uses absolute timestamps (`endsAt`) instead of counters so it survives
+ * reloads and the timer throttling applied to background tabs.
  */
 
 export type PomodoroPhase = 'focus' | 'break';
@@ -13,11 +13,11 @@ export const POMODORO_BREAK_MS = 5 * 60 * 1000;
 export interface PomodoroState {
   phase: PomodoroPhase;
   status: PomodoroStatus;
-  /** Instante absoluto de finalización (solo en `running`). */
+  /** Absolute completion instant (only while `running`). */
   endsAt: number | null;
-  /** Tiempo restante congelado (en `idle` y `paused`). */
+  /** Frozen remaining time (in `idle` and `paused`). */
   remainingMs: number;
-  /** Ciclos de enfoque completados en esta sesión. */
+  /** Focus cycles completed in this session. */
   completedFocus: number;
 }
 
@@ -43,7 +43,7 @@ export function resetPomodoro(state: PomodoroState): PomodoroState {
   return { ...state, status: 'idle', endsAt: null, remainingMs: phaseDuration(state.phase) };
 }
 
-/** Salta a la fase contraria sin contar el ciclo como completado. */
+/** Skips to the opposite phase without counting the cycle as completed. */
 export function skipPomodoroPhase(state: PomodoroState): PomodoroState {
   const phase: PomodoroPhase = state.phase === 'focus' ? 'break' : 'focus';
   return { ...state, phase, status: 'idle', endsAt: null, remainingMs: phaseDuration(phase) };
@@ -55,8 +55,9 @@ export function getPomodoroRemaining(state: PomodoroState, now: number): number 
 }
 
 /**
- * Avanza el reloj. Si la fase terminó, pasa a la siguiente (en pausa lista para
- * iniciar: nunca arranca sola) y reporta qué fase finalizó.
+ * Advances the clock. When the phase ended, it moves to the next one (paused
+ * and ready to start: it never starts on its own) and reports which phase
+ * finished.
  */
 export function tickPomodoro(
   state: PomodoroState,
@@ -79,7 +80,7 @@ export function tickPomodoro(
   };
 }
 
-/** Formatea milisegundos como `MM:SS` (redondeo hacia arriba al segundo). */
+/** Formats milliseconds as `MM:SS` (rounded up to the second). */
 export function formatCountdown(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(totalSeconds / 60);
@@ -89,7 +90,7 @@ export function formatCountdown(ms: number): string {
 
 const STORAGE_KEY = 'crossedarts-pomodoro';
 
-/** Carga el estado persistido; cualquier dato inválido devuelve el estado inicial. */
+/** Loads persisted state; any invalid data returns the initial state. */
 export function loadPomodoro(): PomodoroState {
   try {
     if (typeof localStorage === 'undefined') return createInitialPomodoro();
@@ -116,6 +117,6 @@ export function savePomodoro(state: PomodoroState): void {
   try {
     if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
-    // Almacenamiento no disponible: el temporizador sigue funcionando en memoria.
+    // Storage unavailable: the timer keeps running in memory.
   }
 }

@@ -27,12 +27,12 @@ interface ShellProps {
   currentTab: string;
   onNavigate: (tab: string) => void;
   onOpenAI: () => void;
-  /** Abre la paleta de comandos global (Ctrl+K / Cmd+K). */
+  /** Opens the global command palette (Ctrl+K / Cmd+K). */
   onOpenCommandPalette: () => void;
   /**
-   * Estado de la paleta. El Shell no la monta, pero lo necesita: al abrirla hay
-   * que cerrar el cajón de navegación móvil, porque los dos overlays se solaparían
-   * y dos manejadores de Escape actuarían a la vez.
+   * Palette state. The Shell does not mount it, but needs it: opening the
+   * palette must close the mobile nav drawer, because the two overlays would
+   * overlap and two Escape handlers would run at once.
    */
   paletteOpen: boolean;
   children: React.ReactNode;
@@ -57,10 +57,9 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 /**
- * Lenguaje visual compartido de la aplicación:
- * identidad, navegación primaria, disparador de la paleta de comandos, respaldo,
- * IA y cambio de tema, con jerarquía persistente. Sin router: la navegación sigue
- * siendo controlada por estado (`currentTab` / `onNavigate`).
+ * Shared visual language of the app: identity, primary navigation, command
+ * palette trigger, backup, AI, and theme switch, with persistent hierarchy. No
+ * router: navigation stays state-driven (`currentTab` / `onNavigate`).
  */
 export const Shell: React.FC<ShellProps> = ({
   currentTab,
@@ -73,30 +72,31 @@ export const Shell: React.FC<ShellProps> = ({
   const { t } = useLanguage();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const mobileNavRef = useRef<HTMLDivElement | null>(null);
-  /** Disparador del cajón: destino del retorno de foco al cerrarse. */
+  /** Drawer trigger: focus-return target on close. */
   const mobileNavTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  /** Rótulo del atajo acorde a la plataforma: ⌘K en Apple, Ctrl+K en el resto. */
+  /** Platform-appropriate shortcut label: ⌘K on Apple, Ctrl+K elsewhere. */
   const isAppleLike =
     typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '');
 
-  // Abrir la paleta cierra el cajón móvil, venga el atajo o el clic. Antes solo lo
-  // cerraba el clic, y con Ctrl+K en un móvil se quedaban los dos overlays vivos.
+  // Opening the palette closes the mobile drawer, whether by shortcut or click.
+  // Previously only the click closed it, and with Ctrl+K the two overlays
+  // stayed alive on mobile.
   useEffect(() => {
     if (paletteOpen) setIsMobileNavOpen(false);
   }, [paletteOpen]);
 
-  // El cajón móvil es un diálogo modal: atrapa el foco, cierra con Escape y
-  // DEVUELVE el foco al disparador al cerrarse. Sin la trampa, el tabulador
-  // escapaba al contenido de fondo (que queda tras `aria-modal`).
+  // The mobile drawer is a modal dialog: it traps focus, closes on Escape, and
+  // RETURNS focus to the trigger on close. Without the trap, Tab escaped to the
+  // background content (which sits behind `aria-modal`).
   useEffect(() => {
     if (!isMobileNavOpen || typeof document === 'undefined') return;
     const node = mobileNavRef.current;
     if (!node) return;
-    // El botón de cierre del cajón lleva `autoFocus`, así que React ya lo ha
-    // enfocado durante el commit ANTES de este efecto: `document.activeElement`
-    // apuntaría al propio cajón y, al cerrarse, el foco caería en el <body>.
-    // El retorno de foco debe ir SIEMPRE al disparador que abrió el cajón.
+    // The drawer's close button carries `autoFocus`, so React already focused
+    // it during commit BEFORE this effect: `document.activeElement` would point
+    // at the drawer itself and, on close, focus would fall to <body>. Focus
+    // returns must ALWAYS go to the trigger that opened the drawer.
     const previouslyFocused = mobileNavTriggerRef.current ?? (document.activeElement as HTMLElement | null);
 
     const focusableItems = (): HTMLElement[] =>
@@ -133,7 +133,7 @@ export const Shell: React.FC<ShellProps> = ({
     document.addEventListener('keydown', onKeyDown, true);
     return () => {
       document.removeEventListener('keydown', onKeyDown, true);
-      try { previouslyFocused?.focus?.(); } catch { /* el origen pudo desaparecer */ }
+      try { previouslyFocused?.focus?.(); } catch { /* the origin may have disappeared */ }
     };
   }, [isMobileNavOpen]);
 
@@ -162,7 +162,7 @@ export const Shell: React.FC<ShellProps> = ({
                 : 'text-muted hover:text-ink hover:bg-accent-soft/50'
             )}
           >
-            {/* Indicador de activo: forma + posición, no solo color. */}
+            {/* Active indicator: shape + position, not color alone. */}
             <span
               aria-hidden="true"
               className={cn(
@@ -217,12 +217,12 @@ export const Shell: React.FC<ShellProps> = ({
   );
 
   /**
-   * Disparador de la paleta de comandos.
+   * Command palette trigger.
    *
-   * Sustituye a la antigua caja de búsqueda de la barra superior: el atajo es la
-   * vía principal y el rótulo del atajo se muestra en la propia pastilla para que
-   * la función sea descubrible sin documentación. En Apple se rotula ⌘K y en el
-   * resto Ctrl+K, que es lo que el usuario puede pulsar de verdad.
+   * Replaces the old top-bar search box: the shortcut is the main path and the
+   * shortcut label shows on the pill itself so the feature is discoverable
+   * without docs. Apple displays ⌘K and the rest Ctrl+K, which is what the user
+   * can actually press.
    */
   const paletteTrigger = (
     <button
@@ -242,7 +242,7 @@ export const Shell: React.FC<ShellProps> = ({
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
-      {/* --- Salto al contenido principal (accesibilidad de teclado) --- */}
+      {/* --- Skip to main content (keyboard accessibility) --- */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:border focus:border-line focus:bg-surface focus:px-4 focus:py-2 focus:text-meta focus:font-medium focus:text-ink focus:shadow-pop"
@@ -250,7 +250,7 @@ export const Shell: React.FC<ShellProps> = ({
         {t('shell.skipLink')}
       </a>
 
-      {/* --- Barra lateral fija (escritorio) --- */}
+      {/* --- Fixed sidebar (desktop) --- */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line bg-surface lg:flex">
         <div className="px-4 py-5">{brandButton}</div>
         <div className="flex-1 overflow-y-auto px-3 pb-4">{navList('side')}</div>
@@ -262,7 +262,7 @@ export const Shell: React.FC<ShellProps> = ({
         </div>
       </aside>
 
-      {/* --- Cajón de navegación (móvil / tableta) --- */}
+      {/* --- Navigation drawer (mobile / tablet) --- */}
       {isMobileNavOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
@@ -301,7 +301,7 @@ export const Shell: React.FC<ShellProps> = ({
         </div>
       )}
 
-      {/* --- Columna de contenido --- */}
+      {/* --- Content column --- */}
       <div className="flex min-h-screen flex-col lg:pl-60">
         <header className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur-sm">
           <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-2 sm:gap-3 px-3 sm:px-6 lg:px-8">

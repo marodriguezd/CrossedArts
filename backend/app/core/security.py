@@ -4,13 +4,13 @@ from typing import Union
 from backend.app.core.compatibility import is_legacy_allowed_path_part
 from backend.app.core.settings import settings
 
-# Directorios del sistema prohibidos (se resolverán de forma absoluta y multiplataforma)
+# Blocked system directories (resolved absolute and cross-platform).
 BLOCKED_SYSTEM_DIRS = [
     "/etc", "/var", "/proc", "/sys", "/dev", "/boot", "/root",
     "/home/lost+found", "/usr/local/etc", "/tmp", "/var/tmp"
 ]
 
-# Agregar carpetas del sistema en Windows si aplica
+# Add Windows system folders when applicable.
 if os.name == 'nt':
     system_root = os.environ.get('SystemRoot') or "C:\\Windows"
     program_files = os.environ.get('ProgramFiles') or "C:\\Program Files"
@@ -26,37 +26,37 @@ if os.name == 'nt':
         "D:\\tmp"
     ])
 
-# Carpetas ocultas sensibles prohibidas en cualquier parte de la ruta
+# Sensitive hidden folders blocked anywhere in the path.
 BLOCKED_HIDDEN_DIR_NAMES = [
     ".ssh", ".gnupg", ".aws", ".gemini", ".config", ".env", ".git"
 ]
 
 def is_safe_path(path: Union[str, Path]) -> bool:
     """
-    Verifica si una ruta de archivo o directorio es segura de forma multiplataforma (Windows y Linux).
-    Evita acceder a directorios del sistema críticos o carpetas de configuración ocultas.
-    Permite acceder al directorio de datos de la app, subcarpetas del home de usuario,
-    y almacenamientos externos (discos en Windows, /media o /mnt en Linux).
+    Check whether a file or directory path is safe, cross-platform (Windows and Linux).
+    Blocks critical system directories and hidden config folders.
+    Allows the app data directory, user-home subfolders, and external storage
+    (drives on Windows, /media or /mnt on Linux).
     """
     try:
         path_str = str(path).strip()
         if not path_str:
             return False
 
-        # Exigir que sea una ruta absoluta para evitar resolución implícita contra CWD
+        # Require an absolute path to avoid implicit resolution against CWD.
         if not os.path.isabs(path_str):
             return False
 
         resolved_path = os.path.abspath(os.path.realpath(path_str))
 
-        # 1. Validar si está en el espacio de trabajo de la app (siempre permitido por definición)
+        # 1. Check the app workspace (always allowed by definition).
         workspace_dir = os.path.abspath(os.path.realpath(str(settings.data_dir)))
         if os.name == 'nt':
             in_workspace = resolved_path.lower() == workspace_dir.lower() or resolved_path.lower().startswith(workspace_dir.lower() + os.sep)
         else:
             in_workspace = resolved_path == workspace_dir or resolved_path.startswith(workspace_dir + os.sep)
 
-        # Si está en el workspace, solo verificamos componentes ocultos sensibles y permitimos
+        # Inside the workspace, only check sensitive hidden components, then allow.
         if in_workspace:
             parts = Path(resolved_path).parts
             for part in parts:
@@ -66,7 +66,7 @@ def is_safe_path(path: Union[str, Path]) -> bool:
                     return False
             return True
 
-        # 2. Validar contra directorios del sistema bloqueados
+        # 2. Check against blocked system directories.
         for blocked_dir in BLOCKED_SYSTEM_DIRS:
             blocked_resolved = os.path.abspath(os.path.realpath(blocked_dir))
             if os.name == 'nt':
@@ -76,8 +76,8 @@ def is_safe_path(path: Union[str, Path]) -> bool:
                 if resolved_path == blocked_resolved or resolved_path.startswith(blocked_resolved + os.sep):
                     return False
 
-        # 3. Validar que no contenga carpetas/archivos ocultos en sus componentes
-        # Bloquea cualquier parte que empiece con '.' excepto namespaces permitidos
+        # 3. Reject hidden folders/files in path components: block any part
+        # starting with '.' except allowed namespaces.
         parts = Path(resolved_path).parts
         for part in parts:
             if part.startswith('.') and not is_legacy_allowed_path_part(part):
@@ -85,9 +85,9 @@ def is_safe_path(path: Union[str, Path]) -> bool:
             if part in BLOCKED_HIDDEN_DIR_NAMES:
                 return False
 
-        # 4. Validar alcance permitido fuera del workspace:
-        # - Subcarpetas del home de usuario (excluyendo el home directamente por seguridad)
-        # - Discos/medios externos en /media o /mnt (Linux) o cualquier disco en Windows
+        # 4. Allowed scope outside the workspace:
+        # - User-home subfolders (excluding the home itself for safety).
+        # - External drives/media under /media or /mnt (Linux) or any drive on Windows.
         home_dir = os.path.abspath(os.path.realpath(os.path.expanduser("~")))
 
         if os.name == 'nt':
@@ -104,13 +104,13 @@ def is_safe_path(path: Union[str, Path]) -> bool:
             return True
 
         if os.name == 'nt':
-            # En Windows, cualquier disco o almacenamiento externo (C:\, D:\, E:\, etc.)
-            # es válido siempre que no pertenezca a las carpetas protegidas del sistema
+            # On Windows, any drive or external storage (C:\, D:\, E:\, ...) is valid
+            # as long as it is not inside protected system folders.
             import re
             if re.match(r'^[a-zA-Z]:\\', resolved_path):
                 return True
         else:
-            # En Linux, permitimos explícitamente /media, /run/media y /mnt
+            # On Linux, explicitly allow /media, /run/media and /mnt.
             in_media = resolved_path == "/media" or resolved_path.startswith("/media" + os.sep)
             in_run_media = resolved_path == "/run/media" or resolved_path.startswith("/run/media" + os.sep)
             in_mnt = resolved_path == "/mnt" or resolved_path.startswith("/mnt" + os.sep)

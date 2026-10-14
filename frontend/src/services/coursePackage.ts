@@ -1,24 +1,24 @@
 /**
- * Paquetes de curso (profesor → alumno).
+ * Course packages (teacher -> learner).
  *
- * Un paquete es un fichero JSON con el MATERIAL de aprendizaje de un recurso:
- * el recurso, su estructura (módulos y lecciones con contenido), su trabajo
- * práctico propuesto y —si aplica— los datos del curso o libro. NO incluye datos
- * personales (notas, sesiones, repeticiones, progreso): el paquete viaja del
- * profesor al alumno, no al revés.
+ * A package is a JSON file carrying the learning MATERIAL of one resource:
+ * the resource, its structure (modules and lessons with content), its proposed
+ * practice work, and — when applicable — the course or book data. It does NOT
+ * include personal data (notes, sessions, repetitions, progress): the package
+ * travels from teacher to learner, never the other way round.
  *
- * Reglas de seguridad:
- *  - La importación es ADITIVA e IDEMPOTENTE: nunca borra ni sobrescribe filas.
- *  - Un paquete con formato o versión desconocidos se rechaza antes de escribir.
+ * Safety rules:
+ *  - Importing is ADDITIVE and IDEMPOTENT: it never deletes or overwrites rows.
+ *  - A package with an unknown format or version is rejected before any write.
  *
- * La lógica vive aquí, fuera de React y de SQLite, para poder probarla aparte.
+ * The logic lives here, outside React and SQLite, so it can be tested separately.
  */
 
 import { translateKey } from '../i18n/dictionaries.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 
 export const COURSE_PACKAGE_FORMAT = 'crossedarts.course-package';
-/** Versión del formato que esta build sabe escribir y leer. */
+/** Format version this build can write and read. */
 export const COURSE_PACKAGE_VERSION = 1;
 
 export interface CoursePackageResource {
@@ -88,7 +88,7 @@ export interface CoursePackageValidation {
   package?: CoursePackage;
 }
 
-/** Construye el sobre del paquete a partir de datos ya leídos de SQLite. */
+/** Builds the package envelope from data already read out of SQLite. */
 export function buildCoursePackage(input: {
   resource: CoursePackageResource;
   course?: CoursePackageCourse | null;
@@ -120,9 +120,8 @@ function hasValidId(value: unknown): boolean {
 }
 
 /**
- * Valida un paquete antes de cualquier escritura. Igual que la restauración de
- * respaldos, se comprueba TODO primero: la importación solo empieza si el
- * paquete es íntegro.
+ * Validates a package before any write. As with backup restore, EVERYTHING is
+ * checked first: importing only starts when the package is intact.
  */
 export function validateCoursePackage(data: unknown, lang: LanguageCode = 'es'): CoursePackageValidation {
   if (!isPlainObject(data)) {
@@ -172,8 +171,8 @@ export function validateCoursePackage(data: unknown, lang: LanguageCode = 'es'):
     }
   }
 
-  // Toda lección debe apuntar a un módulo presente en el paquete: un paquete con
-  // lecciones huérfanas produciría cursos rotos al importar.
+  // Every lesson must point at a module present in the package: a package with
+  // orphan lessons would produce broken courses on import.
   const moduleIds = new Set(((data.modules as any[]) || []).map((m) => m.id));
   for (const lesson of ((data.lessons as any[]) || [])) {
     if (typeof lesson.module_id !== 'string' || !moduleIds.has(lesson.module_id)) {
@@ -188,15 +187,15 @@ export function validateCoursePackage(data: unknown, lang: LanguageCode = 'es'):
 }
 
 export interface CoursePackageImportPlan {
-  /** IDs que ya existen y por tanto se omiten (importación idempotente). */
+  /** Ids that already exist and are therefore skipped (idempotent import). */
   existing: string[];
-  /** IDs que se crearán. */
+  /** Ids that will be created. */
   toCreate: string[];
 }
 
 /**
- * Decide, sin escribir nada, qué se creará y qué se omite. La importación es
- * idempotente: importar dos veces el mismo paquete no duplica nada.
+ * Decides, without writing anything, what will be created and what is skipped.
+ * Importing is idempotent: importing the same package twice duplicates nothing.
  */
 export function planCoursePackageImport(
   pkg: CoursePackage,
@@ -219,16 +218,16 @@ export function planCoursePackageImport(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Conflictos de importación                                                   */
+/* Import conflicts                                                            */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Huella determinista del contenido con el que se compara un elemento.
+ * Deterministic fingerprint of the content an element is compared against.
  *
- * Función pura y estable: los mismos datos producen siempre la misma huella,
- * independientemente del navegador o del orden de las claves. Se usa FNV-1a de
- * 32 bits porque solo hace falta comparar dentro de una misma importación (no
- * es un hash de seguridad ni un identificador persistente).
+ * Pure, stable function: the same data always produces the same fingerprint,
+ * regardless of browser or key order. 32-bit FNV-1a is used because comparison
+ * only happens within a single import (it is neither a security hash nor a
+ * persistent identifier).
  */
 export function contentSignature(parts: ReadonlyArray<string | number | null | undefined>): string {
   const joined = parts
@@ -247,23 +246,24 @@ export type CoursePackageConflictKind = 'resource' | 'module' | 'lesson' | 'prac
 export interface CoursePackageConflict {
   id: string;
   kind: CoursePackageConflictKind;
-  /** Etiqueta legible del elemento en conflicto. */
+  /** Readable label of the conflicting element. */
   label: string;
 }
 
-/** Firma canónica del recurso de un paquete. */
+/** Canonical signature of a package's resource. */
 export function resourceSignature(resource: CoursePackageResource): string {
   return contentSignature([resource.title, resource.description, resource.category, resource.type]);
 }
 
-/** Firma canónica de un módulo de un paquete. */
+/** Canonical signature of a package module. */
 export function moduleSignature(module: CoursePackageModule): string {
   return contentSignature([module.title, module.order_index]);
 }
 
 /**
- * Firma canónica de una lección. El material que viaja profesor→alumno NO
- * incluye `is_completed`: el progreso es del alumno y no forma parte del paquete.
+ * Canonical signature of a lesson. Material traveling teacher->learner does NOT
+ * include `is_completed`: progress belongs to the learner and is not part of the
+ * package.
  */
 export function lessonSignature(lesson: CoursePackageLesson): string {
   return contentSignature([
@@ -277,22 +277,23 @@ export function lessonSignature(lesson: CoursePackageLesson): string {
 }
 
 /**
- * Firma canónica del trabajo práctico PROPUESTO. Se excluye `status` a propósito:
- * el estado de un trabajo es progreso personal del alumno, no material docente,
- * así que un trabajo ya terminado localmente no debe reportarse como conflicto.
+ * Canonical signature of the PROPOSED practice work. `status` is deliberately
+ * excluded: a work's status is the learner's personal progress, not teaching
+ * material, so a work already completed locally must not be reported as a
+ * conflict.
  */
 export function practiceWorkSignature(work: CoursePackagePracticeWork): string {
   return contentSignature([work.title, work.description, work.lesson_id, work.kind, work.notes]);
 }
 
 /**
- * Detecta elementos del paquete cuyo ID ya existe localmente pero cuyo CONTENIDO
- * difiere del que trae el paquete.
+ * Detects package elements whose ID already exists locally but whose CONTENT
+ * differs from the package's.
  *
- * Regla de resolución: la importación es ADITIVA y el contenido LOCAL gana
- * SIEMPRE. Nunca se sobrescribe trabajo del alumno con material importado. La
- * función no decide qué hacer con el conflicto: solo lo hace visible, para que el
- * resultado sea determinista y explicable en lugar de silencioso.
+ * Resolution rule: importing is ADDITIVE and LOCAL content ALWAYS wins. Learner
+ * work is never overwritten with imported material. The function does not decide
+ * what to do with the conflict: it only makes it visible, so the outcome is
+ * deterministic and explainable rather than silent.
  */
 export function detectCoursePackageConflicts(
   pkg: CoursePackage,
@@ -326,7 +327,7 @@ export function detectCoursePackageConflicts(
   return conflicts;
 }
 
-/** Resumen legible para la interfaz tras importar. */
+/** Readable summary for the UI after importing. */
 export function describeImportResult(created: number, skipped: number, lang: LanguageCode = 'es'): string {
   if (created === 0 && skipped === 0) return translateKey(lang, 'pkg.empty');
   if (created === 0) {
@@ -341,8 +342,8 @@ export function describeImportResult(created: number, skipped: number, lang: Lan
 }
 
 /**
- * Completa el resumen de importación con los conflictos detectados. Se mantiene
- * aparte de `describeImportResult` para no alterar su contrato ya probado.
+ * Completes the import summary with the detected conflicts. Kept separate from
+ * `describeImportResult` so its already-tested contract stays intact.
  */
 export function describeConflicts(conflicts: readonly CoursePackageConflict[], lang: LanguageCode = 'es'): string {
   if (conflicts.length === 0) return '';

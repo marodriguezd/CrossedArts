@@ -17,17 +17,17 @@ from backend.app.core.logging import get_logger
 
 logger = get_logger("services.extractor")
 
-# Idioma indeterminado (ISO 639-2). Se usa cuando la fuente no declara idioma:
-# etiquetar transcriptos como español era una afirmación falsa.
+# Undetermined language (ISO 639-2). Used when the source declares no language:
+# labeling transcripts as Spanish was a false claim.
 UNDETERMINED_LANGUAGE = "und"
 
 
 def normalize_language(raw_language: Any) -> Optional[str]:
-    """Valida y normaliza un identificador de idioma declarado por la fuente.
+    """Validate and normalize a source-declared language identifier.
 
-    Acepta códigos ISO 639-1/-2 ("es", "en", "spa"...) y etiquetas BCP-47
-    simples ("en-US", "pt_BR"). Devuelve None si no es un código plausible:
-    un valor libre ("idioma del video") no debe persistirse como idioma.
+    Accepts ISO 639-1/-2 codes ("es", "en", "spa"...) and simple BCP-47 tags
+    ("en-US", "pt_BR"). Returns None when not a plausible code: a free value
+    ("idioma del video") must never persist as a language.
     """
     if not isinstance(raw_language, str):
         return None
@@ -41,11 +41,10 @@ def normalize_language(raw_language: Any) -> Optional[str]:
 
 
 def infer_transcript_language(data: Any, file_path: Path) -> str:
-    """Infiere el idioma del transcripto desde metadatos; si no, indeterminado.
+    """Infer the transcript language from metadata; undetermined otherwise.
 
-    Orden de preferencia: campo `language`/`languages` del JSON de la fuente;
-    pista en el nombre de archivo (video.en.srt); 'und' como último recurso.
-    Nunca se asume español.
+    Preference order: source-JSON `language`/`languages` field; filename hint
+    (video.en.srt); 'und' as last resort. Spanish is never assumed.
     """
     if isinstance(data, dict):
         for key in ("language", "language_code", "lang"):
@@ -71,7 +70,7 @@ def infer_transcript_language(data: Any, file_path: Path) -> str:
 class ContentExtractor(ABC):
     @abstractmethod
     def can_handle(self, mime_type: str, file_path: Path) -> bool:
-        """Determina si este extractor puede procesar el tipo MIME o extensión."""
+        """Whether this extractor handles the MIME type or extension."""
         pass
 
     @abstractmethod
@@ -91,12 +90,11 @@ class PDFExtractor(ContentExtractor):
         reader = PdfReader(str(file_path.resolve()))
         page_count = len(reader.pages)
 
-        # Extraer metadatos básicos
         meta = reader.metadata
         title = meta.title if meta and meta.title else file_path.stem
         author = meta.author if meta and meta.author else "Desconocido"
 
-        # Extraer Tabla de Contenidos (TOC) simplificada
+        # Simplified table of contents (TOC).
         toc = []
         try:
             outline = reader.outline
@@ -114,10 +112,9 @@ class PDFExtractor(ContentExtractor):
         except Exception:
             toc = []
 
-        # Extraer texto de páginas e indexar
         full_text_list = []
 
-        # Eliminar índices anteriores si existen para asegurar idempotencia
+        # Drop previous indexes when re-extracting so reruns stay idempotent.
         from backend.app.models.content import EmbeddingRecord
         old_content_ids = db.scalars(
             select(ContentIndex.id).where(ContentIndex.media_asset_id == media_asset_id)
@@ -139,7 +136,6 @@ class PDFExtractor(ContentExtractor):
                 text_clean = text.strip()
                 if text_clean:
                     full_text_list.append(text_clean)
-                    # Indexar página
                     content_idx = ContentIndex(
                         id=uuid.uuid4(),
                         media_asset_id=media_asset_id,
@@ -193,7 +189,7 @@ class EPUBExtractor(ContentExtractor):
         raw_text_parts = []
         toc = []
 
-        # Eliminar índices anteriores para asegurar idempotencia
+        # Drop previous indexes so re-extraction stays idempotent.
         from backend.app.models.content import EmbeddingRecord
         old_content_ids = db.scalars(
             select(ContentIndex.id).where(ContentIndex.media_asset_id == media_asset_id)
@@ -210,7 +206,7 @@ class EPUBExtractor(ContentExtractor):
 
         try:
             with zipfile.ZipFile(file_path) as z:
-                # 1. Encontrar container.xml
+                # 1. Locate container.xml.
                 container_xml = z.read("META-INF/container.xml")
                 root_container = ET.fromstring(container_xml)
                 ns = {"ns": "urn:oasis:names:tc:opendocument:xmlns:container"}
@@ -220,17 +216,15 @@ class EPUBExtractor(ContentExtractor):
                 opf_path = rootfile.attrib["full-path"]
                 opf_dir = Path(opf_path).parent
 
-                # 2. Leer OPF
+                # 2. Read the OPF package.
                 opf_data = z.read(opf_path)
                 root_opf = ET.fromstring(opf_data)
 
-                # Namespaces
                 ns_opf = {
                     "opf": "http://www.idpf.org/2007/opf",
                     "dc": "http://purl.org/dc/elements/1.1/"
                 }
 
-                # Metadatos del OPF
                 title_elem = root_opf.find(".//dc:title", ns_opf)
                 if title_elem is not None:
                     title = title_elem.text
@@ -238,8 +232,8 @@ class EPUBExtractor(ContentExtractor):
                 if creator_elem is not None:
                     author = creator_elem.text
 
-                # Leer el manifiesto OPF y recorrer el spine para extraer los
-                # capítulos en su orden de lectura.
+                # Walk the OPF manifest via the spine to extract chapters in
+                # reading order.
                 manifest_items = {}
                 for item in root_opf.findall(".//opf:manifest/opf:item", ns_opf):
                     manifest_items[item.attrib["id"]] = item.attrib["href"]
@@ -258,18 +252,18 @@ class EPUBExtractor(ContentExtractor):
 
                     import urllib.parse
                     decoded_href = urllib.parse.unquote(href)
-                    # Mitigación de Zip Slip / Directory Traversal antes de normalizar
+                    # Zip Slip / Directory Traversal guard before normalizing.
                     if ".." in Path(decoded_href).parts or decoded_href.startswith("/"):
                         continue
                     full_href = (opf_dir / decoded_href).as_posix() if str(opf_dir) != "." else decoded_href
                     full_href = os.path.normpath(full_href)
 
-                    # Mitigación de Zip Slip / Directory Traversal
+                    # Second Zip Slip / Directory Traversal guard after normalizing.
                     if ".." in Path(full_href).parts or full_href.startswith("/") or full_href.startswith(".."):
                         continue
 
                     try:
-                        # Mitigación de Zip Bomb (limitar a 10MB por archivo)
+                        # Zip Bomb guard (10 MB per file cap).
                         info = z.getinfo(full_href)
                         if info.file_size > 10 * 1024 * 1024:
                             continue
@@ -279,19 +273,15 @@ class EPUBExtractor(ContentExtractor):
                             break
 
                         html_content = z.read(full_href).decode("utf-8", errors="ignore")
-                        # Remover tags HTML con regex simple
                         text_only = re.sub(r"<[^>]+>", " ", html_content)
-                        # Normalizar espacios
                         text_only = re.sub(r"\s+", " ", text_only).strip()
 
                         if text_only:
                             raw_text_parts.append(text_only)
-                            # Intentar inferir título de capítulo
                             title_match = re.search(r"<title>(.*?)</title>", html_content, re.IGNORECASE)
                             chap_title = title_match.group(1).strip() if title_match else f"Capítulo {chapter_num}"
                             toc.append({"title": chap_title, "depth": 0})
 
-                            # Indexar
                             content_idx = ContentIndex(
                                 id=uuid.uuid4(),
                                 media_asset_id=media_asset_id,
@@ -345,7 +335,7 @@ class TranscriptExtractor(ContentExtractor):
 
     def extract(self, db: Session, media_asset_id: uuid.UUID, file_path: Path, commit: bool = True) -> None:
         """
-        Lee el archivo de transcripción (.json, .srt, .vtt) y lo asocia al MediaAsset de video.
+        Read the transcript file (.json, .srt, .vtt) and link it to the video MediaAsset.
         """
         if not file_path.exists():
             return
@@ -353,15 +343,14 @@ class TranscriptExtractor(ContentExtractor):
         segments_data = []
         declared_language: Optional[str] = None
 
-        # 1. Parsear archivo según su extensión
+        # 1. Parse the file by extension.
         ext = file_path.suffix.lower()
         if ext == ".json":
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    # Idioma declarado por la fuente (metadatos), si existe.
+                    # Source-declared language (metadata), when present.
                     declared_language = infer_transcript_language(data, file_path)
-                    # Soportar formatos comunes
                     if "segments" in data:
                         for s in data["segments"]:
                             segments_data.append({
@@ -376,14 +365,13 @@ class TranscriptExtractor(ContentExtractor):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                # Parseador SRT simple
                 blocks = content.strip().split("\n\n")
                 for block in blocks:
                     lines = block.split("\n")
                     if len(lines) >= 3:
                         time_line = lines[1]
                         text_lines = " ".join(lines[2:])
-                        # Parsear tiempos: 00:00:10,000 --> 00:00:15,000
+                        # Timestamps look like 00:00:10,000 --> 00:00:15,000.
                         match = re.match(r"(\d+):(\d+):(\d+),(\d+)\s*-->\s*(\d+):(\d+):(\d+),(\d+)(?:\s+.*)?", time_line)
                         if match:
                             def to_sec(h, m, s, ms):
@@ -402,7 +390,6 @@ class TranscriptExtractor(ContentExtractor):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                # Parseador VTT simple
                 blocks = content.strip().split("\n\n")
                 for block in blocks:
                     lines = [line.strip() for line in block.split("\n") if line.strip()]
@@ -430,17 +417,15 @@ class TranscriptExtractor(ContentExtractor):
             except Exception as e:
                 logger.error("Error leyendo transcripción VTT %s: %s", file_path, e)
 
-        # Si no encontramos ningún segmento, no hacemos nada
         if not segments_data:
             return
 
-        # Idioma efectivo: metadatos declarados o, en su defecto, indeterminado.
+        # Effective language: declared metadata, else undetermined.
         if declared_language is None:
             declared_language = infer_transcript_language(None, file_path)
 
-        # 2. Eliminar transcripciones anteriores asociadas y sus embeddings
+        # 2. Drop linked previous transcripts and their embeddings.
         from backend.app.models.content import EmbeddingRecord
-        # Obtener IDs de segmentos anteriores
         old_segment_ids = db.scalars(
             select(TranscriptSegment.id)
             .join(Transcript)
@@ -455,7 +440,7 @@ class TranscriptExtractor(ContentExtractor):
                     EmbeddingRecord.entity_type == "transcript_segment"
                 ).delete(synchronize_session=False)
 
-        # También el embedding del transcript completo en ContentIndex
+        # Also drop the full-transcript ContentIndex embedding.
         old_content_ids = db.scalars(
             select(ContentIndex.id)
             .where(ContentIndex.media_asset_id == media_asset_id, ContentIndex.section_identifier == "transcript")
@@ -472,7 +457,7 @@ class TranscriptExtractor(ContentExtractor):
         db.query(Transcript).filter(Transcript.media_asset_id == media_asset_id).delete()
         db.query(ContentIndex).filter(ContentIndex.media_asset_id == media_asset_id, ContentIndex.section_identifier == "transcript").delete()
 
-        # 3. Crear Transcript y TranscriptSegments
+        # 3. Create the Transcript and its TranscriptSegments.
         transcript = Transcript(
             id=uuid.uuid4(),
             media_asset_id=media_asset_id,
@@ -499,7 +484,7 @@ class TranscriptExtractor(ContentExtractor):
         if segs_to_add:
             db.add_all(segs_to_add)
 
-        # Indexar transcripción completa en el ContentIndex
+        # Index the full transcript in ContentIndex.
         full_transcript_text = " ".join(full_text_list)
         content_idx = ContentIndex(
             id=uuid.uuid4(),
@@ -519,8 +504,8 @@ class VideoExtractor(ContentExtractor):
         return mime_type.startswith("video/") or file_path.suffix.lower() in [".mp4", ".webm", ".mov", ".mkv", ".avi"]
 
     def extract(self, db: Session, media_asset_id: uuid.UUID, file_path: Path, commit: bool = True) -> None:
-        # El video en sí no tiene extracción directa de texto en esta clase base.
-        # Sirve para canalizar la búsqueda de subtítulos asociados (.srt/.vtt/.json).
+        # Base-class videos carry no direct text extraction; this channels the
+        # sidecar-subtitle lookup (.srt/.vtt/.json).
         pass
 
 
@@ -535,7 +520,7 @@ class ContentIntelligenceManager:
         ]
 
     def extract_and_index(self, media_asset_id: uuid.UUID, commit: bool = True) -> bool:
-        """Busca el MediaAsset, selecciona el extractor apropiado y ejecuta la extracción."""
+        """Find the MediaAsset, pick the matching extractor, and run extraction."""
         asset = self.db.get(MediaAsset, media_asset_id)
         if not asset:
             return False
@@ -546,13 +531,13 @@ class ContentIntelligenceManager:
 
         for ext in self.extractors:
             if ext.can_handle(asset.mime_type, file_path):
-                # Usar transacción anidada (savepoint) para aislar fallos de extracción individuales
+                # Nested transaction (savepoint) isolates single-extraction failures.
                 try:
                     with self.db.begin_nested():
                         ext.extract(self.db, media_asset_id, file_path, commit=False)
 
-                        # Si el activo de medios tiene una transcripción al lado en formato SRT o JSON,
-                        # intentar extraerla automáticamente (e.g. video.mp4 y video.srt)
+                        # Auto-extract a sidecar transcript when present
+                        # (e.g. video.mp4 next to video.srt).
                         if asset.media_type == "video":
                             for suffix in [".srt", ".json", ".vtt"]:
                                 transcript_path = file_path.with_suffix(suffix)

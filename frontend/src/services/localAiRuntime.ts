@@ -9,18 +9,18 @@ import type { SemanticChunk } from '../lib/localEmbeddings/chunking.ts';
 import { buildSemanticCorpus } from '../lib/localEmbeddings/corpus.ts';
 
 /**
- * CrossedArts — Runtime de IA local con preparación automática.
+ * CrossedArts — Local AI runtime with automatic preparation.
  *
- * Capa mínima de coordinación que orquesta los motores existentes
- * (`localLlmEngine`, `localEmbeddingEngine`) sin reemplazarlos ni introducir un
- * store global. El usuario expresa intención (abrir el tutor, preguntar,
- * explicar, generar material) y este runtime decide y prepara todo lo necesario.
+ * Minimal coordination layer orchestrating the existing engines
+ * (`localLlmEngine`, `localEmbeddingEngine`) without replacing them or adding a
+ * global store. The user expresses intent (open the tutor, ask, explain,
+ * generate material) and this runtime decides and prepares everything needed.
  *
- * Garantías:
- *  - una sola preparación en vuelo por recurso (promesas compartidas);
- *  - límites de proveedor explícitos: `demo`/`ollama`/`openai` NUNCA cargan WebLLM;
- *  - consentimiento de primera descarga único y persistente (nunca de secretos);
- *  - degradación honesta: si la preparación falla, se informa un estado accionable.
+ * Guarantees:
+ *  - one preparation in flight per resource (shared promises);
+ *  - explicit provider boundaries: `demo`/`ollama`/`openai` NEVER load WebLLM;
+ *  - first-download consent stored once and persistently (never secrets);
+ *  - honest degradation: when preparation fails, an actionable status is reported.
  */
 
 export type LocalProviderId = 'demo' | 'local' | 'ollama' | 'openai';
@@ -93,7 +93,7 @@ export interface LocalAiRuntimeDeps {
     markDirty?(): void;
     isDirty?(): boolean;
     clearDirty?(): void;
-    /** Opcional: purga vectores de modelos antiguos antes de indexar. */
+    /** Optional: purges vectors from old models before indexing. */
     pruneStaleCache?(activeModelId?: string): Promise<number>;
   };
   detectCapabilities: () => Promise<WebGPUCapabilityReport>;
@@ -138,10 +138,10 @@ function createDefaultStorage(): LocalAiStorage {
         try { return localStorage.getItem(key); } catch { return null; }
       },
       setItem: (key, value) => {
-        try { localStorage.setItem(key, value); } catch { /* almacenamiento no disponible */ }
+        try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
       },
       removeItem: (key) => {
-        try { localStorage.removeItem(key); } catch { /* almacenamiento no disponible */ }
+        try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
       }
     };
   }
@@ -211,7 +211,7 @@ export class LocalAiRuntime {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Estado                                                              */
+  /* State                                                               */
   /* ------------------------------------------------------------------ */
 
   public getStatus(): LocalAiStatus {
@@ -237,7 +237,7 @@ export class LocalAiRuntime {
   private setLlmStatus(next: Partial<LocalAiStatus>): LocalAiStatus {
     this.llmStatus = { ...this.llmStatus, ...next };
     for (const listener of this.llmListeners) {
-      try { listener(this.llmStatus); } catch { /* listener aislado */ }
+      try { listener(this.llmStatus); } catch { /* isolated listener */ }
     }
     return this.llmStatus;
   }
@@ -245,13 +245,13 @@ export class LocalAiRuntime {
   private setSemanticStatus(next: Partial<SemanticStatus>): SemanticStatus {
     this.semanticStatus = { ...this.semanticStatus, ...next };
     for (const listener of this.semanticListeners) {
-      try { listener(this.semanticStatus); } catch { /* listener aislado */ }
+      try { listener(this.semanticStatus); } catch { /* isolated listener */ }
     }
     return this.semanticStatus;
   }
 
   /* ------------------------------------------------------------------ */
-  /* Consentimiento de primera descarga (preferencia, nunca secretos)    */
+  /* First-download consent (a preference, never secrets)                */
   /* ------------------------------------------------------------------ */
 
   public hasConsent(): boolean {
@@ -259,11 +259,11 @@ export class LocalAiRuntime {
   }
 
   public grantConsent(): void {
-    try { this.deps.storage.setItem(LOCAL_AI_CONSENT_KEY, 'granted'); } catch { /* no persistible */ }
+    try { this.deps.storage.setItem(LOCAL_AI_CONSENT_KEY, 'granted'); } catch { /* not persistable */ }
   }
 
   public revokeConsent(): void {
-    try { this.deps.storage.removeItem(LOCAL_AI_CONSENT_KEY); } catch { /* no persistible */ }
+    try { this.deps.storage.removeItem(LOCAL_AI_CONSENT_KEY); } catch { /* not persistable */ }
   }
 
   private getCachedModelIds(): Set<string> {
@@ -276,7 +276,7 @@ export class LocalAiRuntime {
           return new Set(parsed.filter((id): id is string => typeof id === 'string' && !!id));
         }
       } catch {
-        // Compatibilidad con versiones que almacenaban un único id como texto.
+        // Compatibility with versions that stored a single id as plain text.
       }
       return raw ? new Set([raw]) : new Set();
     } catch {
@@ -293,28 +293,28 @@ export class LocalAiRuntime {
       const ids = this.getCachedModelIds();
       ids.add(modelId);
       this.deps.storage.setItem(LOCAL_AI_CACHED_MODEL_KEY, JSON.stringify(Array.from(ids).sort()));
-    } catch { /* no persistible */ }
+    } catch { /* not persistable */ }
   }
 
   /* ------------------------------------------------------------------ */
-  /* Preparación del LLM local (solo proveedor `local`)                  */
+  /* Local LLM preparation (only provider `local`)                       */
   /* ------------------------------------------------------------------ */
 
   public async ensureLocalAiReady(options?: {
     provider?: LocalProviderId;
     overrideModelId?: string;
     /**
-     * Tarea pedagógica que motiva la carga. Solo ORDENA la preferencia entre los
-     * modelos ya elegibles por hardware; nunca permite usar un modelo que el
-     * dispositivo no soporta.
+     * Tutoring task motivating the load. It only ORDERS preference among models
+     * already eligible by hardware; it never allows using a model the device
+     * does not support.
      */
     task?: AIModelTask;
   }): Promise<LocalAiStatus> {
     const provider = options?.provider ?? 'local';
-    // Los demás proveedores NUNCA cargan WebLLM.
+    // All other providers NEVER load WebLLM.
     if (provider !== 'local') return this.llmStatus;
 
-    // Reutilizar un motor ya cargado: no se recarga entre acciones consecutivas.
+    // Reuse an already loaded engine: no reload between consecutive actions.
     if (this.deps.llmEngine.getStatus() === 'ready') {
       const loadedId = this.deps.llmEngine.getLoadedModelId();
       return this.setLlmStatus({
@@ -351,8 +351,8 @@ export class LocalAiRuntime {
       deviceTier: cap.deviceTier ?? 'unknown' as 'high' | 'unknown'
     };
 
-    // SELECCIÓN CANÓNICA: una sola política, consciente de la tarea, aplicada
-    // sobre las capacidades REALES del dispositivo.
+    // CANONICAL SELECTION: a single task-aware policy applied against the
+    // device's REAL capabilities.
     const taskModel = selectBestLocalModelForTask(capabilities, options?.task ?? 'tutor');
 
     if (!taskModel) {
@@ -365,7 +365,7 @@ export class LocalAiRuntime {
       });
     }
 
-    // El override explícito (solo avanzado) se respeta si es compatible con el hardware
+    // The explicit override (advanced only) is honored when the hardware supports it
     const overrideCandidate = options?.overrideModelId
       ? this.deps.getModelDefinition(options.overrideModelId)
       : undefined;
@@ -390,7 +390,7 @@ export class LocalAiRuntime {
       });
     }
 
-    // Consentimiento de primera descarga: sin él no se descarga nada.
+    // First-download consent: without it nothing is downloaded.
     if (!this.hasConsent()) {
       return this.setLlmStatus({
         stage: 'consent-required',
@@ -402,7 +402,7 @@ export class LocalAiRuntime {
       });
     }
 
-    // Sin conexión y sin registro de caché previo: no se intenta una descarga inútil.
+    // Offline with no prior cache record: no pointless download is attempted.
     if (!this.deps.isOnline() && !this.isModelCached(model.id)) {
       return this.setLlmStatus({
         stage: 'error',
@@ -473,8 +473,8 @@ export class LocalAiRuntime {
   }
 
   /**
-   * Punto de entrada desde el tutor y las acciones de IA. Proveedor-aware:
-   * solo prepara para `local`.
+   * Entry point from the tutor and AI actions. Provider-aware: it only
+   * prepares for `local`.
    */
   public async prepareForTutor(
     provider: LocalProviderId,
@@ -485,11 +485,11 @@ export class LocalAiRuntime {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Preparación automática de embeddings / índice semántico             */
+  /* Automatic embedding / semantic-index preparation                    */
   /* ------------------------------------------------------------------ */
 
   public async ensureSemanticIndexReady(provider: LocalProviderId = 'local'): Promise<SemanticStatus> {
-    // Demo/Ollama/OpenAI no deben arrancar motores de IA local.
+    // Demo/Ollama/OpenAI must not start local AI engines.
     if (provider !== 'local') return this.semanticStatus;
     if (!this.hasConsent()) {
       return this.setSemanticStatus({
@@ -517,7 +517,7 @@ export class LocalAiRuntime {
   }
 
   private async prepareSemantic(): Promise<SemanticStatus> {
-    // En entornos sin navegador (p. ej. tests) no se descarga nada.
+    // In browserless environments (e.g. tests) nothing is downloaded.
     if (!this.deps.isBrowser()) {
       return this.setSemanticStatus({
         stage: 'error',
@@ -529,7 +529,7 @@ export class LocalAiRuntime {
     try {
       this.setSemanticStatus({ stage: 'preparing', progress: 0, message: 'Preparando búsqueda…' });
 
-      // Bucle determinista con coalescencia de reindexación si ocurre dirty durante la pasada
+      // Deterministic loop coalescing reindexing when dirty occurs during a pass
       let passCount = 0;
       const MAX_PASSES = 3;
       let finalTotal = 0;
@@ -543,7 +543,7 @@ export class LocalAiRuntime {
         const total = chunks.length;
         finalTotal = total;
 
-        // No descargamos embeddings para una biblioteca que todavía está vacía.
+        // No embeddings are downloaded for a still-empty library.
         if (total === 0) {
           return this.setSemanticStatus({ stage: 'ready', progress: 100, indexed: 0, total: 0, message: 'Búsqueda semántica lista' });
         }
@@ -552,12 +552,12 @@ export class LocalAiRuntime {
           await this.deps.embeddingEngine.loadModel(DEFAULT_EMBEDDING_MODEL_ID);
         }
 
-        // Purga proactiva: las entradas de modelos/pipelines anteriores ya
-        // no se sirven, pero ocupaban espacio indefinidamente. Best-effort: si
-        // falla, la indexación continúa.
+        // Proactive purge: prior model/pipeline entries are no longer served
+        // yet occupied space forever. Best-effort: on failure, indexing
+        // continues.
         try {
           await this.deps.embeddingEngine.pruneStaleCache?.(DEFAULT_EMBEDDING_MODEL_ID);
-        } catch { /* la purga nunca debe bloquear la indexación */ }
+        } catch { /* a purge must never block indexing */ }
 
         this.setSemanticStatus({ stage: 'indexing', progress: 0, message: 'Preparando búsqueda…' });
 
@@ -572,7 +572,7 @@ export class LocalAiRuntime {
           });
         });
 
-        // Si no se marcaron cambios durante la indexación, hemos terminado
+        // When no changes were flagged during indexing, we are done
         if (!this.deps.embeddingEngine.isDirty?.()) {
           break;
         }
@@ -589,14 +589,14 @@ export class LocalAiRuntime {
   }
 
   /**
-   * Indexación en segundo plano tras importar contenido. Nunca lanza: si falla,
-   * la recuperación léxica sigue funcionando.
+   * Background indexing after importing content. Never throws: on failure,
+   * lexical retrieval keeps working.
    */
   public scheduleIndexing(provider: LocalProviderId): void {
     if (this.inFlightSemantic) {
       this.deps.embeddingEngine.markDirty?.();
     }
-    void this.ensureSemanticIndexReady(provider).catch(() => { /* degradación silenciosa y segura */ });
+    void this.ensureSemanticIndexReady(provider).catch(() => { /* silent, safe degradation */ });
   }
 
   public cancelIndexing(): void {
@@ -606,7 +606,7 @@ export class LocalAiRuntime {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Instancia por defecto cableada a los motores reales                        */
+/* Default instance wired to the real engines                                  */
 /* -------------------------------------------------------------------------- */
 
 export const localAiRuntime = new LocalAiRuntime({
@@ -617,7 +617,7 @@ export const localAiRuntime = new LocalAiRuntime({
   isBrowser: () => typeof window !== 'undefined',
   storage: createDefaultStorage(),
   loadResources: () => dao.getAllLearningResources(),
-  // Frontera canónica: entidades de dominio -> KnowledgeDocument -> fragmentos.
+  // Canonical boundary: domain entities -> KnowledgeDocument -> chunks.
   buildChunks: async (resources) => (await buildSemanticCorpus(resources, DEFAULT_EMBEDDING_MODEL_ID)).chunks,
   getModelDefinition: (id) => getLocalModelById(id)
 });

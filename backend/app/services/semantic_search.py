@@ -1,17 +1,16 @@
 """
 Semantic Search Service.
 
-Proporciona búsqueda por similitud sobre todo el contenido indexado.
+Similarity search over all indexed content.
 
-Escalabilidad: el cálculo de similitud se delega en
-`SQLiteVectorStore`, que filtra por modelo/entidad en SQL, recorre los
-registros en lotes y mantiene solo el top-k en memoria. La semántica existente
-para bibliotecas pequeñas se conserva (umbral 0.25, orden por puntuación,
-límite de registros explorados configurable).
+Scalability: similarity math lives in `SQLiteVectorStore`, which filters by
+model/entity in SQL, walks records in batches, and keeps only top-k in memory.
+The existing small-library semantics stay put (0.25 threshold, score ordering,
+configurable scanned-record cap).
 
-Tipos de recurso relacionados: `get_related_resources` devuelve el tipo
-de dominio REAL de cada recurso (course/book/...), resuelto con consultas en
-lote en lugar de asumir "course" para todo.
+Related resource types: `get_related_resources` returns each resource's REAL
+domain type (course/book/...), resolved with batch queries instead of assuming
+"course" everywhere.
 """
 import uuid
 from typing import Dict, List, Optional, Tuple
@@ -36,14 +35,12 @@ logger = get_logger("services.semantic_search")
 class SemanticSearchService:
     """Service for semantic similarity search."""
 
-    #: Umbral de similitud para la búsqueda semántica general.
+    #: Similarity threshold for general semantic search.
     SEARCH_THRESHOLD = DEFAULT_SIMILARITY_THRESHOLD
-    #: Umbral (más permisivo) para notas relacionadas.
+    #: Looser threshold for related notes.
     RELATED_NOTES_THRESHOLD = 0.10
 
-    # ------------------------------------------------------------------ #
-    # Utilidades internas                                                 #
-    # ------------------------------------------------------------------ #
+    # Internal helpers.
 
     @staticmethod
     def _build_store(db: Session) -> SQLiteVectorStore:
@@ -51,7 +48,7 @@ class SemanticSearchService:
 
     @staticmethod
     def _collect_entity_ids(db: Session, resource_id) -> List:
-        """IDs de todas las entidades indexadas que pertenecen a un recurso."""
+        """IDs of every indexed entity belonging to a resource."""
         ci_ids = [
             ci.id
             for ci in db.query(ContentIndex.id)
@@ -73,11 +70,11 @@ class SemanticSearchService:
     @staticmethod
     def _resolve_resource_ids(db: Session, entity_ids: List[str]) -> Dict[str, object]:
         """
-        Mapa entity_id -> resource_id resuelto en LOTE (sin N+1).
+        entity_id -> resource_id map, resolved in BATCH (no N+1).
 
-        Cubre las tres familias indexadas: notas (resource_id directo),
-        contenido de documentos (vía MediaAsset) y segmentos de transcripción
-        (vía Transcript -> MediaAsset).
+        Covers all three indexed families: notes (direct resource_id), document
+        content (via MediaAsset), and transcript segments (via Transcript ->
+        MediaAsset).
         """
         result: Dict[str, object] = {}
         if not entity_ids:
@@ -121,10 +118,10 @@ class SemanticSearchService:
     @staticmethod
     def _resolve_resource_types(db: Session, resource_ids) -> Dict[object, Tuple[str, str]]:
         """
-        Mapa resource_id -> (título, tipo de dominio real).
+        resource_id -> (title, real domain type) map.
 
-        Consulta en lote sobre las tablas concretas (Course, Book) para
-        devolver el tipo REAL y no una etiqueta genérica.
+        Batch query over the concrete tables (Course, Book) to return the REAL
+        type, not a generic label.
         """
         info: Dict[object, Tuple[str, str]] = {}
         ids = [rid for rid in resource_ids if rid is not None]
@@ -138,9 +135,7 @@ class SemanticSearchService:
             info[book_id] = (title, "book")
         return info
 
-    # ------------------------------------------------------------------ #
-    # API pública                                                         #
-    # ------------------------------------------------------------------ #
+    # Public API.
 
     @classmethod
     def search(
@@ -152,7 +147,7 @@ class SemanticSearchService:
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
     ) -> List[dict]:
-        """Busca contenido similar usando similitud coseno (paginado)."""
+        """Find similar content via cosine similarity (paginated)."""
         if not query or not query.strip():
             return []
 
@@ -248,7 +243,7 @@ class SemanticSearchService:
                 "resource_id": rid,
                 "resource_title": res_info[0] if res_info else "",
                 "resource_type": res_info[1] if res_info else "",
-                # Claves de compatibilidad hacia atrás.
+                # Backward-compatibility keys.
                 "match_type": hit.entity_type,
                 "match_reason": title,
             })
@@ -257,14 +252,14 @@ class SemanticSearchService:
 
     @classmethod
     def get_related_resources(cls, db: Session, resource_id, limit: int = 5) -> List[dict]:
-        """Encuentra recursos conceptualmente relacionados con el dado."""
+        """Find resources conceptually related to the given one."""
         all_entity_ids = cls._collect_entity_ids(db, resource_id)
         if not all_entity_ids:
             return []
 
         current_model = EmbeddingService.get_model_name()
 
-        # Huella del recurso: media de sus embeddings (máximo 30, como antes).
+        # Resource fingerprint: mean of its embeddings (max 30, as before).
         resource_embeddings = (
             db.query(EmbeddingRecord)
             .filter(
@@ -293,8 +288,8 @@ class SemanticSearchService:
             for i in range(len(all_vectors[0]))
         ]
 
-        # Se piden varios candidatos por recurso destino para poder deduplicar
-        # por recurso sin perder resultados útiles.
+        # Over-fetch candidates per target resource so per-resource dedup keeps
+        # useful results.
         store = cls._build_store(db)
         hits = store.search(
             fingerprint,
@@ -304,7 +299,7 @@ class SemanticSearchService:
             exclude_entity_ids=all_entity_ids,
         )
 
-        # Resolución en lote: entidad -> recurso -> tipo real (sin N+1).
+        # Batch resolution: entity -> resource -> real type (no N+1).
         entity_to_resource = cls._resolve_resource_ids(db, [h.entity_id for h in hits])
         ordered_resource_ids = []
         best_score_by_resource: Dict[object, float] = {}

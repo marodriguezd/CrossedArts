@@ -8,21 +8,18 @@ from backend.app.core.settings import settings
 # Ensure the database directory exists before creating the engine
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 
-# Creación del motor (Engine)
-# En SQLite, connect_args={"check_same_thread": False} es obligatorio para el manejo asíncrono y de hilos en FastAPI
+# SQLite needs check_same_thread=False for FastAPI's async/threaded handling.
 connect_args = {}
 if settings.database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False, "timeout": 30}
 
 engine = create_engine(settings.database_url, connect_args=connect_args, echo=False)
 
-# Crear fábrica de sesiones
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base declarativa para los modelos
 Base = declarative_base()
 
-# Habilitar soporte de claves foráneas y modo WAL en SQLite de forma explícita
+# Explicitly enable foreign-key support and WAL mode on SQLite.
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     if settings.database_url.startswith("sqlite"):
@@ -43,7 +40,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA temp_store=MEMORY")
         cursor.close()
 
-# Generador de sesión para dependencias de FastAPI (Session DI)
+# Session generator for FastAPI dependencies (Session DI).
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -51,12 +48,12 @@ def get_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
-# TypeDecorator compatible para UUID entre SQLite y PostgreSQL
+# TypeDecorator bridging UUID between SQLite and PostgreSQL.
 class GUID(types.TypeDecorator):
     """
-    UUID compatible de forma transparente.
-    En PostgreSQL mapea a la columna UUID nativa.
-    En SQLite mapea a CHAR(36) y gestiona los objetos UUID de Python.
+    Transparent UUID compatibility.
+    Maps to the native UUID column on PostgreSQL.
+    Maps to CHAR(36) on SQLite and handles Python UUID objects.
     """
     impl = types.CHAR
     cache_ok = True

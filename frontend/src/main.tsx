@@ -3,7 +3,8 @@ import ReactDOM from 'react-dom/client';
 import { App } from './App.tsx';
 import './index.css';
 
-// Registro defensivo del Service Worker para PWA Offline App Shell
+// Defensive Service Worker registration for the offline PWA shell: a failed
+// registration must never break app boot, hence the swallowed rejection.
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch((err) => {

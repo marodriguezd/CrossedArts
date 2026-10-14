@@ -17,7 +17,7 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 @router.get("/summary", response_model=DashboardSummaryResponse)
 def get_dashboard_summary(db: Session = Depends(get_db)):
     """
-    Retorna los KPIs y métricas agregadas de progreso global para el Dashboard principal.
+    Return global-progress KPIs and aggregate metrics for the main dashboard.
     """
     # 1. Totales de recursos
     total_resources = db.query(func.count(LearningResource.id)).scalar() or 0
@@ -48,17 +48,16 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
 @router.get("/recent-activity", response_model=List[RecentActivityItem])
 def get_recent_activity(db: Session = Depends(get_db)):
     """
-    Retorna la lista unificada de actividad reciente (sesiones de estudio finalizadas y anotaciones creadas).
+    Return the unified recent-activity list (finalized study sessions plus created notes).
     """
     recent_activity: List[RecentActivityItem] = []
 
-    # 1. Obtener las últimas 5 sesiones de estudio FINALIZADAS.
-    # `finalized` (no `ended_at`) es la marca de cierre formal: `ended_at` también
-    # la escribe el latido como marca de última actividad, así que una sesión en
-    # curso no debe aparecer todavía como actividad cerrada.
-    # Una sesión puede estar acotada a lección (resource_id nulo) o ser global
-    # (repaso transversal): el título visible se resuelve entonces desde la
-    # lección, o se describe el ámbito real sin inventar un destino.
+    # 1. Latest 5 FINALIZED study sessions. `finalized` (not `ended_at`) is the
+    # formal close marker: the heartbeat also writes `ended_at` as a last-activity
+    # stamp, so an in-progress session must not show up as closed activity yet.
+    # A session can be lesson-scoped (null resource_id) or global (cross-cutting
+    # review): the visible title then resolves from the lesson, or the real scope
+    # is described without inventing a destination.
     stmt_sessions = (
         select(LearningSession)
         .where(LearningSession.finalized.is_(True))
@@ -73,7 +72,7 @@ def get_recent_activity(db: Session = Depends(get_db)):
             resource_type = s.resource.type
             description = f"Sesión de estudio finalizada ({s.duration_minutes} min)."
         else:
-            resource_id = s.id  # El propio identificador de la sesión como clave estable
+            resource_id = s.id  # The session's own id as the stable key.
             resource_title = s.lesson.title if s.lesson else "Repaso general"
             resource_type = "lesson" if s.lesson else "global"
             description = (
@@ -94,7 +93,7 @@ def get_recent_activity(db: Session = Depends(get_db)):
             )
         )
 
-    # 2. Obtener las últimas 5 notas redactadas
+    # 2. Latest 5 written notes.
     stmt_notes = (
         select(Note)
         .order_by(desc(Note.created_at))
@@ -114,17 +113,17 @@ def get_recent_activity(db: Session = Depends(get_db)):
             )
         )
 
-    # Ordenar de forma descendente por timestamp
+    # Sort by timestamp, newest first.
     recent_activity.sort(key=lambda x: x.timestamp, reverse=True)
 
-    # Devolver las 5 actividades más recientes
+    # Return the 5 most recent activities.
     return recent_activity[:5]
 
 
 @router.get("/study-time", response_model=StudyTimeReportResponse)
 def get_study_time_report(db: Session = Depends(get_db)):
     """
-    Retorna el histórico diario de minutos de estudio para gráficos estadísticos.
+    Return the daily study-minutes history for stats charts.
     """
     report = SessionService.get_study_minutes_by_day(db)
     day_reports = [StudyTimeDayReport(date=row[0], minutes=row[1]) for row in report]

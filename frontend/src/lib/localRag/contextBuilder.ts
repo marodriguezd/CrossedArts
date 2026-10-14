@@ -1,37 +1,36 @@
 import type { RetrievedDocument } from './retrieval.ts';
 
 /**
- * Cita de proveniencia de una fuente recuperada: identifica el artefacto de
- * origen y, cuando existe, su ruta navegable (p. ej. Curso › Módulo › Lección).
+ * Provenance citation of a retrieved source: it identifies the source artifact
+ * and, when present, its navigable path (e.g. Course › Module › Lesson).
  *
- * `navigate` es `null` cuando NO hay un destino determinista conocido: en ese
- * caso la UI muestra la fuente sin enlace en lugar de fingir una navegación.
+ * `navigate` is `null` when NO deterministic destination is known: the UI then
+ * shows the source without a link instead of faking navigation.
  */
 export interface RagSourceCitation {
-  /** Identificador estable dentro del mensaje (para claves de React). */
+  /** Stable id within the message (for React keys). */
   key: string;
   title: string;
   sourceType: RetrievedDocument['sourceType'];
-  /** Ruta de procedencia conocida (no se reconstruye ni se adivina). */
+  /** Known provenance path (never reconstructed or guessed). */
   path?: string[];
   page?: number;
   chapter?: string;
-  /** Recuperación léxica, semántica o híbrida de ESTE fragmento. */
+  /** Lexical, semantic, or hybrid retrieval for THIS chunk. */
   retrievalMode?: 'lexical' | 'semantic' | 'hybrid';
-  /** Destino determinista para abrir el origen desde la interfaz. */
+  /** Deterministic destination for opening the origin from the UI. */
   navigate: { kind: 'resource' | 'lesson' | 'note' | 'concept'; id: string } | null;
 }
 
 export interface BuiltRagContext {
   formattedContextText: string;
   sourceTitles: string[];
-  /** Citas estructuradas de las fuentes REALMENTE recuperadas. */
+  /** Structured citations of the sources ACTUALLY retrieved. */
   citations: RagSourceCitation[];
   hasContext: boolean;
   /**
-   * Verdadero solo si al menos una fuente se apoya en contenido real y no en una
-   * coincidencia débil de título/metadatos. La generación no debe afirmar
-   * fundamentación sólida cuando es falso.
+   * True only when at least one source rests on real content rather than a weak
+   * title/metadata match. Generation must not claim solid grounding when false.
    */
   hasSubstantiveContext: boolean;
 }
@@ -41,16 +40,16 @@ export const MAX_CHARS_PER_SOURCE = 400;
 export const MAX_TOTAL_CONTEXT_CHARS = 1800;
 
 /**
- * Marcador que se añade al final del contexto cuando una fuente_No cupo en el
- * límite total. No es una fuente: nunca aparece en `citations` ni en
+ * Marker appended to the end of the context when a source did not fit the
+ * total limit. It is not a source: it never appears in `citations` or
  * `sourceTitles`.
  */
 export const OMITTED_SOURCES_MARKER = '[... Fuentes adicionales omitidas por límite de contexto ...]';
 
 /**
- * Resuelve el destino de navegación de un fragmento recuperado a partir de la
- * procedencia que la recuperación conserva. Determinista y conservador: si el
- * artefacto no tiene destino conocido, devuelve `null`.
+ * Resolves the navigation destination of a retrieved chunk from the provenance
+ * retrieval preserves. Deterministic and conservative: when the artifact has no
+ * known destination it returns `null`.
  */
 export function resolveCitationNavigate(doc: RetrievedDocument): RagSourceCitation['navigate'] {
   switch (doc.sourceType) {
@@ -65,11 +64,11 @@ export function resolveCitationNavigate(doc: RetrievedDocument): RagSourceCitati
     case 'concept':
       return { kind: 'concept', id: doc.id };
     case 'flashcard':
-      // Una tarjeta no es un destino propio: se abre su recurso si lo tiene.
+      // A card is not a destination of its own: its resource opens when present.
       return doc.resourceId ? { kind: 'resource', id: doc.resourceId } : null;
     case 'practice':
-      // El trabajo práctico se abre a través de su padre conocido (lección o
-      // recurso). Sin vínculo determinista no se finge una navegación.
+      // Practice work opens through its known parent (lesson or resource).
+      // Without a deterministic link, navigation is never faked.
       if (doc.lessonId) return { kind: 'lesson', id: doc.lessonId };
       return doc.resourceId ? { kind: 'resource', id: doc.resourceId } : null;
     default:
@@ -77,7 +76,7 @@ export function resolveCitationNavigate(doc: RetrievedDocument): RagSourceCitati
   }
 }
 
-/** Construye la cita estructurada de un fragmento recuperado. */
+/** Builds the structured citation of a retrieved chunk. */
 export function buildSourceCitation(doc: RetrievedDocument, index: number): RagSourceCitation {
   return {
     key: `${doc.sourceType}:${doc.id}:${index}`,
@@ -92,9 +91,9 @@ export function buildSourceCitation(doc: RetrievedDocument, index: number): RagS
 }
 
 /**
- * Empaqueta documentos recuperados en un bloque de contexto estructurado
- * legible y comprensible para el modelo local, incluyendo identificadores de origen
- * y límites estrictos de longitud para evitar desbordamiento del contexto o inyecciones.
+ * Packs retrieved documents into a structured context block that is readable
+ * and understandable for the local model, including source identifiers and
+ * strict length limits to prevent context overflow or injections.
  */
 export function buildRagContext(documents: RetrievedDocument[]): BuiltRagContext {
   if (!documents.length) {
@@ -110,7 +109,7 @@ export function buildRagContext(documents: RetrievedDocument[]): BuiltRagContext
   const sourceTitles: string[] = [];
   const citations: RagSourceCitation[] = [];
   const sections: string[] = [];
-  /** Documentos REALMENTE visibles para el modelo, en orden. */
+  /** Documents ACTUALLY visible to the model, in order. */
   const includedDocs: RetrievedDocument[] = [];
   let totalChars = 0;
 
@@ -119,7 +118,6 @@ export function buildRagContext(documents: RetrievedDocument[]): BuiltRagContext
   for (let i = 0; i < boundedDocs.length; i++) {
     const doc = boundedDocs[i];
 
-    // Truncar contenido de cada fuente
     let safeSnippet = doc.snippet;
     if (safeSnippet.length > MAX_CHARS_PER_SOURCE) {
       safeSnippet = safeSnippet.slice(0, MAX_CHARS_PER_SOURCE) + '... [truncado]';
@@ -129,11 +127,11 @@ export function buildRagContext(documents: RetrievedDocument[]): BuiltRagContext
     const chapterAttr = doc.chapter ? ` CAPITULO="${doc.chapter}"` : '';
     const section = `<<<DATOS_FUENTE_${i + 1} TIPO="${doc.sourceType.toUpperCase()}" TITULO="${doc.title}"${pageAttr}${chapterAttr}>>>\n${safeSnippet}\n<<<FIN_FUENTE_${i + 1}>>>`;
 
-    // CONTRATO DE PROVENIENCIA: la sección se construye y se decide su
-    // inclusión ANTES de registrar título o cita. Una fuente que no cabe en el
-    // límite total de contexto NO es visible para el modelo y, por tanto, no
-    // puede aparecer como cita ni como título de fuente: las citas describen
-    // exactamente el contexto entregado, ni una más ni una menos.
+    // PROVENANCE CONTRACT: the section is built and its inclusion decided
+    // BEFORE registering a title or citation. A source that does not fit the
+    // total context limit is NOT visible to the model and therefore cannot
+    // appear as a citation or source title: citations describe exactly the
+    // delivered context, no more and no less.
     if (totalChars + section.length > MAX_TOTAL_CONTEXT_CHARS) {
       sections.push(OMITTED_SOURCES_MARKER);
       break;
@@ -150,12 +148,12 @@ export function buildRagContext(documents: RetrievedDocument[]): BuiltRagContext
     formattedContextText: sections.join('\n\n'),
     sourceTitles,
     citations,
-    // `hasContext` describe lo que el modelo ve realmente: si ninguna sección
-    // cupo, el contexto visible es solo el marcador de omisión y no hay
-    // material recuperado que sostener la respuesta.
+    // `hasContext` describes what the model really sees: when no section fit,
+    // the visible context is only the omission marker and there is no retrieved
+    // material to back the answer.
     hasContext: includedDocs.length > 0,
-    // Solo las fuentes realmente incluidas en el contexto cuentan: una fuente
-    // truncada por límite no debe inflar la señal de fundamentación.
+    // Only sources truly included in the context count: a limit-truncated
+    // source must not inflate the grounding signal.
     hasSubstantiveContext: includedDocs.some((doc) => doc.substantive === true)
   };
 }

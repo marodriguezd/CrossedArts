@@ -3,13 +3,13 @@ import { Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme.ts';
 
 interface ThemeToggleProps {
-  /** Variante compacta para la cabecera. */
+  /** Compact variant for the header. */
   compact?: boolean;
 }
 
 /**
- * Cambio de tema claro/oscuro con nombre accesible, estado anunciado y
- * persistencia local. No depende del color para comunicar el estado actual.
+ * Light/dark theme toggle with an accessible name, announced state, and local
+ * persistence. State is never communicated by color alone.
  */
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({ compact = false }) => {
   const [theme, toggle] = useTheme();

@@ -7,11 +7,12 @@ export interface EmbeddingCapabilitiesReport {
 }
 
 /**
- * Detecta si el entorno soporta WebGPU o WASM para ejecución de embeddings con Transformers.js.
- * En navegadores modernos sin WebGPU, ofrece WASM/CPU limpiamente.
+ * Detects whether the environment supports WebGPU or WASM for embedding
+ * execution with Transformers.js. Modern browsers without WebGPU cleanly get
+ * WASM/CPU.
  */
 export async function detectEmbeddingCapabilities(): Promise<EmbeddingCapabilitiesReport> {
-  // 1. Comprobar WebGPU si está disponible en hardware real
+  // 1. Check WebGPU when available on real hardware
   if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
     try {
       const gpu = (navigator as any).gpu;
@@ -29,11 +30,11 @@ export async function detectEmbeddingCapabilities(): Promise<EmbeddingCapabiliti
         }
       }
     } catch {
-      // Si timeout o fallo de WebGPU, usar fallback CPU/WASM
+      // Timeout or adapter failure: fall through to the CPU/WASM fallback.
     }
   }
 
-  // 2. Comprobar WebAssembly (CPU Fallback)
+  // 2. WebAssembly check (CPU fallback).
   if (typeof WebAssembly !== 'undefined') {
     return {
       state: 'supported',

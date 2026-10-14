@@ -1,15 +1,15 @@
 /**
- * CrossedArts — Parser Markdown local, determinista y seguro.
+ * CrossedArts — Local, deterministic, safe Markdown parser.
  *
- * Diseñado para renderizar las respuestas del tutor sin introducir un stack
- * pesado ni `dangerouslySetInnerHTML`. El parser NO entiende HTML en bruto:
- * cualquier etiqueta del modelo se conserva como texto literal, por lo que es
- * estructuralmente imposible inyectar `<script>`, `<iframe>`, manejadores de
- * eventos o HTML arbitrario. Un nodo de tipo "html"/"raw" no existe.
+ * Built to render tutor answers without a heavy stack or
+ * `dangerouslySetInnerHTML`. The parser does NOT understand raw HTML: any tag
+ * in the model output is kept as literal text, so injecting `<script>`,
+ * `<iframe>`, event handlers, or arbitrary HTML is structurally impossible.
+ * No "html"/"raw" node type exists.
  *
- * Subconjunto soportado: negrita, cursiva, código inline, listas (ordenadas y
- * no ordenadas), párrafos con saltos de línea, encabezados, bloques de código
- * cercados y enlaces (con esquema validado).
+ * Supported subset: bold, italics, inline code, lists (ordered and unordered),
+ * paragraphs with line breaks, headings, fenced code blocks, and links (with a
+ * validated scheme).
  */
 
 export type InlineToken =
@@ -25,37 +25,37 @@ export type MarkdownBlock =
   | { type: 'list'; ordered: boolean; items: InlineToken[][] }
   | { type: 'code'; language: string; value: string };
 
-/** Esquemas de URL permitidos para enlaces del tutor. Cualquier otro se descarta. */
+/** URL schemes allowed for tutor links. Anything else is dropped. */
 const ALLOWED_URL_SCHEMES = new Set(['http', 'https', 'mailto']);
 
 /**
- * Valida una URL de enlace. Devuelve `null` cuando el destino no es seguro
- * (p. ej. `javascript:`, `data:`, `vbscript:` o URLs con caracteres de control).
- * En ese caso el renderizador muestra el texto del enlace sin anchor.
+ * Validates a link URL. Returns `null` when the target is unsafe (e.g.
+ * `javascript:`, `data:`, `vbscript:`, or URLs with control characters). In
+ * that case the renderer shows the link text with no anchor.
  */
 export function sanitizeUrl(raw: string | undefined | null): string | null {
   if (!raw) return null;
   const url = raw.trim();
   if (!url) return null;
-  // Caracteres de control (incluye saltos de línea/tabuladores): un navegador
-  // podría normalizarlos y convertir `java\nscript:` en `javascript:`.
+  // Control characters (including newlines/tabs): a browser could normalize
+  // them and turn `java\nscript:` into `javascript:`.
   if (/[\u0000-\u001f\u007f]/.test(url)) return null;
   const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(url);
   if (schemeMatch) {
     return ALLOWED_URL_SCHEMES.has(schemeMatch[1].toLowerCase()) ? url : null;
   }
-  // URLs protocol-relative (`//host`): se descartan por seguridad.
+  // Protocol-relative URLs (`//host`): dropped for safety.
   if (url.startsWith('//')) return null;
-  // Rutas relativas y anclas locales.
+  // Relative paths and local anchors.
   return url;
 }
 
-// Grupo 1/2: código inline (`...`). 3/4: enlace [texto](url).
-// 5/6: negrita (** / __). 7/8: cursiva (* / _).
+// Groups 1/2: inline code (`...`). 3/4: link [text](url).
+// 5/6: bold (** / __). 7/8: italics (* / _).
 const INLINE_SOURCE =
   /(`+)([\s\S]*?)\1|\[([^\]]*)\]\(([^)\s]*)\)|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|\*([^*\n]+?)\*|_([^_\n]+?)_/g;
 
-/** Convierte una línea de texto en tokens inline seguros. */
+/** Converts one line of text into safe inline tokens. */
 export function parseInline(text: string): InlineToken[] {
   const tokens: InlineToken[] = [];
   const re = new RegExp(INLINE_SOURCE.source, 'g');
@@ -75,7 +75,7 @@ export function parseInline(text: string): InlineToken[] {
       if (href) {
         tokens.push({ type: 'link', href, children });
       } else {
-        // Enlace no seguro: se conserva solo su texto, sin anchor.
+        // Unsafe link: only its text is kept, with no anchor.
         tokens.push(...children);
       }
     } else if (match[5] !== undefined) {
@@ -89,7 +89,7 @@ export function parseInline(text: string): InlineToken[] {
     }
 
     last = re.lastIndex;
-    // Salvaguarda contra coincidencias de longitud cero.
+    // Guard against zero-length matches.
     if (re.lastIndex === match.index) re.lastIndex++;
   }
 
@@ -106,7 +106,7 @@ const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
 const UL_ITEM = /^\s*[-*+]\s+/;
 const OL_ITEM = /^\s*\d+[.)]\s+/;
 
-/** Convierte el texto Markdown del asistente en una lista de bloques tipados. */
+/** Converts the assistant's Markdown text into a list of typed blocks. */
 export function parseMarkdown(source: string): MarkdownBlock[] {
   const lines = String(source ?? '').replace(/\r\n?/g, '\n').split('\n');
   const blocks: MarkdownBlock[] = [];

@@ -6,28 +6,28 @@ import { computeBinarySha256 } from '../fingerprint.ts';
 import { normalizeExtractedText } from '../textUtils.ts';
 
 /**
- * Extractor EPUB basado en el contenedor ZIP OCF real.
+ * EPUB extractor built on the real OCF ZIP container.
  *
- * El parser anterior leía el archivo completo como latin1 y buscaba
- * `<html>...</html>` en el binario: eso sólo funciona con EPUB sin comprimir y,
- * aun así, mezcla entradas y no respeta el orden del spine. Un EPUB estándar es
- * un ZIP cuyo contenido está comprimido con Deflate, por lo que el texto nunca
- * era legible como cadena.
+ * The previous parser read the whole file as latin1 and looked for
+ * `<html>...</html>` inside the binary: that works only with uncompressed EPUBs
+ * and, even then, mixes entries and ignores spine order. A standard EPUB is a
+ * ZIP whose contents are Deflate-compressed, so the text was never readable as
+ * a string.
  *
- * Aquí se hace lo correcto, todo en memoria y sin red:
- *   1. Se descomprime el ZIP con límites anti-bomba.
- *   2. Se lee `META-INF/container.xml` y se resuelve el OPF.
- *   3. Se parsea el OPF: metadatos, manifest y spine.
- *   4. Se recorre el spine y se extrae el texto de cada XHTML con un parser
- *      real (htmlparser2), respetando fronteras de capítulo.
+ * This does it right, all in memory and offline:
+ *   1. The ZIP is decompressed with anti-bomb limits.
+ *   2. `META-INF/container.xml` is read and the OPF resolved.
+ *   3. The OPF is parsed: metadata, manifest, and spine.
+ *   4. The spine is walked and text extracted from each XHTML with a real
+ *      parser (htmlparser2), honoring chapter boundaries.
  */
 
-/** Límites anti-bomba (alineados con el extractor del backend). */
+/** Anti-bomb limits (aligned with the backend extractor). */
 const MAX_ENTRIES = 5000;
-const MAX_ENTRY_UNCOMPRESSED_BYTES = 10 * 1024 * 1024; // 10 MB por entrada
-const MAX_TOTAL_UNCOMPRESSED_BYTES = 100 * 1024 * 1024; // 100 MB en total
+const MAX_ENTRY_UNCOMPRESSED_BYTES = 10 * 1024 * 1024; // 10 MB per entry
+const MAX_TOTAL_UNCOMPRESSED_BYTES = 100 * 1024 * 1024; // 100 MB overall
 
-/** Nodo DOM mínimo (estructural) para no depender de los tipos de domhandler. */
+/** Minimal (structural) DOM node to avoid depending on domhandler types. */
 interface DomNode {
   type: string;
   name?: string;
@@ -36,7 +36,7 @@ interface DomNode {
   children?: DomNode[];
 }
 
-/** Firma local de fichero ZIP: `PK\x03\x04` (también se acepta ZIP vacío). */
+/** Local ZIP file signature: `PK\x03\x04` (an empty ZIP is also accepted). */
 function hasZipMagic(bytes: Uint8Array): boolean {
   if (bytes.length < 4) return false;
   const isLocal = bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
@@ -50,12 +50,12 @@ function dirname(path: string): string {
 }
 
 /**
- * Resuelve un href relativo (o absoluto dentro del contenedor) contra el
- * directorio base y devuelve una ruta normalizada.
+ * Resolves a relative href (or container-absolute) against the base directory
+ * and returns a normalized path.
  *
- * Devuelve `null` si la ruta escapa de la raíz del archivo (`..`), contiene un
- * byte nulo o queda vacía. Nunca se confía en la ruta del archivo: sólo se usan
- * como claves exactas contra las entradas ya descomprimidas.
+ * Returns `null` when the path escapes the archive root (`..`), contains a NUL
+ * byte, or ends up empty. Archive paths are never trusted: they are only used
+ * as exact keys against the already decompressed entries.
  */
 export function resolveArchivePath(baseDir: string, href: string): string | null {
   const withoutFragment = href.split('#')[0].split('?')[0];
@@ -63,7 +63,7 @@ export function resolveArchivePath(baseDir: string, href: string): string | null
   try {
     decoded = decodeURIComponent(withoutFragment);
   } catch {
-    // Href con porcentaje mal formado: se usa tal cual (puede ser válido).
+    // Malformed percent-encoded href: used as-is (it may still be valid).
     decoded = withoutFragment;
   }
   if (decoded.includes('\0')) return null;
@@ -77,7 +77,7 @@ export function resolveArchivePath(baseDir: string, href: string): string | null
   for (const segment of combined.split('/')) {
     if (segment === '' || segment === '.') continue;
     if (segment === '..') {
-      if (stack.length === 0) return null; // fuga fuera de la raíz
+      if (stack.length === 0) return null; // escape outside the root
       stack.pop();
       continue;
     }
@@ -104,7 +104,7 @@ function findByTagName(nodes: readonly DomNode[] | undefined, tagName: string, o
   return out;
 }
 
-/** Texto plano de un elemento (recursivo, sin etiquetas). */
+/** Plain text of an element (recursive, tags stripped). */
 export function elementText(el: DomNode): string {
   let text = '';
   for (const child of el.children ?? []) {
@@ -128,9 +128,9 @@ const BLOCK_TAGS = new Set([
 const SKIPPED_TAGS = new Set(['script', 'style', 'head', 'title', 'template', 'noscript']);
 
 /**
- * Extrae el texto visible de un documento XHTML respetando las fronteras de
- * bloque (párrafos, títulos, ítems de lista) mediante un parser HTML real, no
- * con expresiones regulares sobre el marcado.
+ * Extracts an XHTML document's visible text honoring block boundaries
+ * (paragraphs, headings, list items) through a real HTML parser rather than
+ * regexes over the markup.
  */
 export function extractXhtmlText(xhtml: string): string {
   const root = parseDom(xhtml, false);
@@ -165,8 +165,8 @@ interface UnzipResult {
 }
 
 /**
- * Descomprime el contenedor aplicando los límites anti-bomba. Lanza
- * `archive-too-large` cuando se supera el número de entradas o el tamaño.
+ * Decompresses the container under the anti-bomb limits. Throws
+ * `archive-too-large` when the entry count or size is exceeded.
  */
 export function unzipWithLimits(bytes: Uint8Array, fileName: string): UnzipResult {
   let count = 0;
@@ -198,7 +198,7 @@ export function unzipWithLimits(bytes: Uint8Array, fileName: string): UnzipResul
   return { entries };
 }
 
-const MAX_BROWSER_EPUB_BYTES = 100 * 1024 * 1024; // 100 MB límite en navegador
+const MAX_BROWSER_EPUB_BYTES = 100 * 1024 * 1024; // 100 MB browser limit
 
 export async function parseEpubFile(
   file: { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> }
@@ -302,7 +302,7 @@ export async function parseEpubFile(
   };
 }
 
-/** Localiza el OPF a partir de `META-INF/container.xml`, con respaldo heurístico. */
+/** Locates the OPF via `META-INF/container.xml`, with a heuristic fallback. */
 function resolveOpfPath(entries: Record<string, Uint8Array>, fileName: string): string {
   const containerKey = Object.keys(entries).find((k) => k.toLowerCase() === 'meta-inf/container.xml');
   if (containerKey) {
@@ -316,7 +316,7 @@ function resolveOpfPath(entries: Record<string, Uint8Array>, fileName: string): 
     }
   }
 
-  // Respaldo: primer `.opf` del archivo (por orden de entrada determinista).
+  // Fallback: first `.opf` in the archive (deterministic entry order).
   const fallback = Object.keys(entries)
     .filter((k) => k.toLowerCase().endsWith('.opf'))
     .sort()[0];
@@ -334,7 +334,7 @@ interface OpfDocument {
   spine: string[];
 }
 
-/** Parsea el OPF y devuelve metadatos + la lista ordenada de hrefs del spine. */
+/** Parses the OPF and returns metadata plus the ordered spine href list. */
 function parseOpf(xml: string, opfPath: string, fileName: string): OpfDocument {
   const root = parseDom(xml, true);
   const manifest = findByTagName(root.children, 'item');
@@ -371,7 +371,7 @@ function parseOpf(xml: string, opfPath: string, fileName: string): OpfDocument {
   };
 }
 
-/** Título del capítulo: primer h1/h2/h3 o `<title>`, con respaldo numerado. */
+/** Chapter title: first h1/h2/h3 or `<title>`, with a numbered fallback. */
 function extractChapterTitle(html: string, index: number): string {
   const root = parseDom(html, false);
   for (const tag of ['h1', 'h2', 'h3']) {

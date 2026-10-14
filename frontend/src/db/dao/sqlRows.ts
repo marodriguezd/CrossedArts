@@ -1,9 +1,9 @@
 /**
- * Lectura segura de filas de sql.js y mapeo de las entidades sensibles.
+ * Safe sql.js row reads and sensitive-entity mapping.
  *
- * Extraído del monolito dao.ts para que los módulos de dominio (sesiones, notas,
- * trabajo práctico, metas) compartan UNA sola implementación de lectura de
- * filas: no puede haber dos formas de convertir el mismo valor de SQLite.
+ * Split out of the dao.ts monolith so the domain modules (sessions, notes,
+ * practice work, goals) share ONE row-reading implementation: the same SQLite
+ * value converts exactly one way.
  */
 
 import { translateKey } from '../../i18n/dictionaries.ts';
@@ -57,12 +57,12 @@ export class SqlRow {
 }
 
 
-/** Convierte un valor de sql.js en texto nullable (o null). */
+/** Coerces a sql.js value to a nullable string (or null). */
 export function asNullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
 }
 
-/** Convierte un valor de sql.js en número nullable, rechazando lo no numérico. */
+/** Coerces a sql.js value to a nullable number, rejecting non-numeric input. */
 export function asNullableNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
@@ -70,7 +70,7 @@ export function asNullableNumber(value: unknown): number | null {
 }
 
 
-/** Mapea una fila cruda de `practice_work` a un objeto de dominio tipado. */
+/** Maps a raw `practice_work` row to a typed domain object. */
 export function mapPracticeWorkRow(row: readonly unknown[]): PracticeWork {
   const r = new SqlRow(row);
   return {
@@ -98,10 +98,10 @@ export function mapLearningSessionRow(row: readonly unknown[]): LearningSession 
   const r = new SqlRow(row);
   const resourceId = r.optionalStr(1);
   const lessonId = r.optionalStr(12);
-  // El ámbito persistido es la fuente de verdad, con reclasificación honesta:
-  // si su ancla ya no existe (el material se borró y el historial se conserva)
-  // o si la fila heredada no lo declara, el ámbito efectivo se deriva de las
-  // anclas reales con la misma regla canónica (`services/sessionScope.ts`).
+  // The persisted scope is the source of truth, with honest re-derivation: when
+  // its anchor is gone (material deleted, history kept) or a legacy row declares
+  // none, the effective scope derives from the real anchors under the same
+  // canonical rule (`services/sessionScope.ts`).
   const declaredScope = r.optionalStr(14);
   const scope = resolveEffectiveStudySessionScope(
     STUDY_SESSION_SCOPES.includes(declaredScope as StudySessionScope)

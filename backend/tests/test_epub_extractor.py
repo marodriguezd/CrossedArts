@@ -85,7 +85,6 @@ def test_epub_extraction_success(db: Session, tmp_path: Path):
     assert meta.page_count == 2
     assert "Texto del capitulo uno" in meta.raw_text
 
-    # Validar que los capítulos estén indexados en ContentIndex
     chapters = db.scalars(select(ContentIndex).where(ContentIndex.media_asset_id == asset.id)).all()
     assert len(chapters) == 2
     assert chapters[0].section_identifier == "chapter_1"
@@ -95,7 +94,6 @@ def test_epub_extraction_success(db: Session, tmp_path: Path):
 def test_epub_extraction_zip_slip_prevention(db: Session, tmp_path: Path):
     epub_path = tmp_path / "unsafe_book.epub"
     
-    # Crear un zip con una ruta maliciosa conteniendo ".."
     with zipfile.ZipFile(epub_path, 'w') as z:
         # META-INF/container.xml
         container_content = """<?xml version="1.0"?>
@@ -140,6 +138,5 @@ def test_epub_extraction_zip_slip_prevention(db: Session, tmp_path: Path):
     extractor = EPUBExtractor()
     extractor.extract(db, asset.id, epub_path)
 
-    # Validar que no se haya extraído/procesado el archivo con ".."
     chapters = db.scalars(select(ContentIndex).where(ContentIndex.media_asset_id == asset.id)).all()
     assert len(chapters) == 0

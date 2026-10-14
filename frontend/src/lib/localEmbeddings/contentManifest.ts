@@ -2,29 +2,29 @@ import { EMBEDDING_PIPELINE_VERSION } from './cache.ts';
 import { computeContentHash, computeSha256ContentHash, type SemanticChunk } from './chunking.ts';
 
 /**
- * Manifiesto local de identidad de contenido.
+ * Local content-identity manifest.
  *
- * Problema que resuelve: la recuperación semántica necesita conocer el hash
- * ACTUAL de cada fragmento para descartar vectores obsoletos. Recalcular el
- * SHA-256 del corpus entero en cada consulta es correcto pero caro; el
- * manifiesto permite evitarlo sin perder corrección:
+ * Problem it solves: semantic retrieval needs each fragment's CURRENT hash to
+ * discard stale vectors. Recomputing SHA-256 for the whole corpus on every
+ * query is correct but expensive; the manifest avoids that without losing
+ * correctness:
  *
- *  - cada fragmento tiene una FIRMA determinista y barata (`longitud` + FNV-1a);
- *  - si la firma coincide con la guardada, se REUTILIZA el SHA-256 anterior;
- *  - si la firma cambia (o el fragmento es nuevo), se recalcula SHA-256 y se
- *    actualiza el manifiesto;
- *  - las entradas cuyo fragmento ya no existe en el corpus se PURGAN, de modo
- *    que un chunk eliminado no puede considerarse vigente;
- *  - la identidad de la entrada incluye modelo y versión de pipeline: cambiar de
- *    modelo o de pipeline invalida el manifiesto completo, nunca se sirve un
- *    hash de otro pipeline.
+ *  - each fragment has a deterministic, cheap SIGNATURE (`length` + FNV-1a);
+ *  - when the signature matches the stored one, the previous SHA-256 is REUSED;
+ *  - when the signature changes (or the fragment is new), SHA-256 is recomputed
+ *    and the manifest updated;
+ *  - entries whose fragment no longer exists in the corpus are PURGED, so a
+ *    deleted chunk can never count as current;
+ *  - entry identity includes model and pipeline version: switching model or
+ *    pipeline invalidates the whole manifest, and a hash from another pipeline
+ *    is never served.
  *
- * Persistencia: IndexedDB en una base DEDICADA (`CrossedArts_SemanticManifest`),
- * separada del almacén de vectores para no alterar su esquema ni su versión. Sin
- * IndexedDB (tests, entornos restringidos) degrada a memoria con el mismo
- * contrato.
+ * Persistence: IndexedDB in a DEDICATED database (`CrossedArts_SemanticManifest`),
+ * separate from the vector store so its schema and version stay untouched.
+ * Without IndexedDB (tests, restricted envs) it degrades to memory under the
+ * same contract.
  *
- * Determinismo: la firma y las claves no dependen del tiempo ni del azar.
+ * Determinism: signature and keys depend on neither time nor chance.
  */
 
 const IDB_NAME = 'CrossedArts_SemanticManifest';
@@ -32,36 +32,36 @@ const IDB_VERSION = 1;
 const STORE_NAME = 'chunk_hashes';
 
 export interface ManifestEntry {
-  /** Clave lógica: modelo::pipeline::chunkId. */
+  /** Logical key: model::pipeline::chunkId. */
   key: string;
   chunkId: string;
   modelId: string;
   pipelineVersion: string;
-  /** Firma determinista y barata del texto del fragmento. */
+  /** Deterministic, cheap signature of the fragment text. */
   signature: string;
-  /** SHA-256 real del texto (identidad criptográfica de la caché de vectores). */
+  /** Real SHA-256 of the text (cryptographic identity for the vector cache). */
   contentHash: string;
 }
 
 export interface ResolveHashesResult {
   chunks: SemanticChunk[];
-  /** Fragmentos cuyo SHA-256 se calcularon en esta pasada. */
+  /** Fragments whose SHA-256 was computed in this pass. */
   recomputed: number;
-  /** Fragmentos cuyo SHA-256 se reutilizó del manifiesto. */
+  /** Fragments whose SHA-256 was reused from the manifest. */
   reused: number;
-  /** Entradas purgadas por material eliminado del corpus. */
+  /** Entries purged because the material left the corpus. */
   purged: number;
 }
 
-/** Clave lógica del manifiesto. Incluye modelo y pipeline: son parte de la identidad. */
+/** Manifest logical key. Includes model and pipeline: both are part of the identity. */
 export function buildManifestKey(modelId: string, pipelineVersion: string, chunkId: string): string {
   return `${modelId}::${pipelineVersion}::${chunkId}`;
 }
 
 /**
- * Firma determinista y barata de un texto. NO es criptográfica: solo decide si
- * hay que volver a calcular el SHA-256. Cualquier cambio de contenido produce
- * una firma distinta con probabilidad overwhelming.
+ * Deterministic, cheap signature of a text. NOT cryptographic: it only decides
+ * whether SHA-256 must be recomputed. Any content change yields a different
+ * signature with overwhelming probability.
  */
 export function computeContentSignature(text: string): string {
   return `${text.length}:${computeContentHash(text)}`;
@@ -100,7 +100,7 @@ class SemanticContentManifest {
     });
   }
 
-  /** Carga el manifiesto una sola vez; después opera sobre la caché en memoria. */
+  /** Loads the manifest once; afterwards it works off the in-memory cache. */
   private async ensureLoaded(modelId: string, pipelineVersion: string): Promise<void> {
     if (this.loaded) return;
     this.loaded = true;
@@ -116,20 +116,20 @@ class SemanticContentManifest {
       });
       for (const entry of entries) this.memory.set(entry.key, entry);
     } catch {
-      /* Sin IndexedDB utilizable: el manifiesto en memoria sigue siendo válido. */
+      /* No usable IndexedDB: the in-memory manifest stays valid. */
     }
   }
 
   /**
-   * Resuelve el `contentHash` real de cada fragmento reutilizando el manifiesto.
+   * Resolves each fragment's real `contentHash` by reusing the manifest.
    *
-   * Contrato de corrección:
-   *  - el SHA-256 devuelto SIEMPRE corresponde al texto actual del fragmento;
-   *  - un fragmento sin entrada previa se calcula íntegramente;
-   *  - un fragmento cuya firma cambió recalcula su SHA-256 (invalida SOLO sus
-   *    vectores);
-   *  - un fragmento del manifiesto que ya no está en el corpus se purga, de modo
-   *    que el material eliminado no pueda considerarse vigente.
+   * Correctness contract:
+   *  - the returned SHA-256 ALWAYS matches the fragment's current text;
+   *  - a fragment with no prior entry is fully computed;
+   *  - a fragment whose signature changed recomputes its SHA-256 (invalidating
+   *    ONLY its vectors);
+   *  - a manifest fragment absent from the corpus is purged, so deleted
+   *    material can never count as current.
    */
   public async resolveChunkHashes(
     chunks: SemanticChunk[],
@@ -161,8 +161,8 @@ class SemanticContentManifest {
       recomputed++;
     }
 
-    // Purga determinista: cualquier entrada cuyo fragmento ya no está en el
-    // corpus corresponde a material eliminado y no debe quedar disponible.
+    // Deterministic purge: any entry whose fragment is gone from the corpus
+    // belongs to deleted material and must not stay available.
     let purged = 0;
     for (const [key, entry] of Array.from(this.memory.entries())) {
       if (entry.modelId !== modelId || entry.pipelineVersion !== pipelineVersion) continue;
@@ -192,11 +192,11 @@ class SemanticContentManifest {
         tx.onerror = () => resolve();
       });
     } catch {
-      /* El manifiesto es una optimización: si no se persiste, se recalcula. */
+      /* The manifest is an optimization: if it is not persisted, it recomputes. */
     }
   }
 
-  /** Elimina el manifiesto de un modelo/pipeline concreto. */
+  /** Deletes the manifest for one specific model/pipeline. */
   public async clear(modelId?: string, pipelineVersion?: string): Promise<void> {
     for (const [key, entry] of Array.from(this.memory.entries())) {
       if (modelId && entry.modelId !== modelId) continue;
@@ -226,19 +226,19 @@ class SemanticContentManifest {
         tx.onerror = () => resolve();
       });
     } catch {
-      /* idempotente */
+      /* idempotent */
     }
   }
 
   public close(): void {
     if (this.idbPromise) {
-      this.idbPromise.then(db => { try { db.close(); } catch { /* ya cerrada */ } })
-        .catch(() => { /* nunca se abrió */ });
+      this.idbPromise.then(db => { try { db.close(); } catch { /* already closed */ } })
+        .catch(() => { /* never opened */ });
       this.idbPromise = null;
     }
   }
 
-  /** Solo para pruebas: estado en memoria del manifiesto. */
+  /** Tests only: in-memory manifest state. */
   public snapshot(): ManifestEntry[] {
     return Array.from(this.memory.values());
   }

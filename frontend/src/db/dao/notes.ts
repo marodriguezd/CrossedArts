@@ -1,10 +1,9 @@
 /**
- * Notas del usuario.
+ * User notes.
  *
- * Contrato de dominio (idéntico al backend): una nota puede ser AUTÓNOMA
- * (`resource_id` y `lesson_id` nulos). No se crean recursos de relleno para
- * "arreglar" el vínculo, y borrar el recurso o la lección DESVINCULA la nota
- * en lugar de destruirla.
+ * Domain contract (mirrors the backend): a note can be STANDALONE (null
+ * `resource_id` and `lesson_id`). No placeholder resources "fix" the link, and
+ * deleting the resource or lesson UNLINKS the note instead of destroying it.
  */
 import { dbBridge } from '../sqliteBridge.ts';
 import type { Note } from '../../types/models.ts';
@@ -39,10 +38,10 @@ export const noteDao = {
   },
   async getNotesForResource(resourceId: string, lessonId?: string): Promise<Note[]> {
     const db = dbBridge.getDatabase();
-    // Cuando se especifica una lección, el resultado se acota estrictamente a esa
-    // lección. El antiguo `resource_id = ? OR lesson_id = ?` devolvía notas de
-    // OTRAS lecciones del mismo curso (que comparten `resource_id`), lo que
-    // contaminaba el espacio de trabajo de la lección y su estado de progreso.
+    // With a lesson given, scope strictly to that lesson. The old
+    // `resource_id = ? OR lesson_id = ?` returned notes from OTHER lessons of
+    // the same course (sharing `resource_id`), polluting the lesson workspace
+    // and its progress state.
     const res = lessonId
       ? db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE lesson_id = ? ORDER BY updated_at DESC', [lessonId])
       : db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE resource_id = ? ORDER BY updated_at DESC', [resourceId]);
@@ -79,8 +78,8 @@ export const noteDao = {
   },
   async addNote(note: Partial<Note>): Promise<void> {
     const db = dbBridge.getDatabase();
-    // Sufijo aleatorio: dos notas creadas en el mismo milisegundo no deben
-    // colisionar en la clave primaria (patrón idéntico al resto de entidades).
+    // Random suffix: two notes born in the same millisecond must not collide on
+    // the primary key (same pattern as every entity).
     const id = 'note-' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const title = note.title || 'Nueva Nota';
     const content = note.content || '';

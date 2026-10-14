@@ -35,15 +35,15 @@ import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
 import { MessageBody } from '../ai/MarkdownMessage.ts';
 
 interface PracticeWorkPanelProps {
-  /** Recurso al que se vincula el trabajo (obligatorio en esta vista). */
+  /** Resource the work belongs to (required in this view). */
   resourceId: string;
-  /** Lección concreta, si el panel vive dentro de una lección. */
+  /** Concrete lesson, when the panel lives inside a lesson. */
   lessonId?: string;
-  /** Concepto con el que se vincula por defecto, si se conoce. */
+  /** Concept the work is linked to by default, when known. */
   conceptId?: string;
-  /** Notifica cambios para que el contenedor refresque sus métricas. */
+  /** Notifies changes so the container refreshes its metrics. */
   onChanged?: () => void;
-  /** Abre el recurso de contexto desde el panel (opcional). */
+  /** Opens the learning-context resource from the panel (optional). */
   onOpenResource?: (resourceId: string) => void;
   className?: string;
 }
@@ -69,14 +69,13 @@ const CONTEXT_TYPE_LABELS: Record<GraphNodeType, string> = {
 };
 
 /**
- * Espacio de trabajo del trabajo práctico.
+ * Practice-work workspace.
  *
- * El trabajo práctico deja de ser solo un registro para ser un sitio donde
- * PRODUCIR: contenido Markdown, lista de verificación, autoevaluación y estado,
- * siempre junto a su contexto de aprendizaje. El progreso de la lista y los
- * estados se guardan en `practice_work` (JSON en `checklist`), nunca en
- * almacenes paralelos; no se persisten `blob:` ni handles del sistema de
- * archivos.
+ * Practice work stops being just a record and becomes a place to PRODUCE:
+ * Markdown content, checklist, self-rating, and status, always next to its
+ * learning context. Checklist progress and statuses are stored in
+ * `practice_work` (JSON in `checklist`), never in parallel stores; neither
+ * `blob:` URLs nor file-system handles are persisted.
  */
 export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
   resourceId,
@@ -97,7 +96,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PracticeWork | null>(null);
 
-  // Espacio de trabajo del ítem abierto.
+  // Workspace of the open item.
   const [openId, setOpenId] = useState<string | null>(null);
   const [wsContent, setWsContent] = useState('');
   const [wsChecklist, setWsChecklist] = useState<PracticeChecklistItem[]>([]);
@@ -127,7 +126,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
   const summary = summarizePracticeWork(items);
   const openItem = useMemo(() => items.find(item => item.id === openId) ?? null, [items, openId]);
 
-  // Títulos del contexto de aprendizaje (recurso, lección, concepto).
+  // Learning-context titles (resource, lesson, concept).
   useEffect(() => {
     if (!openItem) return;
     const ids = [openItem.resource_id, openItem.lesson_id, openItem.concept_id].filter(
@@ -210,7 +209,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
     }
   };
 
-  /** Guarda contenido Markdown y autoevaluación del espacio de trabajo. */
+  /** Saves workspace Markdown content and self-rating. */
   const handleSaveWorkspace = async () => {
     if (!openItem) return;
     const validation = validatePracticeWorkDraft({
@@ -233,7 +232,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
       await dao.updatePracticeWork(openItem.id, {
         content: wsContent,
         checklist: wsChecklist,
-        // `undefined` explícito (clave presente) limpia la valoración a NULL.
+        // An explicit `undefined` (key present) clears the rating to NULL.
         self_rating: wsRating ?? undefined
       });
       await load();
@@ -243,7 +242,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
     }
   };
 
-  /** Cambios de la lista: se persisten de inmediato (son acciones, no texto). */
+  /** Checklist changes persist immediately: they are discrete actions, not free text. */
   const persistChecklist = async (next: PracticeChecklistItem[]) => {
     if (!openItem) return;
     setWsChecklist(next);
@@ -459,7 +458,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                     className="border-t border-line p-3"
                     aria-label={`Espacio de trabajo de ${item.title}`}
                   >
-                    {/* --- Panel de contexto de aprendizaje --- */}
+                    {/* --- Learning context --- */}
                     <div className="mb-3 rounded-lg border border-line bg-surface p-3">
                       <p className="type-micro flex items-center gap-1.5 text-muted">
                         <ListChecks size={12} className="text-accent" aria-hidden="true" />
@@ -518,7 +517,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                       </p>
                     </div>
 
-                    {/* --- Lista de verificación --- */}
+                    {/* --- Checklist --- */}
                     <div className="mb-3">
                       <p className="type-micro text-muted">Lista de verificación</p>
                       {wsChecklist.length > 0 && (
@@ -584,7 +583,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                       </div>
                     </div>
 
-                    {/* --- Contenido Markdown --- */}
+                    {/* --- Markdown workspace content --- */}
                     <div className="mb-3">
                       <div className="flex items-center justify-between gap-2">
                         <label className="type-micro text-muted" htmlFor={`content-${item.id}`}>
@@ -620,7 +619,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                       )}
                     </div>
 
-                    {/* --- Autoevaluación --- */}
+                    {/* --- Self-rating --- */}
                     <div className="mb-3">
                       <p className="type-micro text-muted" id={`rating-label-${item.id}`}>
                         Autoevaluación (0 a 5)
@@ -694,5 +693,5 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
   );
 };
 
-/** Re-export para consumidores que solo necesitan los estados disponibles. */
+/** Re-export for consumers that only need the available statuses. */
 export { PRACTICE_WORK_STATUSES };

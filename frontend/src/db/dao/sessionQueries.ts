@@ -1,8 +1,8 @@
 /**
- * Constantes SQL de la sesión de estudio y su mapeo de fila.
+ * SQL constants for the study session and its row mapping.
  *
- * La proyección y el cálculo de duración viven aquí para que el módulo de
- * sesiones y el resto del DAO compartan exactamente la misma lectura.
+ * Projection and duration calculation live here so the sessions module and
+ * the rest of the DAO share exactly the same read.
  */
 
 export const SESSION_LIVE_DURATION_SQL = `duration_minutes = CASE

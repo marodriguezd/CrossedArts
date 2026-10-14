@@ -45,14 +45,14 @@ interface DashboardProps {
   kpis: KPIMetrics | null;
   courses: Course[];
   books: Book[];
-  /** Recursos importados (documentos) que no son cursos ni libros. */
+  /** Imported resources (documents) that are neither courses nor books. */
   resources?: LearningResource[];
-  /** Trabajo práctico producido por el estudiante. */
+  /** Learner-produced practice work. */
   practiceWork?: PracticeWork[];
   recentSessions: LearningSession[];
   onSelectCourse: (id: string) => void;
   onOpenLesson?: (lessonId: string) => void;
-  /** Abre cualquier recurso (libro, documento importado, concepto…) en su detalle. */
+  /** Opens any resource (book, imported document, concept) in its detail view. */
   onOpenResource?: (resourceId: string) => void;
   onNavigate: (tab: string) => void;
 }
@@ -66,10 +66,9 @@ interface ContinueTarget {
 }
 
 /**
- * Dashboard como centro de mando académico: continuación de estudio, actividad
- * real de hoy, cursos en curso, actividad reciente y accesos directos.
- * Todos los números provienen de datos reales de CrossedArts (no hay métricas
- * inventadas ni gráficos sintéticos).
+ * Dashboard as the academic command center: study continuation, today's real
+ * activity, in-progress courses, recent activity, and shortcuts. Every number
+ * comes from real CrossedArts data (no invented metrics or synthetic charts).
  */
 export const Dashboard: React.FC<DashboardProps> = ({
   kpis,
@@ -87,7 +86,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const today = kpis?.today;
   const [continueTarget, setContinueTarget] = useState<ContinueTarget | null>(null);
 
-  // Continuación determinista: primer curso incompleto + próxima lección real con memoria de reproducción.
+  // Deterministic continuation: first incomplete course + next real lesson with playback memory.
   useEffect(() => {
     let cancelled = false;
     const target = courses.find((c) => (c.completed_lessons || 0) < (c.total_lessons || 0)) || courses[0];
@@ -117,7 +116,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
   }, [courses]);
 
-  // Estado del gráfico de actividad diaria y rango temporal
   const [timeRange, setTimeRange] = useState<TimeRangeFilter>('7d');
   const [chartMetric, setChartMetric] = useState<'minutes' | 'reviews'>('minutes');
   const [activityPoints, setActivityPoints] = useState<DailyActivityPoint[]>([]);
@@ -143,26 +141,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const coursePct = (c: Course) =>
     c.total_lessons ? Math.round(((c.completed_lessons || 0) / c.total_lessons) * 100) : 0;
 
-  // Los libros y documentos no son cursos: deben abrirse en su vista de detalle.
-  // Si la página no recibe `onOpenResource` (uso embebido), se degrada a la
-  // selección de curso en lugar de fallar silenciosamente.
+  // Books and documents are not courses: they must open in their detail view.
+  // When the page receives no `onOpenResource` (embedded use), it degrades to
+  // course selection instead of failing silently.
   const openResourceOrCourse = (id: string) => {
     if (onOpenResource) onOpenResource(id);
     else onSelectCourse(id);
   };
 
-  // Galería visual unificada y agnóstica al dominio: `buildGalleryItems`
-  // normaliza cursos, libros, recursos importados y trabajo práctico a la MISMA
-  // forma (ver services/galleryItems.ts).
+  // Unified domain-agnostic visual gallery: `buildGalleryItems` normalizes
+  // courses, books, imported resources, and practice work to ONE shape (see
+  // services/galleryItems.ts).
   const practiceById = new Map(practiceWork.map((work) => [work.id, work]));
 
-  /** Abre un artefacto en su destino real a partir del id normalizado. */
+  /** Opens an artifact at its real destination from the normalized id. */
   const openArtifact = (kind: ArtifactKind, id: string) => {
     const rawId = id.slice(ARTIFACT_ID_PREFIX[kind].length);
     if (kind === 'course') return onSelectCourse(rawId);
     if (kind === 'practice') {
-      // El trabajo práctico se abre en su contexto de origen (recurso, lección o
-      // concepto): es evidencia ligada a algo que el usuario está estudiando.
+      // Practice work opens in its origin context (resource, lesson, or
+      // concept): it is evidence tied to something the user is studying.
       const work = practiceById.get(rawId);
       const contextId = work?.resource_id || work?.lesson_id || work?.concept_id;
       if (contextId) return openResourceOrCourse(contextId);
@@ -181,13 +179,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const practiceSummary = summarizePracticeWork(practiceWork);
   const hasVisibleArtifact = continueEntries.length + resourceEntries.length + practiceEntries.length > 0;
   const hasOnlyCompleted = !hasVisibleArtifact && sections.completed.length > 0;
-  // La galería se considera poblada también cuando solo hay elementos
-  // completados: en ese caso el estado vacío debe decirlo, no fingir que no hay nada.
+  // The gallery also counts as populated when only completed items exist:
+  // the empty state must say so, not pretend nothing is there.
   const hasAnyArtifact = hasVisibleArtifact || hasOnlyCompleted;
 
-  // La montaña usa SOLO progreso medido (lecciones de curso y páginas de libro).
-  // Mezclar indicadores gruesos de estado con porcentajes reales haría que el
-  // indicador mintiera sobre el avance.
+  // The mountain uses ONLY measured progress (course lessons and book pages).
+  // Mixing coarse state indicators with real percents would make the indicator
+  // lie about progress.
   const mountainSources = [...sections.continueLearning, ...sections.completed]
     .filter((item) => item.progressSource !== 'status')
     .map((item) => ({ percent: item.progress }));
@@ -204,13 +202,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* --- Cabecera de página --- */}
       <header>
         <h1 className="type-display text-ink">{t('dashboard.title')}</h1>
         <p className="type-secondary mt-1">{t('dashboard.subtitle')}</p>
       </header>
 
-      {/* --- Continuar aprendizaje (acción principal) + Estudio de hoy --- */}
+      {/* --- Continue learning (primary action) + Today's study --- */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Panel className="lg:col-span-2 p-5 sm:p-6">
           <p className="type-micro">{t('dashboard.continueMicro')}</p>
@@ -318,7 +315,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </Panel>
       </div>
 
-      {/* --- Galería visual: el contenido va ANTES que las métricas --- */}
+      {/* --- Visual gallery: content comes BEFORE the metrics --- */}
       {hasAnyArtifact ? (
         <div className="space-y-8">
           <ResourceGallery
@@ -347,8 +344,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           )}
 
           {practiceEntries.length > 0 && (
-            /* Sin enlace "ver todo": el trabajo práctico no tiene una lista propia;
-               cada ficha abre su contexto de origen (recurso, lección o concepto). */
+            /* No "see all" link: practice work has no list of its own; each card
+               opens its origin context (resource, lesson, or concept). */
             <ResourceGallery
               items={practiceEntries}
               title={t('dashboard.practiceTitle')}
@@ -368,7 +365,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* --- Franja de métricas reales (una sola superficie, sin tarjetas) --- */}
+      {/* --- Real metrics strip (one surface, no cards) --- */}
       <div className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
         <div className="px-5 py-4">
           <p className="type-micro">{t('dashboard.totalResources')}</p>
@@ -388,7 +385,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* --- Gráfico de actividad diaria interactivo con selector de rango y métrica --- */}
       <Panel className="p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -402,7 +398,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Selector de métrica */}
             <div className="flex items-center gap-1 rounded-lg border border-line bg-canvas p-0.5" role="group" aria-label={t('dashboard.metricLabel')}>
               <button
                 type="button"
@@ -426,7 +421,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </div>
 
-            {/* Selector de rango temporal */}
             <div className="flex items-center gap-1" role="group" aria-label={t('dashboard.rangeLabel')}>
               {(['7d', '30d', 'all'] as const).map((r) => (
                 <Chip
@@ -441,7 +435,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Visualización de barras verticales CSS semánticas */}
+        {/* Semantic CSS vertical bar visualization */}
         <div className="mt-6">
           {(() => {
             const values = activityPoints.map((p) => (chartMetric === 'minutes' ? p.minutes : p.reviews));
@@ -467,7 +461,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         key={point.date}
                         className="group relative flex flex-1 flex-col items-center h-full justify-end min-w-[20px] max-w-[48px]"
                       >
-                        {/* Tooltip accesible flotante */}
                         <div
                           className="pointer-events-none absolute bottom-full mb-2 hidden -translate-x-1/2 left-1/2 whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 text-micro shadow-overlay group-hover:block group-focus-within:block z-20"
                           role="tooltip"
@@ -477,7 +470,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <p className="text-muted">{t('dashboard.itemsReviewedN', { n: point.reviews })}</p>
                         </div>
 
-                        {/* Barra vertical */}
                         <button
                           type="button"
                           tabIndex={0}
@@ -491,7 +483,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           style={{ height: `${heightPct}%` }}
                         />
 
-                        {/* Etiqueta de fecha inferior */}
                         <span
                           className={cn(
                             'absolute top-full mt-1.5 truncate text-[10px] font-mono select-none',
@@ -511,7 +502,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </Panel>
 
-      {/* --- Cursos + actividad --- */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <SectionHeading
@@ -574,7 +564,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </ul>
           )}
 
-          {/* Actividad reciente */}
           <div className="mt-8">
             <SectionHeading title={t('dashboard.recentActivity')} />
             {recentSessions.length === 0 ? (
@@ -593,7 +582,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           lessonTitle: session.lesson_title
                         }, effective)}
                       </p>
-                      {/* El ámbito de lección solo se muestra cuando existe realmente. */}
+                      {/* The lesson scope only shows when it truly exists. */}
                       {session.lesson_id && (
                         <div className="flex items-center gap-2">
                           <p className="type-meta truncate text-accent">
@@ -625,7 +614,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* --- Columna lateral: progreso global, accesos y lecturas --- */}
         <div className="space-y-8">
           <MountainProgress resources={mountainSources} />
 

@@ -24,26 +24,26 @@ class CrossedArtsSettings(BaseSettings):
     # === Server ===
     port: int = Field(default=8080, description="Server port")
     host: str = Field(default="127.0.0.1", description="Server bind host")
-    # Opt-in explícito para exponer la API fuera de loopback. La API no tiene
-    # autenticación: por defecto solo se permite escuchar en localhost, de modo
-    # que cambiar HOST no la expone silenciosamente a la red.
+    # Explicit opt-in to expose the API beyond loopback. The API has no auth:
+    # listening stays localhost-only by default, so changing HOST never
+    # exposes it to the network silently.
     allow_network_access: bool = Field(
         default=False,
-        description="Permite enlazar la API a interfaces no locales (sin autenticación)",
+        description="Allow binding the API to non-local interfaces (no auth)",
     )
 
     # Computed after init
     api_base_url: str = Field(default="", description="API base URL (auto-computed)")
 
     # === CORS ===
-    # Lista separada por comas de orígenes permitidos. Por defecto, los orígenes
-    # locales reales del frontend (Vite en 5173) y del propio backend.
+    # Comma-separated list of allowed origins. Defaults to the real local
+    # frontend origins (Vite on 5173) and the backend itself.
     cors_origins: str = Field(
         default=(
             "http://localhost:5173,http://127.0.0.1:5173,"
             "http://localhost:8080,http://127.0.0.1:8080"
         ),
-        description="Orígenes CORS permitidos, separados por comas",
+        description="Allowed CORS origins, comma-separated",
     )
 
     # === Database ===
@@ -59,10 +59,10 @@ class CrossedArtsSettings(BaseSettings):
 
     # === Embeddings ===
     embedding_provider: str = Field(default="mock", description="Embedding provider: mock, ollama, openai, huggingface")
-    # Número máximo de registros de embedding explorados por búsqueda semántica.
-    # El límite se aplica en SQL (no en memoria) y acota el coste del cálculo de
-    # similitud en Python. Ver backend/app/services/vector_store.py.
-    semantic_scan_limit: int = Field(default=3000, description="Máximo de embeddings explorados por búsqueda semántica")
+    # Max embedding records scanned per semantic search. The limit applies in
+    # SQL (not in memory) and bounds the Python similarity cost.
+    # See backend/app/services/vector_store.py.
+    semantic_scan_limit: int = Field(default=3000, description="Max embeddings scanned per semantic search")
     ollama_embed_url: str = Field(default="http://localhost:11434/api/embeddings", description="Ollama embeddings URL")
     ollama_embed_model: str = Field(default="nomic-embed-text", description="Ollama embedding model")
     openai_embed_model: str = Field(default="text-embedding-3-small", description="OpenAI embedding model")
@@ -86,12 +86,12 @@ class CrossedArtsSettings(BaseSettings):
 
     @property
     def is_localhost_binding(self) -> bool:
-        """True solo si el host configurado es de loopback (no expone la red)."""
+        """True only when the configured host is loopback (no network exposure)."""
         return self.host.strip().lower() in {"127.0.0.1", "localhost", "::1"}
 
     @property
     def cors_origin_list(self) -> list[str]:
-        """Orígenes CORS permitidos como lista limpia (sin entradas vacías)."""
+        """Allowed CORS origins as a clean list (no empty entries)."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @property
@@ -127,9 +127,9 @@ class CrossedArtsSettings(BaseSettings):
 
 
 # Singleton instance and backward-compatibility alias
-# `DomestiKSettings` se conserva para importaciones heredadas de la etapa
-# DomestiK. Los nombres de campo se leen TAL CUAL por pydantic-settings: no se
-# aplica ningún prefijo automático (ver .env.example).
+# `DomestiKSettings` is kept for legacy imports from the DomestiK stage. Field
+# names are read AS IS by pydantic-settings: no automatic prefix applies
+# (see .env.example).
 settings = CrossedArtsSettings()
 DomestiKSettings = CrossedArtsSettings
 

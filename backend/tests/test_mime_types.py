@@ -1,7 +1,7 @@
-"""Tests de resolución de tipos MIME (auditoría P1-13).
+"""MIME type resolution tests (audit P1-13).
 
-El scanner asignaba ``video/mp4`` a todos los vídeos y la ingesta sólo conocía
-unos pocos tipos; aquí se fija el contrato canónico.
+The scanner used to label every video ``video/mp4`` and ingestion only knew a
+few types; the canonical contract is pinned here.
 """
 
 from pathlib import Path
@@ -76,7 +76,7 @@ def test_accepts_path_objects_and_ignores_directories():
 
 
 def test_scanner_source_no_longer_hardcodes_mp4():
-    """Regresión: el scanner no debe volver a etiquetar todo vídeo como mp4."""
+    """Regression: the scanner must never label every video mp4 again."""
     source = Path(__file__).resolve().parents[1] / "app" / "services" / "scanner.py"
     text = source.read_text(encoding="utf-8")
     assert 'mime_type="video/mp4"' not in text
@@ -84,7 +84,7 @@ def test_scanner_source_no_longer_hardcodes_mp4():
 
 
 class _CollectingBackgroundTasks:
-    """Recoge las tareas de extracción sin ejecutarlas (evita I/O en el test)."""
+    """Collect extraction tasks without running them (no I/O in the test)."""
 
     def __init__(self):
         self.tasks = []

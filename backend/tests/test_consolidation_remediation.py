@@ -1,17 +1,17 @@
-"""Remediation de las capas backend: notas autónomas, ámbito de sesión e idempotencia.
+"""Backend-layer remediation: standalone notes, session scope, idempotency.
 
-Cubre los hallazgos de la auditoría final:
+Covers the final-audit findings:
 
-- **Nota autónoma**: `note.resource_id` es nullable y el borrado del recurso o
-  de la lección DESVINCULA la nota en lugar de destruirla (mismo contrato que
-  el frontend SQLite WASM). No se crean recursos de relleno.
-- **Ámbito de sesión**: los tres ámbitos canónicos (`lesson`, `resource`,
-  `global`) se derivan de las anclas, se validan y se persisten.
-- **Finalización idempotente**: repetir `end_session` no cambia el resultado ni
-  vuelve a aplicar la actualización de metas.
-- **Relaciones de grafo**: `parse_note_relations` es una única transacción,
-  idempotente y determinista.
-- **Límite acotado**: `/resources/recent` rechaza `limit` fuera de 1..100.
+- **Standalone note**: `note.resource_id` is nullable and deleting the resource
+  or lesson UNLINKS the note instead of destroying it (same contract as the
+  SQLite WASM frontend). No placeholder resources are created.
+- **Session scope**: the three canonical scopes (`lesson`, `resource`, `global`)
+  derive from anchors, are validated, and persisted.
+- **Idempotent finalization**: repeating `end_session` changes neither the result
+  nor re-applies the goal update.
+- **Graph relations**: `parse_note_relations` is a single, idempotent,
+  deterministic transaction.
+- **Bounded limit**: `/resources/recent` rejects `limit` outside 1..100.
 """
 import uuid
 
@@ -34,11 +34,11 @@ from backend.app.services.workflow import WorkflowService
 
 
 # ===========================================================================
-# Nota autónoma
+# Standalone note.
 # ===========================================================================
 
 def test_note_can_be_standalone(db: Session):
-    """Una nota sin recurso es válida: es un concepto de primera clase."""
+    """A resourceless note is valid: a first-class concept."""
     note = NoteService.create_note(db, None, "Idea suelta sobre óptica")
     assert note.resource_id is None
     assert note.content == "Idea suelta sobre óptica"
@@ -49,7 +49,7 @@ def test_note_can_be_standalone(db: Session):
 
 
 def test_standalone_note_api_roundtrip(client: TestClient):
-    """La API acepta y devuelve notas autónomas sin inventar un recurso."""
+    """The API accepts and returns standalone notes without inventing a resource."""
     response = client.post("/api/v1/notes", json={"content": "Nota sin destino"})
     assert response.status_code == 201
     assert response.json()["resource_id"] is None
@@ -60,7 +60,7 @@ def test_standalone_note_api_roundtrip(client: TestClient):
 
 
 def test_standalone_note_keeps_no_fake_resource(db: Session):
-    """No se crea un recurso de relleno para 'arreglar' el vínculo."""
+    """No placeholder resource is created to 'fix' the link."""
     resources_before = len(db.scalars(select(Course)).all()) + len(db.scalars(select(Book)).all())
     note = NoteService.create_note(db, None, "Sin ancla")
     resources_after = len(db.scalars(select(Course)).all()) + len(db.scalars(select(Book)).all())
@@ -69,7 +69,7 @@ def test_standalone_note_keeps_no_fake_resource(db: Session):
 
 
 def test_note_lesson_linkage_is_preserved(db: Session):
-    """El vínculo con la lección se conserva cuando existe."""
+    """The lesson link is preserved when present."""
     course = Course(id=uuid.uuid4(), title="Curso Nota Lección", status=ResourceStatus.NOT_STARTED)
     module = Module(id=uuid.uuid4(), course_id=course.id, title="Módulo Nota", order_index=1)
     lesson = Lesson(id=uuid.uuid4(), module_id=module.id, title="Lección Nota", order_index=1,
@@ -130,7 +130,7 @@ def test_note_schema_accepts_missing_resource():
 
 
 # ===========================================================================
-# Ámbito de sesión (tres ámbitos canónicos)
+# Session scope (three canonical scopes).
 # ===========================================================================
 
 def test_resolve_session_scope_table():
@@ -170,11 +170,10 @@ def test_lesson_and_resource_sessions_persist_their_scope(db: Session):
 
 
 def test_scope_is_kept_coherent_when_anchors_change(db: Session):
-    """El modelo reclasifica el ámbito si las anclas dejan de estar presentes."""
+    """The model re-derives scope when anchors stop being present."""
     session = SessionService.start_session(db)
     assert session.scope == "global"
 
-    # Pasar a recurso: el ámbito derivado cambia y así se persiste.
     book = Book(id=uuid.uuid4(), title="Libro Ámbito", reading_percentage=0.0)
     db.add(book)
     db.flush()
@@ -184,7 +183,7 @@ def test_scope_is_kept_coherent_when_anchors_change(db: Session):
 
 
 # ===========================================================================
-# Finalización idempotente
+# Idempotent finalization.
 # ===========================================================================
 
 def test_end_session_is_idempotent(db: Session):
@@ -338,7 +337,7 @@ def test_parse_note_relations_commits_once(db: Session, monkeypatch):
 
 
 def test_standalone_note_has_no_containment_edge(db: Session):
-    """Una nota autónoma no inventa una arista de contención."""
+    """A standalone note invents no containment edge."""
     note = NoteService.create_note(db, None, "Autónoma #idea")
     edges = _note_edges(db, note.id)
     assert all(e.target_type != "resource" for e in edges)
@@ -346,7 +345,7 @@ def test_standalone_note_has_no_containment_edge(db: Session):
 
 
 # ===========================================================================
-# Límite acotado en /resources/recent
+# Bounded limit on /resources/recent.
 # ===========================================================================
 
 def test_recent_resources_limit_is_bounded(client: TestClient, db: Session):
@@ -360,7 +359,7 @@ def test_recent_resources_limit_is_bounded(client: TestClient, db: Session):
     assert client.get("/api/v1/resources/recent?limit=-1").status_code == 422
 
 def test_dashboard_recent_activity_only_lists_finalized_sessions(db: Session, client: TestClient):
-    """Una sesión en curso (con latido, sin cierre formal) no es actividad cerrada."""
+    """An in-progress session (heartbeat, no formal close) is not closed activity."""
     running_book = Book(id=uuid.uuid4(), title="Libro En Curso", reading_percentage=0.0)
     finished_book = Book(id=uuid.uuid4(), title="Libro Finalizado", reading_percentage=0.0)
     db.add_all([running_book, finished_book])

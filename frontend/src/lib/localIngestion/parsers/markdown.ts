@@ -3,8 +3,8 @@ import { sanitizePlainText } from './text.ts';
 import { computeBinarySha256 } from '../fingerprint.ts';
 
 /**
- * Parsea un archivo Markdown (.md), extrayendo encabezados (# y ##)
- * como nombres de capítulos y organizando secciones estructurales.
+ * Parses a Markdown (.md) file, extracting headings (# and ##) as chapter
+ * names and organizing structural sections.
  */
 export async function parseMarkdownFile(
   file: { name: string; size: number; text: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }
@@ -30,12 +30,12 @@ export async function parseMarkdownFile(
   for (const line of lines) {
     const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
     if (headingMatch) {
-      // Si es el primer H1 y aún no hemos asignado un título personalizado
+      // If this is the first H1 and no custom title is assigned yet
       if (headingMatch[1] === '#' && docTitle === defaultTitle) {
         docTitle = headingMatch[2].trim();
       }
 
-      // Cerrar sección previa
+      // Close the previous section
       if (currentLines.length > 0) {
         const textContent = currentLines.join('\n').trim();
         if (textContent.length > 0) {
@@ -55,7 +55,7 @@ export async function parseMarkdownFile(
     }
   }
 
-  // Guardar última sección pendiente
+  // Save the last pending section
   if (currentLines.length > 0) {
     const textContent = currentLines.join('\n').trim();
     if (textContent.length > 0) {
@@ -68,7 +68,7 @@ export async function parseMarkdownFile(
     }
   }
 
-  // Si no había encabezados, tratar como texto uniforme
+  // Without headings, treat as uniform text
   if (sections.length === 0 && clean.length > 0) {
     sections.push({
       page: 1,

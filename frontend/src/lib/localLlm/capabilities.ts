@@ -8,20 +8,20 @@ export interface WebGPUCapabilityReport {
   adapterInfo?: string;
   reason?: string;
   /**
-   * Features reportadas EXPLÍCITAMENTE por el adaptador. `undefined` significa
-   * desconocido: la selección de modelo no asumirá soporte. Solo diagnóstico.
+   * Features EXPLICITLY reported by the adapter. `undefined` means unknown:
+   * model selection will not assume support. Diagnostics only.
    */
   supportedFeatures?: string[];
   /**
-   * Pista conservadora de gama derivada de límites holgados del adaptador.
-   * NO es una medición de VRAM: los navegadores no la exponen.
+   * Conservative tier hint derived from generous adapter limits. NOT a VRAM
+   * measurement: browsers never expose it.
    */
   deviceTier?: 'high' | 'unknown';
 }
 
 /**
- * Detecta si el navegador y hardware soportan WebGPU de forma determinista.
- * En entornos sin GPU (o Node.js), reporta 'unsupported' limpiamente.
+ * Deterministically detects whether the browser and hardware support WebGPU.
+ * In GPU-less environments (or Node.js) it cleanly reports 'unsupported'.
  */
 export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> {
   const hasWasm = typeof WebAssembly !== 'undefined';
@@ -70,11 +70,11 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
           adapterInfo = `${info.vendor || ''} ${info.architecture || ''} ${info.device || ''}`.trim();
         }
       } catch {
-        // Ignorar fallo al leer detalles del adaptador
+        // Ignore failure while reading adapter details
       }
     }
 
-    // Features explícitamente soportadas (si el adaptador las expone).
+    // Explicitly supported features (when the adapter exposes them).
     let supportedFeatures: string[] | undefined;
     try {
       const features = (adapter as any).features;
@@ -82,11 +82,11 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
         supportedFeatures = Array.from(features as Set<string>);
       }
     } catch {
-      /* Features no legibles: se trata como desconocido. */
+      /* Unreadable features: treated as unknown. */
     }
 
-    // Pista conservadora de gama: solo con límites holgados y explícitos. No es
-    // VRAM exacta; por eso el valor por defecto es 'unknown'.
+    // Conservative tier hint: only with generous explicit limits. Not exact
+    // VRAM; hence the default is 'unknown'.
     let deviceTier: 'high' | 'unknown' = 'unknown';
     try {
       const limits = (adapter as any).limits;
@@ -101,7 +101,7 @@ export async function detectWebGPUCapability(): Promise<WebGPUCapabilityReport> 
         deviceTier = 'high';
       }
     } catch {
-      /* Límites no legibles: se conserva el perfil conservador. */
+      /* Unreadable limits: the conservative profile is kept. */
     }
 
     return {

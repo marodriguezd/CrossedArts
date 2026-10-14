@@ -10,14 +10,14 @@ export interface LocalModelDefinition {
   lowResourceRequired: boolean;
   requiredFeatures?: string[];
   recommended: boolean;
-  /** Idiomas con soporte de alta fidelidad comprobado (ej. ['es', 'en', 'fr', 'pt']). */
+  /** Languages with verified high-fidelity support (e.g. ['es', 'en', 'fr', 'pt']). */
   languages?: string[];
-  /** Perfil de despliegue sugerido */
+  /** Deployment profile used for grouping in the UI. */
   category?: 'multilingual' | 'ultralight' | 'cpu_wasm' | 'advanced';
 }
 
 /**
- * Catálogo de modelos locales: WebGPU acelerado por hardware y fallback CPU/WASM vía Transformers.js.
+ * Local model catalog: hardware-accelerated WebGPU plus a CPU/WASM fallback via Transformers.js.
  */
 export const LOCAL_MODELS_REGISTRY: LocalModelDefinition[] = [
   {

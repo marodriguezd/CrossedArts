@@ -8,13 +8,13 @@ function extractPageFromTags(tags?: string | null): number | undefined {
 }
 
 /**
- * Convierte entidades de dominio de CrossedArts a documentos canónicos síncronamente.
- * Utiliza sha256Hex puro como hash determinista rápido en memoria.
+ * Converts CrossedArts domain entities to canonical documents synchronously.
+ * Uses pure sha256Hex as a fast deterministic in-memory hash.
  */
 export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEntities): KnowledgeDocument[] {
   const docs: KnowledgeDocument[] = [];
 
-  // 1. Cursos y Lecciones
+  // 1. Courses and Lessons
   for (const c of entities.courses || []) {
     const courseHeader = `Curso: ${c.title}. Categoría: ${c.category || 'General'}.`;
     const courseBody = (c.description || '').trim();
@@ -67,7 +67,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     }
   }
 
-  // 2. Libros
+  // 2. Books
   for (const b of entities.books || []) {
     const bookHeader = `Libro: ${b.title}. Autor: ${b.author || 'Desconocido'}. Categoría: ${b.category || 'General'}. Progreso: ${b.reading_percentage ?? 0}%.`;
     const bookBody = (b.description || '').trim();
@@ -93,7 +93,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     });
   }
 
-  // 3. Notas
+  // 3. Notes
   for (const n of entities.notes || []) {
     const noteHeader = `Nota: ${n.title}.`;
     const noteBody = (n.content || '').trim();
@@ -140,7 +140,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     });
   }
 
-  // 5. Conceptos
+  // 5. Concepts
   for (const con of entities.concepts || []) {
     const conceptHeader = `Concepto: ${con.name}.`;
     const conceptBody = (con.description || '').trim();
@@ -159,7 +159,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     });
   }
 
-  // 6. Trabajo Práctico
+  // 6. Practice Work
   for (const pw of entities.practiceWork || []) {
     const practiceHeader = `Trabajo práctico: ${pw.title}. Tipo: ${pw.kind || 'exercise'}.`;
     const bodyParts = [pw.description, pw.content, pw.notes]
@@ -190,7 +190,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
 }
 
 /**
- * Versión asíncrona con cálculo de digest SHA-256 criptográfico validado.
+ * Asynchronous version with verified cryptographic SHA-256 digest computation.
  */
 export async function domainEntitiesToKnowledgeDocumentsAsync(entities: DomainKnowledgeEntities): Promise<KnowledgeDocument[]> {
   const syncDocs = domainEntitiesToKnowledgeDocuments(entities);

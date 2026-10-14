@@ -3,9 +3,9 @@ import { Search, X } from 'lucide-react';
 import { cn } from './primitives.ts';
 
 /**
- * `cn` y `Kbd` viven en `primitives.ts` (no aquí) porque un `.tsx` no puede
- * importarse desde el runner de pruebas. Se reexportan para no romper a los
- * consumidores que ya los importaban desde este módulo. Ver `primitives.ts`.
+ * `cn` and `Kbd` live in `primitives.ts` (not here) because a `.tsx` cannot be
+ * imported from the test runner. They are re-exported so consumers that already
+ * imported them from this module keep working. See `primitives.ts`.
  */
 export { cn, Kbd, ProgressBar, resolveProgress } from './primitives.ts';
 export type { KbdProps, ProgressBarProps, ResolvedProgress } from './primitives.ts';
@@ -23,9 +23,9 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  // El texto usa el token `text-on-accent`: en el tema oscuro el relleno de
-  // acento es un púrpura claro y la tinta legible sobre él es oscura. El token
-  // resuelve ambos temas y mantiene ≥4.5:1 en los dos.
+  // The text uses the `text-on-accent` token: in the dark theme the accent fill
+  // is a light purple and readable ink over it is dark. The token resolves both
+  // themes and keeps >=4.5:1 in each.
   solid: 'bg-accent text-on-accent font-medium border border-transparent hover:opacity-90 shadow-card',
   outline: 'bg-surface text-ink border border-line-strong hover:bg-accent-soft/60',
   quiet: 'bg-transparent text-muted border border-transparent hover:bg-accent-soft/60 hover:text-ink',
@@ -33,17 +33,16 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
 };
 
 /**
- * Estado deshabilitado por variante.
+ * Disabled state per variant.
  *
- * Antes el botón deshabilitado se resolvía con `opacity-50` sobre TODO el
- * elemento: al atenuar también el texto, un botón sólido en tema oscuro quedaba
- * con texto oscuro sobre un púrpura translúcido (prácticamente ilegible).
+ * The disabled button used to resolve with `opacity-50` over the WHOLE element:
+ * dimming the text too left a solid button in the dark theme with dark text on
+ * a translucent purple (practically illegible).
  *
- * Ahora el estado deshabilitado usa una superficie y una tinta semánticas: la
- * acción deja de parecer primaria (sigue siendo inequívocamente "deshabilitada")
- * pero el texto conserva contraste real (≥4.5:1 en ambos temas, con los tokens
- * `line`/`muted`/`faint`). No se introducen colores literales y el estado
- * habilitado no cambia.
+ * The disabled state now uses semantic surface and ink tokens: the action stops
+ * looking primary (it stays unambiguously "disabled") while the text keeps real
+ * contrast (>=4.5:1 in both themes, via `line`/`muted`/`faint`). No literal
+ * colors are introduced and the enabled state is unchanged.
  */
 const BUTTON_DISABLED: Record<ButtonVariant, string> = {
   solid: 'disabled:bg-line disabled:text-muted disabled:border-line disabled:shadow-none',
@@ -68,8 +67,8 @@ export const Button: React.FC<ButtonProps> = ({
     type={type}
     className={cn(
       'inline-flex items-center justify-center font-medium transition-all duration-fast active:scale-[0.98] select-none',
-      // Sin atenuar el elemento completo: el estado deshabilitado se resuelve
-      // por variante para no degradar el texto (ver BUTTON_DISABLED).
+      // Without dimming the whole element: the disabled state resolves per
+      // variant so as not to degrade the text (see BUTTON_DISABLED).
       'disabled:pointer-events-none disabled:active:scale-100',
       BUTTON_VARIANTS[variant],
       BUTTON_DISABLED[variant],
@@ -101,7 +100,7 @@ const BADGE_TONES: Record<BadgeTone, string> = {
   error: 'border-error/25 bg-error-soft text-error',
 };
 
-/** Píldora de estado: siempre acompaña al texto, nunca sustituye al color. */
+/** Status pill: always accompanies text, never replaces color. */
 export const Badge: React.FC<BadgeProps> = ({ tone = 'neutral', children, className }) => (
   <span
     className={cn(
@@ -120,8 +119,8 @@ interface ChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * Filtro o píldora seleccionable. El estado activo NO depende solo del color:
- * combina relleno, borde y peso tipográfico, y queda expuesto con aria-pressed.
+ * Selectable filter or pill. The active state does NOT depend on color alone:
+ * it combines fill, border, and font weight, and is exposed via aria-pressed.
  */
 export const Chip: React.FC<ChipProps> = ({ active = false, className, children, type = 'button', ...props }) => (
   <button
@@ -150,12 +149,12 @@ interface SearchInputProps {
   placeholder?: string;
   label: string;
   className?: string;
-  /** Permite enviar con Enter para navegación global. */
+  /** Allows submitting with Enter for global navigation. */
   onSubmit?: () => void;
   autoFocus?: boolean;
 }
 
-/** Campo de búsqueda con etiqueta accesible y botón de borrado explícito. */
+/** Search field with an accessible label and an explicit clear button. */
 export const SearchInput: React.FC<SearchInputProps> = ({
   value,
   onChange,
@@ -204,9 +203,9 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   </div>
 );
 
-/* ProgressBar vive en ./primitives.ts (escrita con createElement) para que sus
- * valores ARIA y visuales puedan verificarse sobre el HTML renderizado desde el
- * runner de pruebas, que no puede importar `.tsx`. Se reexporta arriba. */
+/* ProgressBar lives in ./primitives.ts (written with createElement) so its ARIA
+ * and visual values can be asserted against the HTML rendered by the test
+ * runner, which cannot import `.tsx`. It is re-exported above. */
 
 /* -------------------------------------------------------------------------- */
 /* EmptyState                                                                  */
@@ -220,7 +219,7 @@ interface EmptyStateProps {
   className?: string;
 }
 
-/** Estado vacío sobrio: contenido centrado sin tarjetas innecesarias. */
+/** Restrained empty state: centered content with no unnecessary cards. */
 export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, hint, action, className }) => (
   <div className={cn('flex flex-col items-center justify-center gap-2 py-14 text-center', className)}>
     {icon && <div className="mb-1 text-faint">{icon}</div>}
@@ -249,7 +248,7 @@ const STATUS_TONES: Record<StatusTone, string> = {
   warning: 'bg-warning-soft border-warning/30 text-warning',
 };
 
-/** Mensaje inline anunciado a lectores de pantalla (role=status). */
+/** Inline message announced to screen readers (role=status). */
 export const InlineStatus: React.FC<InlineStatusProps> = ({ tone = 'info', children, className }) => (
   <div
     role="status"
@@ -271,8 +270,8 @@ interface PanelProps {
 }
 
 /**
- * Superficie contenida. Úsese SOLO cuando un bloque necesita borde propio;
- * el resto de la interfaz vive sobre el lienzo con separadores sutiles.
+ * Contained surface. Use ONLY when a block needs its own border; the rest of the
+ * UI lives on the canvas with subtle separators.
  */
 export const Panel: React.FC<PanelProps> = ({ children, className, as: Tag = 'div' }) => (
   <Tag className={cn('rounded-xl border border-line bg-surface shadow-card', className)}>{children}</Tag>

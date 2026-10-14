@@ -18,16 +18,14 @@ class SessionService:
         scope: Optional[str] = None
     ) -> LearningSession:
         """
-        Crea e inicializa una nueva sesión de estudio.
+        Create and initialize a new study session.
 
-        Contrato de dominio (idéntico al del frontend SQLite WASM, regla única en
-        `resolve_session_scope`): la sesión queda acotada a una LECCIÓN, a un
-        RECURSO o es GLOBAL (repaso transversal de la biblioteca, sin anclas).
-
-        El ámbito se deriva de las anclas y puede declararse explícitamente para
-        eliminar la ambigüedad; un ámbito declarado incoherente es un error de
-        dominio. Las referencias se verifican para no crear sesiones fantasma
-        apuntando a IDs inexistentes.
+        Domain contract (mirrors the frontend SQLite WASM, single rule in
+        `resolve_session_scope`): the session is scoped to a LESSON, a RESOURCE,
+        or is GLOBAL (anchorless cross-library review). Scope derives from
+        anchors and may be declared explicitly to remove ambiguity; an incoherent
+        declared scope is a domain error. References are verified so no ghost
+        sessions point at nonexistent IDs.
         """
         derived_scope = resolve_session_scope(resource_id, lesson_id)
 
@@ -69,11 +67,10 @@ class SessionService:
     @staticmethod
     def update_session_heartbeat(db: Session, session_id: uuid.UUID) -> LearningSession:
         """
-        Registra un latido (heartbeat) actualizando la duración transcurrida de forma dinámica,
-        evitando sumar tiempo inactivo si el sistema estuvo suspendido.
-
-        Un latido posterior a la finalización no reabre ni reescribe la sesión:
-        la marca de fin de una sesión finalizada es inmutable.
+        Record a heartbeat, updating elapsed duration dynamically while skipping
+        idle time when the system was suspended. A post-finalization heartbeat
+        neither reopens nor rewrites the session: a finalized session's end mark
+        is immutable.
         """
         session = db.get(LearningSession, session_id)
         if not session:
@@ -85,8 +82,8 @@ class SessionService:
         now = utc_now_naive()
         if session.ended_at:
             delta_last_active = now - session.ended_at
-            # Si el tiempo transcurrido desde el último latido es mayor de 300 segundos (5 minutos),
-            # asumimos que el equipo estuvo suspendido o inactivo y descontamos ese tiempo.
+            # Past 300 s (5 min) since the last heartbeat, assume the machine was
+            # suspended/idle and discount that time.
             if delta_last_active.total_seconds() >= 300:
                 from datetime import timedelta
                 inactive_time = delta_last_active - timedelta(seconds=10)
@@ -105,32 +102,32 @@ class SessionService:
     @staticmethod
     def end_session(db: Session, session_id: uuid.UUID) -> LearningSession:
         """
-        Finaliza una sesión de estudio guardando el timestamp final y la duración neta.
+        Finalize a study session, storing the end timestamp and net duration.
 
-        IDEMPOTENTE: finalizar dos veces una sesión ya finalizada NO cambia su
-        marca de fin ni su duración, y NO vuelve a aplicar la actualización de
-        metas. Reintentar un `POST /end` (timeout de red, doble clic, reintento
-        del cliente) es seguro y devuelve exactamente el mismo resultado.
+        IDEMPOTENT: ending an already-ended session changes neither its end mark
+        nor its duration, and never re-applies the goal update. Retrying
+        `POST /end` (network timeout, double click, client retry) is safe and
+        returns exactly the same result.
         """
         session = db.get(LearningSession, session_id)
         if not session:
             raise ValueError(f"Sesión con ID {session_id} no encontrada.")
 
         if session.finalized:
-            # Ya finalizada: se devuelve el resultado persistido, sin recalcular
-            # duración ni disparar efectos (metas) por segunda vez.
+            # Already finalized: return the persisted result without recomputing
+            # duration or firing goal side effects again.
             return session
 
         session.ended_at = utc_now_naive()
         session.finalized = True
         delta = session.ended_at - session.started_at
         active_seconds = delta.total_seconds() - session.inactive_seconds
-        session.duration_minutes = max(1, int(active_seconds / 60))  # Mínimo 1 minuto si se completa rápido
+        session.duration_minutes = max(1, int(active_seconds / 60))  # Floor of 1 min on quick completion.
 
         db.add(session)
         db.flush()
 
-        # Disparar actualización de metas
+        # Fire the goal update.
         from backend.app.services.workflow import WorkflowService
         WorkflowService.trigger_goal_update_from_activity(
             db,
@@ -155,7 +152,7 @@ class SessionService:
     @staticmethod
     def get_study_minutes_by_resource(db: Session, resource_id: uuid.UUID) -> int:
         """
-        Suma los minutos de estudio registrados para un recurso específico.
+        Sum recorded study minutes for a specific resource.
         """
         stmt = (
             select(func.sum(LearningSession.duration_minutes))
@@ -167,9 +164,9 @@ class SessionService:
     @staticmethod
     def get_study_minutes_by_day(db: Session) -> List[Tuple[date, int]]:
         """
-        Retorna la agregación de minutos de estudio agrupados por fecha (YYYY-MM-DD).
+        Return study minutes aggregated by date (YYYY-MM-DD).
         """
-        # En SQLite, func.date extrae la fecha del DateTime started_at
+        # On SQLite, func.date extracts the date from the started_at DateTime.
         stmt = (
             select(
                 func.date(LearningSession.started_at).label("study_date"),

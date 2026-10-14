@@ -1,62 +1,57 @@
 import type { RetrievedDocument } from './types.ts';
 
 /**
- * Política canónica de diversificación de fuentes.
+ * Canonical source-diversification policy.
  *
- * Este módulo es la ÚNICA implementación de diversificación del pipeline RAG:
- * la recuperación de producción la consume directamente, de modo que no puede
- * existir una segunda política paralela que contradiga el número máximo de
- * fragmentos por fuente.
+ * This module is the ONLY diversification implementation in the RAG pipeline:
+ * production retrieval consumes it directly, so no second parallel policy can
+ * contradict the maximum chunks per source.
  */
 
-/** Máximo de fragmentos que una misma fuente puede aportar a un resultado. */
+/** Max chunks a single source may contribute to one result. */
 export const DEFAULT_MAX_CHUNKS_PER_SOURCE = 2;
 
 export interface DiversificationPolicy {
   maxChunksPerSource?: number;
   /**
-   * Tope opcional de resultados totales. Si se omite NO se recorta: el recorte
-   * a `limit` pertenece a la recuperación, no a la política de diversidad.
+   * Optional cap on total results. When omitted NO truncation happens: trimming
+   * to `limit` belongs to retrieval, not to the diversity policy.
    */
   maxTotalResults?: number;
 }
 
-/** Sufijo de parte que genera el troceado semántico (`..._p2`, `..._p3`, ...). */
+/** Part suffix produced by semantic chunking (`..._p2`, `..._p3`, ...). */
 const CHUNK_PART_SUFFIX = /_p\d+$/;
 
 /**
- * Identificador BASE de una fuente: el artefacto real al que pertenece el
- * fragmento.
+ * BASE source id: the real artifact the chunk belongs to.
  *
- * Es la clave que hace cumplir "máximo N fragmentos por fuente". Contar por
- * identificador de fragmento permitiría que una lección larga
- * (`lesson_abc`, `lesson_abc_p2`, `lesson_abc_p3`) monopolizara el resultado
- * completo, porque cada parte es un identificador distinto.
+ * It is the key that enforces "at most N chunks per source". Counting by chunk
+ * id would let one long lesson (`lesson_abc`, `lesson_abc_p2`, `lesson_abc_p3`)
+ * monopolize the whole result, because each part is a distinct id.
  *
- * El identificador del documento retrieval ES el identificador del artefacto de
- * origen (`sourceId` del chunk semántico, id de nota/recurso/ flashcards en la
- * ruta léxica); el sufijo `_pN` solo aparece cuando el chunking semántico
- * fragmentó un artefacto largo.
+ * The retrieval document id IS the source artifact id (`sourceId` of the
+ * semantic chunk; note/resource/flashcard id on the lexical path); the `_pN`
+ * suffix only appears when semantic chunking split a long artifact.
  *
- * `lessonId` y `resourceId` NO se usan como clave: son los artefactos
- * PROPIETARIOS, no la fuente del fragmento. Usarlos colapsaría en una sola
- * fuente la lección y todas sus notas, o todas las lecciones de un curso, que
- * es justo lo contrario de diversificar.
+ * `lessonId` and `resourceId` are NOT used as the key: they are OWNING
+ * artifacts, not the chunk's source. Using them would collapse a lesson and all
+ * its notes, or every lesson of a course, into a single source — the exact
+ * opposite of diversifying.
  */
 export function resolveBaseSourceKey(
   doc: Pick<RetrievedDocument, 'id'> & { chunkKey?: string }
 ): string {
-  // `id` es el identificador del artefacto de origen en la producción; el
-  // `chunkKey` (id del chunk semántico) solo se usa como respaldo explícito.
+  // `id` is the source artifact id in production; `chunkKey` (semantic chunk
+  // id) is only an explicit fallback.
   const raw = String(doc.id ?? doc.chunkKey ?? '');
   return raw.replace(CHUNK_PART_SUFFIX, '');
 }
 
 /**
- * Aplica diversificación determinista a los documentos candidatos: como máximo
- * `maxChunksPerSource` fragmentos por fuente base. Conserva el orden de
- * entrada (ya viene ordenado por puntuación con desempate estable), por lo que
- * la operación es reproducible.
+ * Applies deterministic diversification to candidate documents: at most
+ * `maxChunksPerSource` chunks per base source. Preserves input order (already
+ * sorted by score with stable tiebreaks), so the operation is reproducible.
  */
 export function diversifyResults(
   documents: RetrievedDocument[],

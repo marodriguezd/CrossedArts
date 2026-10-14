@@ -1,7 +1,6 @@
 /**
- * Metas de aprendizaje. El progreso se DERIVA por lectura de la actividad real
- * (`learning_session`, práctica, notas); aquí solo se persiste lo que el usuario
- * define.
+ * Learning goals. Progress is DERIVED on read from real activity
+ * (`learning_session`, practice, notes); only user-defined data is persisted here.
  */
 import { dbBridge } from '../sqliteBridge.ts';
 import { SqlRow } from './sqlRows.ts';
@@ -105,7 +104,7 @@ export const goalDao = {
     }
     if (assignments.length === 0) return;
 
-    // Sellar o limpiar `completed_at` de forma coherente con el estado.
+    // Stamp or clear `completed_at` consistently with the new status.
     if (fields.status === 'completed' && !('completed_at' in fields)) {
       assignments.push("completed_at = COALESCE(completed_at, datetime('now'))");
     } else if (fields.status && fields.status !== 'completed') {

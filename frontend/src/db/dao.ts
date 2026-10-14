@@ -43,23 +43,21 @@ import { goalDao } from './dao/goals.ts';
 import type { SM2Result } from '../services/domainLogic.ts';
 
 /**
- * Fachada estable del acceso a datos local (SQLite WASM).
+ * Stable local-data-access facade (SQLite WASM).
  *
- * La implementación se ha modularizado por dominio (`db/dao/*`): sesiones,
- * notas, trabajo práctico, metas y lectura de filas/proyecciones SQL. Este objeto
- * compone esos módulos y mantiene los métodos de recursos, cursos, lecciones,
- * flashcards, grafo, búsqueda e importación.
+ * The implementation is split by domain (`db/dao/*`): sessions, notes, practice
+ * work, goals, and SQL row/projection reads. This object composes those modules
+ * and keeps the resource/course/lesson/flashcard/graph/search/import methods.
  *
- * Ventajas del corte: cada frontera (sesión, nota, práctica, meta) se lee y se
- * prueba de forma aislada, el SQL de cada dominio está en un solo archivo y no
- * hay dos formas de leer la misma fila. No hay cambio de comportamiento: los
- * métodos son los mismos, con el mismo SQL, y la API pública (`dao.*`) es
- * idéntica para toda la aplicación.
+ * Why the split: each boundary (session, note, practice, goal) reads and tests
+ * in isolation, each domain's SQL lives in one file, and no row is read two
+ * ways. No behavior change: same methods, same SQL, and the public `dao.*` API
+ * is identical app-wide.
  */
 
-/* La lista de verificación se parsea/serializa con los helpers puros de
- * services/practiceWork.ts: la base de datos guarda JSON y la lógica de
- * conversión vive en un módulo probable, no dentro del DAO. */
+/* The checklist parses/serializes via the pure helpers in
+ * services/practiceWork.ts: the database stores JSON and the conversion logic
+ * lives in a testable module, not inside the DAO. */
 
 export { setDaoLanguage };
 
@@ -114,8 +112,8 @@ export const dao = {
        VALUES (?, ?, ?, ?, datetime('now'), ?, 'active', 0, 0, 0, 0, 0)`,
       [id, params.resourceId || null, params.lessonId || null, scope, params.mode]
     );
-    // Si la persistencia falla se propaga y se revierte: la UI no debe iniciar
-    // una sesión fantasma que luego aparezca como activa.
+    // A persist failure propagates and rolls back: the UI must never start a
+    // ghost session that later shows as active.
     try {
       await dbBridge.persist();
     } catch (err) {
@@ -344,7 +342,7 @@ export const dao = {
       'UPDATE lesson SET is_completed = ? WHERE id = ?',
       [completed ? 1 : 0, lessonId]
     );
-    // Mantener sincronizados los totales denormalizados del curso
+    // Keep the course denormalized totals in sync
     const courseRes = db.exec('SELECT m.course_id FROM lesson l JOIN module m ON l.module_id = m.id WHERE l.id = ?', [lessonId]);
     if (courseRes.length && courseRes[0].values.length) {
       await this.recalculateCourseTotals(String(courseRes[0].values[0][0]));
@@ -656,7 +654,7 @@ export const dao = {
       nodes.push(node);
     };
 
-    // 1. Conceptos
+    // 1. Concepts
     const conceptRes = db.exec('SELECT id, name, description FROM concept');
     if (conceptRes.length) {
       for (const r of conceptRes[0].values) {
@@ -664,7 +662,7 @@ export const dao = {
       }
     }
 
-    // 2. Recursos de aprendizaje (curso / libro / recurso)
+    // 2. Learning resources (course / book / resource)
     const resRes = db.exec('SELECT id, title, description, type, category, status, source_path, created_at, updated_at FROM learning_resource');
     if (resRes.length) {
       for (const r of resRes[0].values) {
@@ -702,7 +700,7 @@ export const dao = {
       }
     }
 
-    // 3. Módulos
+    // 3. Modules.
     const modRes = db.exec('SELECT id, course_id, title, order_index FROM module');
     if (modRes.length) {
       for (const r of modRes[0].values) {
@@ -736,9 +734,9 @@ export const dao = {
       }
     }
 
-    // 5.b Trabajo práctico: evidencia producida por el estudiante. Participa en el
-    // grafo como nodo propio porque el usuario necesita responder "¿qué trabajo
-    // demuestra este concepto/lección?" sin salir del mapa de relaciones.
+    // 5.b Practice work: student-produced evidence. It joins the graph as its own
+    // node because the user must answer "which work proves this concept/lesson?"
+    // without leaving the relation map.
     const practiceRes = db.exec(
       'SELECT id, title, resource_id, lesson_id, concept_id, kind, status, created_at, updated_at FROM practice_work'
     );
@@ -763,7 +761,7 @@ export const dao = {
 
     const edges: ConceptEdge[] = [];
 
-    // 6. Aristas estructurales derivadas de claves foráneas (no editables)
+    // 6. Structural edges derived from foreign keys (read-only).
     if (modRes.length) {
       for (const r of modRes[0].values) {
         const courseId = String(r[1]);
@@ -796,8 +794,8 @@ export const dao = {
       }
     }
 
-    // 6.b Aristas derivadas del trabajo práctico: liga la evidencia con aquello
-    // que demuestra (recurso, lección o concepto). Solo si ambos extremos existen.
+    // 6.b Practice-work derived edges: link evidence to what it proves
+    // (resource, lesson, or concept). Only when both ends exist.
     if (practiceRes.length) {
       for (const r of practiceRes[0].values) {
         const workId = String(r[0]);
@@ -816,7 +814,7 @@ export const dao = {
       }
     }
 
-    // 7. Conexiones explícitas del usuario (solo si ambos extremos existen)
+    // 7. Explicit user connections (only when both ends exist).
     const eRes = db.exec('SELECT id, source_id, target_id, connection_type, weight FROM knowledge_connection');
     if (eRes.length) {
       for (const r of eRes[0].values) {
@@ -894,11 +892,10 @@ export const dao = {
       for (const r of res[0].values) related.add(String(r[0]));
     };
 
-    // Conexiones explícitas (ambas direcciones)
+    // Explicit connections (both directions).
     addAll(db.exec('SELECT target_id FROM knowledge_connection WHERE source_id = ?', [nodeId]));
     addAll(db.exec('SELECT source_id FROM knowledge_connection WHERE target_id = ?', [nodeId]));
 
-    // Estructura derivada
     addAll(db.exec('SELECT id FROM module WHERE course_id = ?', [nodeId]));
     addAll(db.exec('SELECT course_id FROM module WHERE id = ?', [nodeId]));
     addAll(db.exec('SELECT id FROM lesson WHERE module_id = ?', [nodeId]));
@@ -909,9 +906,9 @@ export const dao = {
     addAll(db.exec('SELECT resource_id FROM note WHERE id = ? AND resource_id IS NOT NULL', [nodeId]));
     addAll(db.exec('SELECT lesson_id FROM note WHERE id = ? AND lesson_id IS NOT NULL', [nodeId]));
 
-    // Trabajo práctico: el artefacto pertenece al perímetro de su recurso o
-    // lección, y su propio ámbito se resuelve hacia el padre. Sin esto, el
-    // trabajo práctico quedaría fuera de cualquier recuperación acotada.
+    // Practice work: the artifact belongs to its resource/lesson perimeter, and
+    // its own scope resolves to the parent. Without this, practice work would
+    // fall outside every scoped retrieval.
     addAll(db.exec('SELECT id FROM practice_work WHERE resource_id = ?', [nodeId]));
     addAll(db.exec('SELECT id FROM practice_work WHERE lesson_id = ?', [nodeId]));
     addAll(db.exec('SELECT id FROM practice_work WHERE concept_id = ?', [nodeId]));
@@ -935,8 +932,8 @@ export const dao = {
     collect('SELECT id FROM module');
     collect('SELECT id FROM lesson');
     collect('SELECT id FROM note');
-    // El trabajo práctico es un nodo del grafo: sus conexiones manuales no deben
-    // podarse como si fueran huérfanas.
+    // Practice work is a graph node: its manual connections must not be pruned
+    // as orphans.
     collect('SELECT id FROM practice_work');
     return ids;
   },
@@ -1080,7 +1077,7 @@ export const dao = {
     const reordered = [...ordered];
     [reordered[index], reordered[swapIndex]] = [reordered[swapIndex], reordered[index]];
 
-    // Normaliza posiciones a 1..N garantizando ausencia de duplicados.
+    // Renumber to 1..N, guaranteeing no duplicate positions.
     for (let i = 0; i < reordered.length; i++) {
       db.run('UPDATE lesson SET order_index = ? WHERE id = ?', [i + 1, reordered[i].id]);
     }
@@ -1141,9 +1138,9 @@ export const dao = {
       flashcardCount = fcRes.length ? Number(fcRes[0].values[0][0]) || 0 : 0;
     }
 
-    // Las notas del espacio de trabajo deben pertenecer estrictamente a ESTA
-    // lección. Reutilizar `getNotesForResource(courseId, lessonId)` mezclaría
-    // notas de otras lecciones del mismo curso (comparten `resource_id`).
+    // Workspace notes must belong strictly to THIS lesson. Reusing
+    // `getNotesForResource(courseId, lessonId)` would mix in notes from sibling
+    // lessons sharing the `resource_id`.
     const notes = await this.getNotesForLesson(lessonId);
     const flashcards = await this.getFlashcardsForLesson(lessonId);
     const related = await this.getRelatedKnowledge(lessonId);
@@ -1152,9 +1149,9 @@ export const dao = {
     const concepts = related.filter(r => r.type === 'concept');
     const relatedBooks = related.filter(r => r.type === 'book');
 
-    // "Actividad" significa contenido propio, notas, tarjetas o relaciones explícitas creadas
-    // por el usuario. La mera pertenencia estructural (estar en un módulo/curso) no
-    // cuenta como progreso, para no inventar un porcentaje sin significado.
+    // "Activity" means own content, notes, cards, or user-created explicit
+    // relations. Mere structural membership (sitting in a module/course) counts
+    // as no progress, so no meaningless percentage is invented.
     const hasOwnContent = Boolean(lesson.content && lesson.content.trim().length > 0);
     const hasExplicitRelation = related.some(r => !r.derived);
     const hasActivity = hasOwnContent || notes.length > 0 || flashcards.length > 0 || hasExplicitRelation;
@@ -1232,7 +1229,7 @@ export const dao = {
       [fields.author ?? null, fields.isbn ?? null, fields.pageCount ?? null, id]
     );
 
-    // Si cambia el total de páginas, recalcular el porcentaje de lectura de forma coherente
+    // On page-count change, recompute the reading percentage coherently.
     if (fields.pageCount !== undefined) {
       const row = db.exec('SELECT current_page, page_count FROM book WHERE id = ?', [id]);
       if (row.length && row[0].values.length) {
@@ -1333,9 +1330,8 @@ export const dao = {
       }
     }
 
-    // El trabajo práctico es evidencia de aprendizaje del usuario: si la búsqueda
-    // global no lo encontrara, un artefacto visible en el panel y en el grafo
-    // sería inalcanzable desde la búsqueda.
+    // Practice work is user learning evidence: if global search missed it, an
+    // artifact visible in the panel and graph would be unreachable from search.
     const practiceRes = db.exec(
       `SELECT id, title, description, resource_id, lesson_id FROM practice_work
        WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(COALESCE(description,'')) LIKE ? ESCAPE '\\'`,
@@ -1354,8 +1350,8 @@ export const dao = {
       }
     }
 
-    // Las metas de aprendizaje son planificación personal: si la búsqueda
-    // global no las encontrara, serían inalcanzables desde la Biblioteca.
+    // Learning goals are personal planning: if global search missed them, they
+    // would be unreachable from the Library.
     const goalRes = db.exec(
       `SELECT id, title, description, kind, status FROM learning_goal
        WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(COALESCE(description,'')) LIKE ? ESCAPE '\\'`,
@@ -1374,7 +1370,7 @@ export const dao = {
       }
     }
 
-    // Orden determinista: título ascendente, id ascendente
+    // Deterministic order: title ascending, id ascending.
     results.sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
     return results.slice(0, Math.max(1, limit));
   },
@@ -1498,7 +1494,7 @@ export const dao = {
     const notesOfLesson = db.exec('SELECT id FROM note WHERE lesson_id = ?', [nodeId]);
     if (notesOfLesson.length) for (const r of notesOfLesson[0].values) push(String(r[0]), 'references', true);
 
-    // Estructura derivada (igual que el grafo): módulos, lecciones, curso y vínculos de notas.
+    // Derived structure (same as the graph): modules, lessons, course, note links.
     const modulesOfCourse = db.exec('SELECT id FROM module WHERE course_id = ?', [nodeId]);
     if (modulesOfCourse.length) for (const r of modulesOfCourse[0].values) push(String(r[0]), 'contains', true);
 
@@ -1520,9 +1516,9 @@ export const dao = {
     const noteLesson = db.exec('SELECT lesson_id FROM note WHERE id = ? AND lesson_id IS NOT NULL', [nodeId]);
     if (noteLesson.length) for (const r of noteLesson[0].values) push(String(r[0]), 'references', true);
 
-    // Trabajo práctico como EVIDENCIA del aprendizaje: se muestra junto al
-    // recurso, la lección o el concepto que demuestra (y viceversa), para que la
-    // relación sea navegable y no viva solo en la base de datos.
+    // Practice work as learning EVIDENCE: shown next to the resource, lesson, or
+    // concept it proves (and vice versa) so the relation is navigable, not
+    // database-only.
     const practiceOfResource = db.exec('SELECT id FROM practice_work WHERE resource_id = ?', [nodeId]);
     if (practiceOfResource.length) for (const r of practiceOfResource[0].values) push(String(r[0]), 'about', true);
 
@@ -1715,16 +1711,16 @@ export const dao = {
           for (const r of found[0].values) existing.add(String(r[0]));
         }
       } catch {
-        // Tabla ausente en una base antigua: la migración de esquema la creará.
+        // Missing table on an old database: schema migration will create it.
       }
     }
 
     const plan = planCoursePackageImport(pkg, existing);
 
-    // Conflictos: IDs que ya existen localmente con un contenido DISTINTO. La
-    // importación es aditiva y el contenido local gana siempre, así que el
-    // conflicto no cambia lo que se escribe; solo se reporta para que el
-    // resultado sea determinista y visible (nunca una pérdida silenciosa).
+    // Conflicts: locally existing IDs with DIFFERENT content. Import is additive
+    // and local content always wins, so a conflict changes nothing written; it is
+    // only reported to keep the result deterministic and visible (never a silent
+    // loss).
     const localSignatures = new Map<string, string>();
     const readSignatures = (sql: string, build: (row: any[]) => string) => {
       const res = db.exec(sql, allIds);
@@ -1849,8 +1845,8 @@ export const dao = {
       notes,
       flashcards,
       concepts: graph.nodes,
-      // El trabajo práctico forma parte del corpus indexable: misma vía que el
-      // resto de fuentes, sin una segunda abstracción de indexación.
+      // Practice work belongs to the indexable corpus: same path as every other
+      // source, no second indexing abstraction.
       practiceWork
     };
   },
@@ -1876,13 +1872,13 @@ export const dao = {
     const sourcePath = `local://${params.fileName}#sha256=${params.fingerprint}`;
     const destination = params.destination || { type: params.importAsBook ? 'book' : 'standalone' };
 
-    // Determinar resource_id y lesson_id destino para las notas creadas
+    // Resolve target resource_id and lesson_id for created notes
     let linkedResourceId: string | null = null;
     let linkedLessonId: string | null = null;
 
     if (destination.type === 'lesson' && destination.targetId) {
       linkedLessonId = destination.targetId;
-      // Consultar el resource_id de la lección
+      // Look up the lesson's resource_id.
       const lesRow = db.exec(`
         SELECT m.course_id FROM lesson l
         JOIN module m ON l.module_id = m.id
@@ -1896,7 +1892,7 @@ export const dao = {
     } else if (destination.type === 'book' && destination.targetId) {
       linkedResourceId = destination.targetId;
     } else {
-      // Standalone o nuevo libro: siempre registrar como learning_resource canónico
+      // Standalone or new book: always register as the canonical learning_resource.
       linkedResourceId = resourceId;
       const resourceType = params.importAsBook ? 'book' : 'learning_resource';
 
@@ -1927,7 +1923,7 @@ export const dao = {
       }
     }
 
-    // Crear notas con el contenido extraído vinculadas al recurso o lección destino
+    // Create notes from the extracted content, linked to the target resource/lesson.
     for (let i = 0; i < params.sections.length; i++) {
       const sec = params.sections[i];
       const noteId = `note-${resourceId}-${i + 1}`;

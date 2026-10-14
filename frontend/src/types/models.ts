@@ -46,7 +46,7 @@ export interface Lesson {
   id: string;
   module_id: string;
   title: string;
-  /** Contenido de la lección como texto plano / Markdown (se trata como datos, nunca como HTML). */
+  /** Lesson content as plain text / Markdown (handled as data, never as HTML). */
   content?: string;
   order_index: number;
   duration_minutes: number;
@@ -55,12 +55,12 @@ export interface Lesson {
   is_completed: boolean;
 }
 
-/** Estado de progreso determinista de una lección. */
+/** Deterministic lesson progress state. */
 export type LessonProgressState = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
 
 /**
- * Espacio de trabajo de una lección: agrega contenido, notas, recursos, conceptos
- * y progreso reutilizando el modelo relacional existente (sin almacenes paralelos).
+ * Lesson workspace: aggregates content, notes, resources, concepts, and
+ * progress by reusing the existing relational model (no parallel stores).
  */
 export interface LessonWorkspace {
   lesson: Lesson;
@@ -70,31 +70,31 @@ export interface LessonWorkspace {
   resources: RelatedKnowledgeItem[];
   concepts: RelatedKnowledgeItem[];
   relatedBooks: RelatedKnowledgeItem[];
-  /** Nº de tarjetas SM-2 asociadas al curso de la lección (contexto de repaso). */
+  /** SM-2 card count for the lesson's course (review context). */
   flashcardCount: number;
-  /** Tarjetas de estudio asociadas a esta lección específica. */
+  /** Study cards for this specific lesson. */
   flashcards?: Flashcard[];
   progress: LessonProgressState;
 }
 
 export type StudySessionMode = 'flashcards' | 'practice' | 'mixed';
-/** Ámbito canónico de una sesión de estudio. Reexportado desde el dominio. */
+/** Canonical study-session scope. Re-exported from the domain layer. */
 export type { StudySessionScope } from '../services/sessionScope.ts';
 export type StudySessionStatus = 'active' | 'completed' | 'cancelled';
 
 /**
- * Sesión de estudio unificada. Reutiliza la tabla relacional `learning_session`
- * en lugar de introducir un segundo sistema de historial de aprendizaje.
+ * Unified study session. Reuses the relational `learning_session` table
+ * instead of introducing a second learning-history system.
  */
 export interface LearningSession {
   id: string;
   resource_id?: string;
   lesson_id?: string;
   /**
-   * Ámbito canónico y explícito de la sesión: `lesson`, `resource` o `global`
-   * (repaso transversal sin anclas). Se persiste en SQLite y se deriva de las
-   * anclas al escribir; nunca se deduce de la ausencia de datos.
-   * Ver `services/sessionScope.ts`.
+   * Canonical explicit session scope: `lesson`, `resource`, or `global`
+   * (cross-cutting review without anchors). Persisted in SQLite and derived
+   * from anchors on write; never inferred from missing data.
+   * See `services/sessionScope.ts`.
    */
   scope: StudySessionScope;
   started_at: string;
@@ -110,7 +110,7 @@ export interface LearningSession {
   lesson_title?: string;
 }
 
-/** Resumen agregado de la actividad registrada durante el día actual. */
+/** Aggregate summary of activity recorded during the current day. */
 export interface TodayStudySummary {
   items_reviewed: number;
   flashcards_reviewed: number;
@@ -130,17 +130,17 @@ export interface Note {
 }
 
 /**
- * Trabajo práctico: un artefacto que el estudiante PRODUCE (ejercicio, proyecto,
- * ensayo, dibujo, código…) ligado a un recurso, una lección o un concepto.
+ * Practice work: an artifact the learner PRODUCES (exercise, project, essay,
+ * drawing, code) linked to a resource, lesson, or concept.
  *
- * Es intencionadamente agnóstico al dominio: sirve igual para resolver
- * ejercicios de matemáticas, escribir un ensayo o entregar un proyecto. Se
- * guarda en la tabla relacional `practice_work`, nunca en almacenes paralelos.
+ * Deliberately domain-agnostic: it covers solving math exercises, writing an
+ * essay, or shipping a project alike. Stored in the relational `practice_work`
+ * table, never in parallel stores.
  */
 export type PracticeWorkKind = 'exercise' | 'project' | 'essay' | 'drawing' | 'code' | 'other';
 export type PracticeWorkStatus = 'PLANNED' | 'IN_PROGRESS' | 'DONE';
 
-/** Ítem de lista de verificación del espacio de trabajo de un trabajo práctico. */
+/** Checklist item in a practice-work workspace. */
 export interface PracticeChecklistItem {
   id: string;
   text: string;
@@ -156,17 +156,17 @@ export interface PracticeWork {
   concept_id?: string;
   kind: PracticeWorkKind;
   status: PracticeWorkStatus;
-  /** Referencia a un artefacto local (nunca un `blob:` ni un handle persistido). */
+  /** Reference to a local artifact (never a `blob:` URL or persisted handle). */
   artifact_url?: string;
   notes?: string;
-  /** Autoevaluación 0..5 (misma escala que SM-2), opcional. */
+  /** Self-rating 0..5 (same scale as SM-2), optional. */
   self_rating?: number;
   completed_at?: string;
   created_at?: string;
   updated_at?: string;
-  /** Contenido de trabajo en Markdown (tratado como datos, nunca como HTML). */
+  /** Work content in Markdown (handled as data, never as HTML). */
   content?: string;
-  /** Lista de verificación persistida como JSON (derivable, editable por el usuario). */
+  /** Checklist persisted as JSON (derivable, user-editable). */
   checklist?: PracticeChecklistItem[];
 }
 
@@ -214,9 +214,8 @@ export interface Flashcard {
 }
 
 /**
- * Categorías de nodo que representan conocimiento o estructura de aprendizaje real.
- * `practice` representa el trabajo práctico producido por el estudiante: no es
- * contenido del que se estudia, es evidencia de lo aprendido.
+ * Node categories for real knowledge or learning structure. `practice` is
+ * learner-produced practice work: not study content, but evidence of learning.
  */
 export type GraphNodeType =
   | 'concept'
@@ -228,7 +227,7 @@ export type GraphNodeType =
   | 'practice'
   | 'resource';
 
-/** Tipos de relación explícitos y validados (se almacenan como texto canónico). */
+/** Explicit validated relation types (stored as canonical text). */
 export type GraphRelationType =
   | 'contains'
   | 'references'
@@ -240,14 +239,14 @@ export type GraphRelationType =
   | 'about';
 
 /**
- * Metadatos no crudos mostrados en el panel de detalle del grafo.
+ * Refined metadata shown in the graph detail panel.
  *
- * En vez de un saco plano con todos los campos mezclados, la forma se declara
- * POR TIPO DE NODO (`GraphNodeMetaByKind`) y se compone después. Cada campo tiene
- * un dueño claro y añadir un tipo de nodo nuevo obliga a declarar su forma.
+ * Instead of a flat bag of mixed fields, the shape is declared PER NODE TYPE
+ * (`GraphNodeMetaByKind`) and composed afterwards. Each field has a clear
+ * owner, and adding a node type requires declaring its shape.
  */
 
-/** Campos compartidos por más de un tipo de nodo. */
+/** Fields shared by more than one node type. */
 export interface GraphNodeMetaCommon {
   category?: string;
   status?: string;
@@ -256,14 +255,12 @@ export interface GraphNodeMetaCommon {
   source_path?: string;
 }
 
-/** Metadatos específicos de `course`. */
 export interface CourseNodeMeta extends GraphNodeMetaCommon {
   instructor?: string;
   difficulty?: string;
   total_lessons?: number;
 }
 
-/** Metadatos específicos de `book`. */
 export interface BookNodeMeta extends GraphNodeMetaCommon {
   author?: string;
   page_count?: number;
@@ -271,13 +268,11 @@ export interface BookNodeMeta extends GraphNodeMetaCommon {
   reading_percentage?: number;
 }
 
-/** Metadatos específicos de `module`. */
 export interface ModuleNodeMeta extends GraphNodeMetaCommon {
   course_id?: string;
   order_index?: number;
 }
 
-/** Metadatos específicos de `lesson`. */
 export interface LessonNodeMeta extends GraphNodeMetaCommon {
   module_id?: string;
   course_id?: string;
@@ -286,14 +281,13 @@ export interface LessonNodeMeta extends GraphNodeMetaCommon {
   order_index?: number;
 }
 
-/** Metadatos específicos de `note`. */
 export interface NoteNodeMeta extends GraphNodeMetaCommon {
   resource_id?: string;
   lesson_id?: string;
   tags?: string;
 }
 
-/** Metadatos específicos de `practice` (evidencia producida por el estudiante). */
+/** `practice`-specific metadata (learner-produced evidence). */
 export interface PracticeNodeMeta extends GraphNodeMetaCommon {
   resource_id?: string;
   lesson_id?: string;
@@ -301,18 +295,17 @@ export interface PracticeNodeMeta extends GraphNodeMetaCommon {
   practice_kind?: string;
 }
 
-/** Metadatos específicos de `resource` (documento importado). */
+/** `resource`-specific metadata (imported document). */
 export type ResourceNodeMeta = GraphNodeMetaCommon;
 
-/** Metadatos específicos de `concept`. */
 export type ConceptNodeMeta = GraphNodeMetaCommon;
 
 /**
- * Mapa tipo de nodo → forma de `meta`.
+ * Node-type to `meta`-shape map.
  *
- * Es la garantía de cobertura a nivel de tipos: si se añade un nuevo
- * `GraphNodeType` y no se declara aquí su forma, la compilación falla.
- * Usar este mapa cuando el tipo de nodo es CONOCIDO en el punto de uso.
+ * This is the type-level coverage guarantee: adding a new `GraphNodeType`
+ * without declaring its shape here fails compilation. Use it when the node
+ * type is KNOWN at the use site.
  */
 export interface GraphNodeMetaByKind {
   concept: ConceptNodeMeta;
@@ -326,16 +319,16 @@ export interface GraphNodeMetaByKind {
 }
 
 /**
- * Vista de lectura de `ConceptNode.meta`.
+ * Read view of `ConceptNode.meta`.
  *
- * Es la intersección de todas las formas por tipo (todos los campos opcionales)
- * porque un consumidor recibe `meta` junto a un `node_type` dinámico y necesita
- * leer el campo de CUALQUIER tipo: `resolveGraphNodeDestination` lee `course_id`,
- * `resource_id` y `lesson_id` sin saber el tipo de antemano. La forma por tipo
- * (`GraphNodeMetaByKind`) queda para quien sí conoce el tipo.
+ * It intersects every per-type shape (all fields optional) because a consumer
+ * receives `meta` with a dynamic `node_type` and must read ANY type's field:
+ * `resolveGraphNodeDestination` reads `course_id`, `resource_id`, and
+ * `lesson_id` without knowing the type upfront. The per-type shape
+ * (`GraphNodeMetaByKind`) is for callers that do know the type.
  *
- * No cambia el comportamiento en tiempo de ejecución: exactamente los mismos
- * campos opcionales que antes, solo agrupados y documentados.
+ * No runtime behavior change: exactly the same optional fields as before,
+ * only grouped and documented.
  */
 export type GraphNodeMeta = GraphNodeMetaCommon &
   CourseNodeMeta &
@@ -361,7 +354,7 @@ export interface ConceptEdge {
   target_id: string;
   connection_type: string;
   weight: number;
-  /** true para aristas estructurales derivadas de claves foráneas (no editables). */
+  /** True for structural edges derived from foreign keys (not editable). */
   derived?: boolean;
 }
 
@@ -373,10 +366,10 @@ export interface KnowledgeConnection {
   weight: number;
 }
 
-/** Resultado de búsqueda local determinista (sin embeddings). */
+/** Deterministic local search result (no embeddings). */
 export interface SearchResult {
   id: string;
-  /** Tipo de entidad. `goal` (meta) no es un nodo del grafo: tiene vista propia. */
+  /** Entity type. `goal` is not a graph node: it has its own view. */
   type: GraphNodeType | 'goal';
   title: string;
   subtitle?: string;
@@ -384,28 +377,28 @@ export interface SearchResult {
   lessonId?: string;
 }
 
-/** Recurso de aprendizaje importado que aún no se ha asociado a nada. */
+/** Imported learning resource not linked to anything yet. */
 export interface UnorganizedResource {
   resource: LearningResource;
   noteCount: number;
   connectionCount: number;
 }
 
-/** Tipo de nodo abrible en un detalle de recurso. */
+/** Node type openable from a resource detail. */
 export type ResourceKind = 'course' | 'book' | 'resource' | 'concept' | 'lesson' | 'note' | 'module';
 
-/** Resumen de un nodo vecino mostrado en la sección "Relacionado". */
+/** Neighbor-node summary shown in the "Related" section. */
 export interface RelatedKnowledgeItem {
   id: string;
   title: string;
   type: GraphNodeType;
-  /** Relación canónica almacenada (o derivada de clave foránea). */
+  /** Stored canonical relation (or foreign-key derived). */
   relation: string;
-  /** true si la relación proviene de la estructura y no puede eliminarse. */
+  /** True when the relation comes from structure and cannot be deleted. */
   derived: boolean;
 }
 
-/** Contenido textual extraído de un documento importado (tratado como datos, nunca como HTML). */
+/** Text content extracted from an imported document (data, never HTML). */
 export interface ResourceFragment {
   id: string;
   title: string;
@@ -415,8 +408,8 @@ export interface ResourceFragment {
 }
 
 /**
- * Vista de detalle unificada para libros, recursos importados y conceptos.
- * Reutiliza el modelo relacional existente; no introduce un segundo sistema.
+ * Unified detail view for books, imported resources, and concepts. Reuses the
+ * existing relational model; introduces no second system.
  */
 export interface ResourceDetail {
   resource: LearningResource;
@@ -433,8 +426,8 @@ export interface ResourceDetail {
 }
 
 /**
- * Destino determinista de navegación a partir de una búsqueda o un nodo del grafo.
- * Permite reutilizar el modelo de navegación por estado sin introducir un router.
+ * Deterministic navigation target from a search hit or graph node. Reuses the
+ * state-based navigation model without introducing a router.
  */
 export type ResourceDestination =
   | { tab: 'course'; resourceId: string; lessonId?: string }
@@ -446,21 +439,20 @@ export type ResourceDestination =
 
 export type TimeRangeFilter = '7d' | '30d' | '90d' | 'all';
 
-/** Punto diario de actividad para gráficos deterministas sin bibliotecas externas. */
+/** Daily activity point for deterministic charts without external libraries. */
 export interface DailyActivityPoint {
   date: string;       // YYYY-MM-DD local
-  label: string;      // ej. 'Lun 04', '04 Oct'
-  minutes: number;    // Minutos de estudio
-  reviews: number;    // Ítems repasados (tarjetas + preguntas)
+  label: string;      // e.g. 'Mon 04', '04 Oct'
+  minutes: number;    // Study minutes
+  reviews: number;    // Reviewed items (cards + questions)
 }
 
 /**
- * Meta de aprendizaje: planificación personal ligada a datos reales.
+ * Learning goal: personal planning linked to real data.
  *
- * El PROGRESO nunca se persiste: se deriva en cada lectura a partir del recurso
- * enlazado (curso/libro), del trabajo práctico registrado o de las sesiones de
- * estudio. La tabla solo guarda lo que el usuario define: intención, objetivo,
- * fecha y estado.
+ * PROGRESS is never persisted: it derives on every read from the linked
+ * resource (course/book), recorded practice work, or study sessions. The table
+ * stores only user-defined intent: purpose, target, date, and status.
  */
 export type GoalKind = 'course' | 'book' | 'practice' | 'study_time' | 'custom';
 export type GoalStatus = 'active' | 'completed';
@@ -469,13 +461,13 @@ export interface LearningGoal {
   id: string;
   title: string;
   description?: string;
-  /** Tipo de meta: determina cómo se mide el progreso. */
+  /** Goal kind: determines how progress is measured. */
   kind: GoalKind;
-  /** Recurso enlazado (curso o libro). Opcional en práctica/estudio/personalizadas. */
+  /** Linked resource (course or book). Optional for practice/study/custom. */
   resource_id?: string;
-  /** Valor objetivo numérico (minutos de estudio, nº de piezas de práctica…). */
+  /** Numeric target value (study minutes, practice-piece count). */
   target_value?: number;
-  /** Fecha objetivo opcional (YYYY-MM-DD o ISO). */
+  /** Optional target date (YYYY-MM-DD or ISO). */
   target_date?: string;
   status: GoalStatus;
   completed_at?: string;

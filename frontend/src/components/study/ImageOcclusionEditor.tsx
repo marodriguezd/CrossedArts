@@ -39,7 +39,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Procesar archivo de imagen
   const handleProcessImage = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
       setErrorMsg('Por favor selecciona un archivo de imagen válido (PNG, JPG, WebP, SVG).');
@@ -57,7 +56,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
     reader.readAsDataURL(file);
   }, [front]);
 
-  // Soporte de pegado desde portapapeles (Ctrl+V)
+  // Paste support (Ctrl+V)
   useEffect(() => {
     if (!isOpen) return;
     const handlePaste = (e: ClipboardEvent) => {
@@ -78,7 +77,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
     return () => window.removeEventListener('paste', handlePaste);
   }, [isOpen, handleProcessImage]);
 
-  // Manejador Escape
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -90,7 +88,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
 
   if (!isOpen) return null;
 
-  // Coordenadas relativas dentro del contenedor de la imagen (0..100)
+  // Mask coordinates are relative to the image container, expressed as 0..100 percent
   const getRelativeCoordinates = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return { x: 0, y: 0 };
     const rect = containerRef.current.getBoundingClientRect();
@@ -101,7 +99,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!imageDataUrl) return;
-    // Si se hizo clic directamente en un botón o input, no iniciar nuevo dibujo
+    // If the click landed directly on a button or input, do not start a new drawing
     if ((e.target as HTMLElement).closest('button, input')) return;
     const coords = getRelativeCoordinates(e);
     setDragBox({
@@ -125,7 +123,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
     const width = Math.abs(dragBox.currentX - dragBox.startX);
     const height = Math.abs(dragBox.currentY - dragBox.startY);
 
-    // Ignorar clics mínimos accidentales (< 2% de ancho o alto)
+    // Ignore accidental tiny clicks (< 2% width or height)
     if (width >= 2 && height >= 2) {
       const newMask: OcclusionMask = {
         id: `mask_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -169,7 +167,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
     setErrorMsg(null);
 
     try {
-      // Guardar asset de imagen
+      // Persist the bitmap as a media asset
       const mediaId = await dao.saveMediaAsset({
         mime_type: imageDataUrl.startsWith('data:image/svg') ? 'image/svg+xml' : 'image/png',
         data: imageDataUrl
@@ -207,7 +205,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
     }
   };
 
-  // Rectángulo temporal de arrastre
+  // Temporary drag rectangle
   const getTempBoxStyle = () => {
     if (!dragBox) return null;
     const minX = Math.min(dragBox.startX, dragBox.currentX);
@@ -231,7 +229,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
     >
       <div className="relative flex flex-col w-full max-w-5xl max-h-[90vh] rounded-2xl border border-[var(--c-border)] bg-[var(--c-canvas)] text-[var(--c-ink)] shadow-2xl overflow-hidden">
         
-        {/* Cabecera */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--c-border)] bg-[var(--c-canvas-subtle)]">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-[var(--c-accent)]/15 text-[var(--c-accent)]">
@@ -256,7 +253,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
           </button>
         </div>
 
-        {/* Mensaje de error */}
+        {/* Validation error banner */}
         {errorMsg && (
           <div className="mx-6 mt-4 p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -264,10 +261,10 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
           </div>
         )}
 
-        {/* Cuerpo con 2 columnas */}
+        {/* Two-column body */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 overflow-y-auto">
           
-          {/* Columna Izquierda: Lienzo de Imagen y Dibujo (7 cols) */}
+          {/* Left column: image canvas and drawing (7 cols) */}
           <div className="lg:col-span-7 flex flex-col items-center justify-center">
             {imageDataUrl ? (
               <div className="flex flex-col items-center w-full">
@@ -284,7 +281,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                     className="block max-h-[50vh] max-w-full object-contain pointer-events-none"
                   />
 
-                  {/* Rectángulo en dibujo */}
+                  {/* In-progress rectangle */}
                   {dragBox && (
                     <div
                       style={getTempBoxStyle()!}
@@ -292,7 +289,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                     />
                   )}
 
-                  {/* Máscaras existentes */}
+                  {/* Existing masks */}
                   {masks.map((mask, idx) => {
                     const isSelected = mask.id === selectedMaskId;
                     return (
@@ -339,7 +336,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                 </div>
               </div>
             ) : (
-              /* Dropzone para cargar imagen */
+              /* Drop zone for loading an image */
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
@@ -373,10 +370,10 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
             )}
           </div>
 
-          {/* Columna Derecha: Parámetros y Lista de Máscaras (5 cols) */}
+          {/* Right column: parameters and mask list (5 cols) */}
           <div className="lg:col-span-5 flex flex-col gap-4">
             
-            {/* Título / Anverso */}
+            {/* Title / front */}
             <div>
               <label className="block text-xs font-semibold text-[var(--c-ink)] mb-1">
                 Pregunta o Título del Anverso *
@@ -390,7 +387,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
               />
             </div>
 
-            {/* Modo de Repaso */}
+            {/* SM-2 reveal mode */}
             <div>
               <label className="block text-xs font-semibold text-[var(--c-ink)] mb-1">
                 Modo de Revelación SM-2
@@ -425,7 +422,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
               </div>
             </div>
 
-            {/* Lista de Máscaras */}
+            {/* Mask list */}
             <div className="flex-1 flex flex-col min-h-[160px]">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-[var(--c-ink)]">
@@ -486,7 +483,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
               </div>
             </div>
 
-            {/* Notas opcionales de reverso */}
+            {/* Optional back-side notes */}
             <div>
               <label className="block text-xs font-semibold text-[var(--c-ink)] mb-1">
                 Notas adicionales de explicación (opcional)
@@ -502,7 +499,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
           </div>
         </div>
 
-        {/* Pie de acciones */}
         <div className="flex items-center justify-between px-6 py-3 border-t border-[var(--c-border)] bg-[var(--c-canvas-subtle)]">
           <Button variant="quiet" size="sm" onClick={onClose} disabled={isSaving}>
             Cancelar

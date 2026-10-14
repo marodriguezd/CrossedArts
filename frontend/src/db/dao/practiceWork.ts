@@ -1,9 +1,8 @@
 /**
- * Trabajo práctico: evidencia PRODUCIDA por el estudiante.
+ * Practice work: learner-PRODUCED evidence.
  *
- * Es una fuente de conocimiento de primera clase, no un anexo del recurso: se
- * vincula con `ON DELETE SET NULL` para que reorganizar la biblioteca nunca
- * destruya el trabajo del usuario.
+ * A first-class knowledge source, not a resource appendix: linked with
+ * `ON DELETE SET NULL` so reorganizing the library never destroys user work.
  */
 import { translateKey } from '../../i18n/dictionaries.ts';
 import { daoLang } from '../daoLanguage.ts';
@@ -125,7 +124,7 @@ export const practiceWorkDao = {
         assignments.push(`${key} = ?`);
         const value = (fields as any)[key];
         if (key === 'checklist') {
-          // La lista de verificación se persiste como JSON; vacía o ausente → NULL.
+          // The checklist is persisted as JSON; empty or absent -> NULL.
           values.push(serializePracticeChecklist(Array.isArray(value) ? value : null));
         } else {
           values.push(value === undefined ? null : value);
@@ -134,7 +133,7 @@ export const practiceWorkDao = {
     }
     if (assignments.length === 0) return;
 
-    // Transición determinista: marcar DONE sella `completed_at` si no venía dado.
+    // Deterministic transition: marking DONE stamps `completed_at` unless provided.
     if (fields.status === 'DONE' && !('completed_at' in fields)) {
       assignments.push('completed_at = COALESCE(completed_at, datetime(\'now\'))');
     } else if (fields.status && fields.status !== 'DONE') {

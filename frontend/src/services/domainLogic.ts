@@ -11,7 +11,7 @@ export type BookProgressResult =
   | { valid: false; error: string; data?: never };
 
 /**
- * Valida y calcula el progreso de lectura de un libro de forma pura y determinista.
+ * Purely and deterministically validates and computes book reading progress.
  */
 export function calculateBookProgress(
   currentPage: number,
@@ -47,7 +47,7 @@ export function calculateBookProgress(
 }
 
 /**
- * Ajusta la página actual de un libro aplicando un delta y restringiendo al rango [0, totalPages].
+ * Clamps a book's current page after applying a delta to [0, totalPages].
  */
 export function adjustBookPage(currentPage: number, delta: number, totalPages: number): number {
   if (typeof totalPages !== 'number' || isNaN(totalPages) || totalPages <= 0) return 0;
@@ -67,8 +67,8 @@ export interface SM2Result extends SM2State {
 }
 
 /**
- * Aplica el algoritmo SuperMemo-2 (SM-2) a una repetición de flashcard.
- * Función pura y aislada para garantizar determinismo y testeabilidad.
+ * Applies the SuperMemo-2 (SM-2) algorithm to one flashcard repetition.
+ * Pure isolated function for determinism and testability.
  */
 export function calculateSM2(
   currentState: SM2State,
@@ -102,9 +102,8 @@ export function calculateSM2(
 export type StudyItemKind = 'flashcard' | 'practice';
 
 /**
- * Plan determinista para la modalidad de estudio mixta: primero las tarjetas SM-2
- * pendientes y después las preguntas de práctica generadas. No implementa
- * adaptabilidad ni ponderación dinámica.
+ * Deterministic plan for mixed study mode: due SM-2 cards first, then
+ * generated practice questions. No adaptivity or dynamic weighting.
  */
 export function buildMixedStudyPlan(flashcardCount: number, questionCount: number): StudyItemKind[] {
   const plan: StudyItemKind[] = [];
@@ -116,24 +115,21 @@ export function buildMixedStudyPlan(flashcardCount: number, questionCount: numbe
 }
 
 /**
- * Interpreta una marca temporal almacenada por SQLite (`YYYY-MM-DD HH:MM:SS`, UTC)
- * como un instante UTC y no como hora local del navegador.
+ * Parses a SQLite-stored timestamp (`YYYY-MM-DD HH:MM:SS`, UTC) as a UTC
+ * instant, not browser-local time.
  *
- * Devuelve `NaN` si la cadena no es parseable, para que el llamador decida cómo
- * degradar el comportamiento sin inventar una fecha válida.
+ * Returns `NaN` for unparseable input so the caller can degrade gracefully
+ * without inventing a valid date.
  */
 export function parseUtcTimestamp(value: string | null | undefined): number {
   if (typeof value !== 'string' || value.trim() === '') return NaN;
-  // El formato canónico de SQLite (`CURRENT_TIMESTAMP`) no incluye zona horaria;
-  // añadir `Z` garantiza una interpretación UTC independiente del navegador.
+  // Canonical SQLite format (`CURRENT_TIMESTAMP`) carries no timezone;
+  // appending `Z` forces browser-independent UTC interpretation.
   const normalized = value.trim().replace(' ', 'T');
   const withZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : `${normalized}Z`;
   return Date.parse(withZone);
 }
 
-/**
- * Formatea el próximo intervalo calculado por SM-2 en texto legible para la UI.
- */
 export function formatNextReviewInterval(intervalDays: number, lang: LanguageCode = 'es'): string {
   const days = Math.max(1, Math.round(intervalDays));
   if (days === 1) return translateKey(lang, 'review.interval.day');
@@ -161,9 +157,9 @@ export interface StudySessionSummary {
 }
 
 /**
- * Construye el resumen de una sesión. Las calificaciones SM-2 no se agregan como
- * acierto/error: solo las preguntas de práctica reportan aciertos y errores, y
- * nunca se calcula una "puntuación de conocimiento" universal.
+ * Builds a session summary. SM-2 grades never count as correct/wrong: only
+ * practice questions report hits and misses, and no universal "knowledge
+ * score" is ever computed.
  */
 export function summarizeStudySession(counters: StudySessionCounters): StudySessionSummary {
   const flashcards = Math.max(0, Math.floor(counters.cards_reviewed || 0));
@@ -179,7 +175,8 @@ export function summarizeStudySession(counters: StudySessionCounters): StudySess
   };
 }
 
-/** Relaciones que un usuario puede crear manualmente en el grafo. */
+/** Relations a user may create manually in the graph. Anything else is
+ * structural and therefore not user-editable. */
 export const GRAPH_RELATION_TYPES: readonly GraphRelationType[] = [
   'contains',
   'references',
@@ -192,8 +189,8 @@ export const GRAPH_RELATION_TYPES: readonly GraphRelationType[] = [
 ];
 
 /**
- * Normaliza y valida un tipo de relación. Devuelve null si el tipo no es
- * soportado por el modelo tipado (evita almacenar cadenas arbitrarias nuevas).
+ * Normalizes and validates a relation type. Returns null when the typed model
+ * does not support it (avoids storing new arbitrary strings).
  */
 export function normalizeGraphRelation(relationType: string): GraphRelationType | null {
   if (!relationType) return null;
@@ -220,8 +217,8 @@ export interface KnowledgeConnectionValidationResult {
 }
 
 /**
- * Valida de forma pura una conexión manual del grafo: tipo soportado, nodos
- * existentes, sin auto-enlaces y sin duplicados. No accede a la base de datos.
+ * Purely validates a manual graph connection: supported type, existing nodes,
+ * no self-links, no duplicates. No database access.
  */
 export function validateKnowledgeConnection(
   candidate: KnowledgeConnectionCandidate,
@@ -291,7 +288,7 @@ export const GRAPH_RELATION_LABELS: Record<GraphRelationType, string> = {
   about: 'trata de'
 };
 
-/** Referencias al contexto de aprendizaje del que cuelga un artefacto. */
+/** Learning-context refs owning an artifact. */
 export interface ArtifactContextRefs {
   resourceId?: string;
   lessonId?: string;
@@ -299,12 +296,12 @@ export interface ArtifactContextRefs {
 }
 
 /**
- * Destino de un artefacto que NO tiene vista propia (trabajo práctico): se abre
- * en su contexto de aprendizaje de origen. Sin contexto, la Biblioteca es la
- * degradación honesta.
+ * Target for an artifact WITHOUT its own view (practice work): it opens in
+ * its origin learning context. Without context, the Library is the honest
+ * fallback.
  *
- * Fuente única: la usan el grafo, la búsqueda local y la paleta de comandos, para
- * que las tres rutas abran exactamente el mismo sitio.
+ * Single source used by the graph, local search, and command palette so all
+ * three routes open exactly the same place.
  */
 export function resolveArtifactContextDestination(refs: ArtifactContextRefs): ResourceDestination {
   if (refs.resourceId) return { tab: 'resource', resourceId: refs.resourceId };
@@ -314,8 +311,8 @@ export function resolveArtifactContextDestination(refs: ArtifactContextRefs): Re
 }
 
 /**
- * Resuelve el destino de navegación de un resultado de búsqueda local.
- * Cada tipo soportado tiene una acción determinista sin depender de IA ni red.
+ * Resolves the navigation target of a local search hit. Every supported type
+ * has a deterministic action with no AI or network involved.
  */
 export function resolveSearchResultDestination(result: SearchResult): ResourceDestination {
   switch (result.type) {
@@ -332,13 +329,13 @@ export function resolveSearchResultDestination(result: SearchResult): ResourceDe
     case 'concept':
       return { tab: 'concept', conceptId: result.id };
     case 'practice':
-      // El trabajo práctico se abre en el contexto que demuestra.
+      // Practice work opens in the context it evidences.
       return resolveArtifactContextDestination({
         resourceId: result.resourceId,
         lessonId: result.lessonId
       });
     case 'goal':
-      // La meta no tiene nodo en el grafo: su vista propia es su destino.
+      // Goals have no graph node: their own view is their target.
       return { tab: 'goals', goalId: result.id };
     default:
       return { tab: 'library' };
@@ -346,8 +343,8 @@ export function resolveSearchResultDestination(result: SearchResult): ResourceDe
 }
 
 /**
- * Resuelve el destino de navegación de un nodo del grafo. Los módulos se abren
- * a través del curso al que pertenecen; los conceptos usan su vista de detalle.
+ * Resolves the navigation target of a graph node. Modules open through their
+ * parent course; concepts use their detail view.
  */
 export function resolveGraphNodeDestination(node: Pick<ConceptNode, 'id' | 'node_type' | 'meta'>): ResourceDestination {
   switch (node.node_type) {
@@ -367,8 +364,8 @@ export function resolveGraphNodeDestination(node: Pick<ConceptNode, 'id' | 'node
       if (node.meta?.course_id) return { tab: 'course', resourceId: node.meta.course_id };
       return { tab: 'library' };
     case 'practice':
-      // El trabajo práctico no tiene vista propia: se abre en su contexto de
-      // origen (recurso → detalle, lección/concepto → su vista).
+      // Practice work has no dedicated view: it opens in its origin context
+      // (resource -> detail, lesson/concept -> its view).
       return resolveArtifactContextDestination({
         resourceId: node.meta?.resource_id,
         lessonId: node.meta?.lesson_id,
@@ -382,8 +379,8 @@ export function resolveGraphNodeDestination(node: Pick<ConceptNode, 'id' | 'node
 export type DestructiveAction = 'delete-course' | 'delete-module' | 'delete-lesson' | 'delete-connection';
 
 /**
- * Descripción explícita y honesta de una acción destructiva para el diálogo de
- * confirmación: qué se elimina, qué puede permanecer y si es reversible.
+ * Explicit honest description of a destructive action for the confirm dialog:
+ * what is removed, what may remain, and whether it is reversible.
  */
 export function describeDestructiveAction(
   action: DestructiveAction,
@@ -426,8 +423,8 @@ export function describeDestructiveAction(
 }
 
 /**
- * Resuelve una pulsación de tecla ('1'-'9' o 'A'-'Z' insensible a mayúsculas)
- * al índice base 0 de opción múltiple, o null si la tecla no corresponde.
+ * Maps a keypress ('1'-'9' or case-insensitive 'A'-'Z') to a 0-based
+ * multiple-choice index, or null when the key does not apply.
  */
 export function resolveShortcutOptionIndex(key: string, maxOptions: number): number | null {
   if (!key || maxOptions <= 0) return null;
@@ -446,7 +443,7 @@ export function resolveShortcutOptionIndex(key: string, maxOptions: number): num
 }
 
 /**
- * Formatea un número de segundos en formato 'mm:ss' o 'hh:mm:ss'.
+ * Formats seconds as 'mm:ss' or 'hh:mm:ss'.
  */
 export function formatPlaybackTime(seconds: number): string {
   if (typeof seconds !== 'number' || isNaN(seconds) || seconds < 0) {
@@ -466,7 +463,7 @@ export function formatPlaybackTime(seconds: number): string {
 }
 
 /**
- * Convierte un string de tiempo tipo '01:15' o '01:05:30' o '[01:15]' a segundos totales.
+ * Converts a time string like '01:15', '01:05:30', or '[01:15]' to total seconds.
  */
 export function parseTimestampToSeconds(timestamp: string): number | null {
   if (!timestamp) return null;
@@ -498,7 +495,7 @@ export interface TimestampPart {
 }
 
 /**
- * Divide un texto en fragmentos de texto plano y marcas de tiempo interactivas [mm:ss] o [hh:mm:ss].
+ * Splits text into plain-text chunks and interactive [mm:ss]/[hh:mm:ss] timestamps.
  */
 export function extractTimestampParts(content: string): TimestampPart[] {
   if (!content) return [];
@@ -553,8 +550,8 @@ export interface MarkdownInlineToken {
 }
 
 /**
- * Parsea un fragmento de texto en tokens de markdown en línea y marcas de tiempo interactivas.
- * Función pura sin dependencias de DOM ni React para garantizar testeabilidad en Node.
+ * Parses a text fragment into inline-markdown tokens and interactive timestamps.
+ * Pure function with no DOM or React dependencies for Node testability.
  */
 export function parseInlineMarkdownTokens(text: string): MarkdownInlineToken[] {
   if (!text) return [];
@@ -592,7 +589,7 @@ export function parseInlineMarkdownTokens(text: string): MarkdownInlineToken[] {
 }
 
 /**
- * Filtra nodos del grafo de conocimiento por coincidencia léxica sobre nombre o descripción.
+ * Filters knowledge-graph nodes by lexical match on name or description.
  */
 export function searchGraphNodes(
   nodes: ConceptNode[],
@@ -607,7 +604,7 @@ export function searchGraphNodes(
 }
 
 /**
- * Exporta un elemento HTMLCanvasElement a un archivo PNG con fondo opaco y dispara la descarga.
+ * Exports an HTMLCanvasElement to a PNG file with an opaque background and triggers download.
  */
 export function exportCanvasAsImage(
   canvas: HTMLCanvasElement,
@@ -624,11 +621,11 @@ export function exportCanvasAsImage(
   const ctx = offscreen.getContext('2d');
   if (!ctx) return false;
 
-  // Fondo opaco temático
+  // Opaque themed background
   ctx.fillStyle = backgroundColor;
   ctx.fillRect(0, 0, offscreen.width, offscreen.height);
 
-  // Dibuja el grafo original sobre el fondo
+  // Paints the original graph over the background
   ctx.drawImage(canvas, 0, 0);
 
   const dataUrl = offscreen.toDataURL('image/png');
@@ -642,12 +639,12 @@ export function exportCanvasAsImage(
 }
 
 /**
- * Extensiones de archivo admitidas para la ingesta local de documentos.
+ * File extensions accepted for local document ingestion.
  */
 export const SUPPORTED_INGESTION_EXTENSIONS = ['.txt', '.md', '.markdown', '.pdf', '.epub'] as const;
 
 /**
- * Filtra una lista de archivos quedándose únicamente con los formatos compatibles (.txt, .md, .markdown, .pdf, .epub).
+ * Keeps only supported formats from a file list (.txt, .md, .markdown, .pdf, .epub).
  */
 export function filterSupportedFiles(files: File[] | FileList | null | undefined): File[] {
   if (!files) return [];
@@ -659,8 +656,8 @@ export function filterSupportedFiles(files: File[] | FileList | null | undefined
 }
 
 /**
- * Genera una serie temporal continua de días con actividad de estudio agregada.
- * Rellena los días vacíos con cero para que el gráfico sea uniforme y predecible.
+ * Builds a continuous daily series of aggregated study activity. Pads empty
+ * days with zero so charts stay uniform and predictable.
  */
 export function generateDailyActivitySeries(
   history: Array<{ date: string; minutes: number; reviews: number }>,
@@ -694,7 +691,7 @@ export function generateDailyActivitySeries(
   };
 
   if (daysCount > 0) {
-    // Generar exactamente los últimos N días terminando en hoy
+    // Emit exactly the last N days ending today
     const points: DailyActivityPoint[] = [];
     const baseDate = new Date(`${todayStr}T00:00:00Z`);
 
@@ -712,7 +709,7 @@ export function generateDailyActivitySeries(
     return points;
   }
 
-  // Modo 'all': ordenar cronológicamente todos los días registrados
+  // 'all' mode: sort every recorded day chronologically
   const allDates = Array.from(historyMap.keys()).sort();
   if (allDates.length === 0) {
     return [{
@@ -735,7 +732,7 @@ export function generateDailyActivitySeries(
 }
 
 /**
- * Convierte una nota individual a formato Markdown con metadatos en cabecera frontmatter y marca de agua local.
+ * Converts one note to Markdown with frontmatter metadata and a local watermark.
  */
 export function exportNoteToMarkdown(note: Note, contextInfo?: { resourceTitle?: string; lessonTitle?: string }, lang: LanguageCode = 'es'): string {
   const lines: string[] = [];
@@ -758,7 +755,7 @@ export function exportNoteToMarkdown(note: Note, contextInfo?: { resourceTitle?:
 }
 
 /**
- * Convierte un lote de notas a un único documento Markdown consolidado con separadores.
+ * Converts a batch of notes into one consolidated Markdown document with separators.
  */
 export function exportNotesToSingleMarkdown(notes: Note[], lang: LanguageCode = 'es'): string {
   const lines: string[] = [];
@@ -788,7 +785,7 @@ export function exportNotesToSingleMarkdown(notes: Note[], lang: LanguageCode = 
 }
 
 /**
- * Dispara la descarga de un archivo de texto en el navegador del usuario.
+ * Triggers a text-file download in the user browser.
  */
 export function triggerTextDownload(content: string, filename: string, mimeType = 'text/markdown;charset=utf-8'): boolean {
   if (typeof document === 'undefined') return false;
@@ -805,11 +802,11 @@ export function triggerTextDownload(content: string, filename: string, mimeType 
 }
 
 /**
- * Filtra flashcards según el tipo de origen:
- * - 'all': Todas las tarjetas disponibles.
- * - 'course': Solo tarjetas asociadas a cursos estructurados.
- * - 'book': Solo tarjetas asociadas a libros o lecturas.
- * - 'general': Tarjetas huérfanas o sin recurso asociado específico.
+ * Filters flashcards by origin type:
+ * - 'all': every available card.
+ * - 'course': only cards linked to structured courses.
+ * - 'book': only cards linked to books or readings.
+ * - 'general': orphan cards with no specific linked resource.
  */
 export function filterFlashcardsByOrigin(
   cards: Flashcard[],
@@ -831,8 +828,8 @@ export function filterFlashcardsByOrigin(
 }
 
 /**
- * Filtra los módulos y lecciones de un curso a partir de una consulta léxica.
- * Devuelve únicamente los módulos que contengan lecciones coincidentes (o cuyo título coincida).
+ * Filters a course's modules and lessons by lexical query. Returns only
+ * modules with matching lessons (or a matching title).
  */
 export function filterCourseLessons(
   modules: Module[] | undefined | null,
@@ -872,8 +869,9 @@ export function filterCourseLessons(
 }
 
 /**
- * Extrae todas las etiquetas únicas de una colección de notas con su conteo de ocurrencias.
- * Limpia y normaliza espacios y descarta valores vacíos o etiquetas técnicas como 'sha256:*'.
+ * Extracts every unique tag from a note collection with occurrence counts.
+ * Trims and normalizes whitespace; drops empty values and technical tags
+ * such as 'sha256:*'.
  */
 export function extractUniqueTagsWithCounts(notes: Note[]): Array<{ tag: string; count: number }> {
   const counts = new Map<string, number>();
@@ -882,7 +880,7 @@ export function extractUniqueTagsWithCounts(notes: Note[]): Array<{ tag: string;
     if (!n.tags) continue;
     const parts = n.tags.split(',').map(t => t.trim()).filter(Boolean);
     for (const rawTag of parts) {
-      // Omitir huellas hash de bajo nivel en la interfaz visual
+      // Skip low-level hash fingerprints in the visual UI
       if (rawTag.startsWith('sha256:')) continue;
       const tag = rawTag.toLowerCase();
       counts.set(tag, (counts.get(tag) || 0) + 1);
@@ -895,7 +893,7 @@ export function extractUniqueTagsWithCounts(notes: Note[]): Array<{ tag: string;
 }
 
 /**
- * Filtra notas combinando consulta de texto y filtro por etiqueta exacta.
+ * Filters notes by combined text query and exact tag filter.
  */
 export function filterNotesByQueryAndTag(
   notes: Note[],
@@ -906,7 +904,7 @@ export function filterNotesByQueryAndTag(
   const targetTag = selectedTag ? selectedTag.trim().toLowerCase() : null;
 
   return notes.filter(n => {
-    // 1. Filtro por tag si está seleccionado
+    // 1. Tag filter when selected
     if (targetTag) {
       const noteTags = (n.tags || '')
         .split(',')
@@ -914,7 +912,7 @@ export function filterNotesByQueryAndTag(
       if (!noteTags.includes(targetTag)) return false;
     }
 
-    // 2. Filtro por consulta si existe
+    // 2. Query filter when present
     if (!q) return true;
     return (
       n.title.toLowerCase().includes(q) ||
@@ -925,8 +923,8 @@ export function filterNotesByQueryAndTag(
 }
 
 /**
- * Recupera de forma segura los segundos de reproducción guardados para una lección en localStorage.
- * Retorna null si no existe, si es inválido o si localStorage no está disponible.
+ * Safely reads saved playback seconds for a lesson from localStorage.
+ * Returns null when missing, invalid, or when localStorage is unavailable.
  */
 export function getStoredPlaybackSeconds(lessonId: string): number | null {
   if (typeof localStorage === 'undefined' || !lessonId) return null;
@@ -943,8 +941,8 @@ export function getStoredPlaybackSeconds(lessonId: string): number | null {
 export const SUPPORTED_PLAYBACK_SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 
 /**
- * Calcula el nuevo segundo de reproducción tras un salto temporal (positivo o negativo),
- * garantizando que permanezca estrictamente acotado en el intervalo [0, duration].
+ * Computes the new playback second after a time jump (forward or backward),
+ * clamped strictly to [0, duration].
  */
 export function calculatePlaybackJump(currentTime: number, deltaSeconds: number, duration: number = Infinity): number {
   const safeCurrent = isNaN(currentTime) || currentTime < 0 ? 0 : currentTime;
@@ -954,8 +952,8 @@ export function calculatePlaybackJump(currentTime: number, deltaSeconds: number,
 }
 
 /**
- * Resuelve la siguiente velocidad de reproducción al incrementar o decrementar
- * usando los tramos estándar de la aplicación.
+ * Resolves the next playback speed when stepping up or down through the
+ * app's standard speeds.
  */
 export function resolveNextPlaybackSpeed(currentSpeed: number, direction: 'increase' | 'decrease'): number {
   const speeds = SUPPORTED_PLAYBACK_SPEEDS;

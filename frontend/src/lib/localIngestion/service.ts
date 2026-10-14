@@ -29,8 +29,9 @@ export function detectFileType(filename: string): SupportedFileType | null {
 
 export class LocalIngestionService {
   /**
-   * Determina si un documento ya fue importado comparando el fingerprint SHA-256 en SQLite.
-   * Devuelve el ID del recurso existente si lo encuentra.
+   * Detects whether a document was already imported by comparing its SHA-256
+   * fingerprint (stored on `learning_resource.source_path`, or in note tags).
+   * Returns the existing resource id when found.
    */
   async findExistingResourceByFingerprint(fingerprint: string): Promise<string | null> {
     try {
@@ -62,7 +63,7 @@ export class LocalIngestionService {
   }
 
   /**
-   * Parsea un archivo individual soportado en memoria.
+   * Parses one supported file in memory.
    */
   async parseFile(
     file: File | { name: string; size: number; text?: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }
@@ -85,8 +86,8 @@ export class LocalIngestionService {
   }
 
   /**
-   * Ingesta y almacena un archivo en el SQLite local de CrossedArts,
-   * indexándolo opcionalmente si el motor de embeddings está activo.
+   * Ingests and stores a file in CrossedArts' local SQLite, optionally
+   * indexing it when the embeddings engine is running.
    */
   async ingestFile(
     file: File | { name: string; size: number; text?: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> },
@@ -108,7 +109,7 @@ export class LocalIngestionService {
       };
     }
 
-    // 1. Huella digital
+    // 1. Fingerprint
     options.onProgress?.({
       stage: 'hashing',
       fileName: file.name,
@@ -119,7 +120,7 @@ export class LocalIngestionService {
 
     const fingerprint = await computeFileFingerprint(file);
 
-    // Detección de duplicados
+    // Duplicate detection
     const existingResourceId = await this.findExistingResourceByFingerprint(fingerprint);
     if (existingResourceId) {
       return {
@@ -137,7 +138,7 @@ export class LocalIngestionService {
       throw new Error('La importación fue cancelada.');
     }
 
-    // 2. Parseo
+    // 2. Parsing
     options.onProgress?.({
       stage: 'parsing',
       fileName: file.name,
@@ -152,7 +153,7 @@ export class LocalIngestionService {
       throw new Error('La importación fue cancelada.');
     }
 
-    // 3. Persistencia en SQLite
+    // 3. SQLite persistence
     options.onProgress?.({
       stage: 'saving',
       fileName: file.name,
@@ -174,7 +175,7 @@ export class LocalIngestionService {
       destination: options.destination
     });
 
-    // 4. Indexación semántica automática incremental en segundo plano solo si fue solicitada explícitamente o el motor ya está en ejecución
+    // 4. Incremental background semantic indexing only when explicitly requested or the engine is already running
     if (options.enableSemanticIndexing && localEmbeddingEngine.getStatus() === 'ready') {
       try {
         const { createSemanticChunksFromResourcesAsync } = await import('../localEmbeddings/chunking.ts');
@@ -207,8 +208,8 @@ export class LocalIngestionService {
   }
 
   /**
-   * Ingesta un lote de archivos secuencialmente, cediendo el hilo del navegador
-   * entre archivos para mantener la interfaz de usuario fluida y sensible.
+   * Ingests a batch of files sequentially, yielding the browser thread
+   * between files so the UI stays responsive.
    */
   async ingestBatch(
     files: Array<File | { name: string; size: number; text?: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }>,
@@ -254,7 +255,7 @@ export class LocalIngestionService {
         });
       }
 
-      // Ceder el control al event loop entre archivos grandes
+      // Yield to the event loop between large files
       await new Promise(resolve => setTimeout(resolve, 10));
     }
 

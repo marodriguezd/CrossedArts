@@ -37,7 +37,7 @@ const customTwMerge = extendTailwindMerge({
   },
 });
 
-/** Combina clases condicionales sin perder los overrides de tailwind-merge. */
+/** Merges conditional classes without losing tailwind-merge overrides. */
 export function cn(...inputs: ClassValue[]): string {
   return customTwMerge(clsx(inputs));
 }
@@ -46,8 +46,8 @@ export interface ProgressBarProps {
   value: number;
   max?: number;
   /**
-   * Etiqueta accesible. Obligatoria: una barra de progreso sin nombre es muda
-   * para un lector de pantalla.
+   * Accessible label. Required: a nameless progress bar is mute for a screen
+   * reader.
    */
   label: string;
   className?: string;
@@ -55,23 +55,22 @@ export interface ProgressBarProps {
 }
 
 export interface ResolvedProgress {
-  /** Valor anunciado por ARIA, ya acotado a [0, max]. */
+  /** ARIA-announced value, already clamped to [0, max]. */
   value: number;
-  /** Máximo efectivo (> 0). */
+  /** Effective maximum (> 0). */
   max: number;
-  /** Porcentaje visual redondeado, derivado del MISMO valor acotado. */
+  /** Rounded visual percent, derived from the SAME clamped value. */
   percent: number;
 }
 
 /**
- * Deriva el valor visual y el valor ARIA de una única fuente acotada.
+ * Derives both the visual value and the ARIA value from ONE clamped source.
  *
- * Antes `aria-valuenow` recibía el valor crudo mientras el ancho se calculaba
- * con un porcentaje acotado: con `value > max` (o negativo) la barra mostraba
- * 100%/0% y el árbol anunciaba un valor contradictorio (`aria-valuenow >
- * aria-valuemax`). Aquí ambos salen del mismo valor acotado.
- *
- * Es puro y vive en un `.ts` para poder verificarse desde el runner de pruebas.
+ * Previously `aria-valuenow` got the raw value while the width used a clamped
+ * percentage: with `value > max` (or negative) the bar showed 100%/0% and the
+ * tree announced a contradictory value (`aria-valuenow > aria-valuemax`). Here
+ * both come from the same clamped value. Pure, and living in a `.ts` so the
+ * test runner can verify it.
  */
 export function resolveProgress(value: number, max: number = 100): ResolvedProgress {
   const safeMax = Number.isFinite(max) && max > 0 ? max : 100;
@@ -84,7 +83,7 @@ export function resolveProgress(value: number, max: number = 100): ResolvedProgr
   };
 }
 
-/** Progreso con estado accesible completo (valor, rango y etiqueta). */
+/** Progress with full accessible state (value, range, and label). */
 export function ProgressBar({ value, max = 100, label, className, tone = 'accent' }: ProgressBarProps) {
   const progress = resolveProgress(value, max);
   return createElement(
@@ -109,15 +108,15 @@ export function ProgressBar({ value, max = 100, label, className, tone = 'accent
 
 export interface KbdProps {
   /**
-   * Opcional a propósito: reproduce la semántica de `React.FC` (que añadía
-   * `children?: ReactNode`), que es lo que permite llamar a `createElement(Kbd,
-   * props, hijo)` sin incluir `children` dentro de las props.
+   * Optional on purpose: it reproduces `React.FC` semantics (which added
+   * `children?: ReactNode`), letting callers use `createElement(Kbd, props,
+   * child)` without listing `children` inside props.
    */
   children?: ReactNode;
   className?: string;
 }
 
-/** Atajo de teclado visual. Es `<kbd>` con la tipografía del sistema de diseño. */
+/** Visual keyboard shortcut. A `<kbd>` styled with the design-system type scale. */
 export function Kbd({ children, className }: KbdProps) {
   return createElement(
     'kbd',

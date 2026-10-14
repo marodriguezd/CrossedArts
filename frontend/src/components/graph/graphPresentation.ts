@@ -4,27 +4,27 @@ import type { Options } from 'vis-network/esnext';
 import type { GraphNodeType } from '../../types/models.ts';
 
 /**
- * Presentación del grafo de conocimiento: paleta, tokens y opciones de vis-network.
+ * Knowledge-graph presentation: palette, tokens, and vis-network options.
  *
- * Extracción pura (sin estado de React) del módulo KnowledgeGraph.tsx, para que
- * la apariencia del lienzo se pueda probar sin montar el componente y sin
- * duplicar la paleta: los colores se LEEN de los tokens reales de index.css.
+ * Pure extraction (no React state) from the KnowledgeGraph.tsx module so canvas
+ * appearance can be tested without mounting the component and without
+ * duplicating the palette: colors are READ from the real index.css tokens.
  */
 
 export type ThemeMode = 'light' | 'dark';
 
 /**
- * vis-network dibuja sobre <canvas> y NO puede consumir variables CSS, así que
- * necesita colores concretos. Para que el lienzo nunca se desincronice del tema,
- * los valores se LEEN de los tokens reales de `index.css` en tiempo de ejecución
- * en lugar de duplicar la paleta en código: una única fuente de verdad.
+ * vis-network draws on <canvas> and CANNOT consume CSS variables, so it needs
+ * concrete colors. To keep the canvas from ever drifting out of sync with the
+ * theme, values are READ from the real `index.css` tokens at runtime instead of
+ * duplicating the palette in code: a single source of truth.
  */
 export interface GraphTokens {
   ink: string;
   faint: string;
   accent: string;
   accentSoft: string;
-  /** Tono apagado para las aristas derivadas (relaciones de claves foráneas). */
+  /** Muted tone for derived edges (foreign-key relations). */
   derived: string;
 }
 
@@ -34,9 +34,9 @@ const FALLBACK_TOKENS: Record<ThemeMode, GraphTokens> = {
 };
 
 /**
- * Mezcla un color con blanco/negro por proporción para derivar los bordes de
- * los nodos a partir de su relleno. Evita inventar tonos nuevos: los bordes
- * nacen del propio token de acento de cada tipo.
+ * Blends a color toward white/black by ratio to derive node borders from their
+ * fill. Avoids inventing new tones: borders come from each type's own accent
+ * token.
  */
 export function shade(hex: string, amount: number): string {
   const m = hex.trim().replace('#', '');
@@ -53,8 +53,8 @@ export function shade(hex: string, amount: number): string {
 }
 
 /**
- * Relleno translúcido del nodo: el color de acento atenuado sobre el lienzo.
- * Se expresa en `rgba` porque vis-network compone el nodo sobre el fondo.
+ * Translucent node fill: the accent color softened over the canvas. Expressed
+ * in `rgba` because vis-network composites the node over the background.
  */
 export function translucent(hex: string, alpha: number): string {
   const m = hex.trim().replace('#', '');
@@ -64,7 +64,7 @@ export function translucent(hex: string, alpha: number): string {
   return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
 }
 
-/** Lee un token RGB (`R G B`) de `index.css` y lo devuelve como `#rrggbb`. */
+/** Reads an RGB token (`R G B`) from `index.css` and returns it as `#rrggbb`. */
 export function readToken(varName: string, fallback: string): string {
   if (typeof window === 'undefined' || typeof document === 'undefined') return fallback;
   const raw = window
@@ -80,7 +80,7 @@ export function readToken(varName: string, fallback: string): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
-/** Resuelve la paleta del grafo desde los tokens vivos del tema activo. */
+/** Resolves the graph palette from the live tokens of the active theme. */
 export function resolveGraphTokens(theme: ThemeMode): GraphTokens {
   const fb = FALLBACK_TOKENS[theme];
   return {
@@ -93,9 +93,9 @@ export function resolveGraphTokens(theme: ThemeMode): GraphTokens {
 }
 
 /**
- * Acento por tipo de nodo. Los siete tipos comparten la misma familia ciruela
- * del producto para que el mapa se lea como una sola paleta y no como siete
- * colores nuevos; el fondo translúcido mantiene el lienzo siempre legible.
+ * Accent per node type. All types share the product's single plum family so the
+ * map reads as one palette rather than new colors; the translucent background
+ * keeps the canvas always legible.
  */
 export const NODE_ACCENT_VAR: Record<GraphNodeType, string> = {
   course: '--c-accent',
@@ -103,18 +103,18 @@ export const NODE_ACCENT_VAR: Record<GraphNodeType, string> = {
   concept: '--c-accent',
   book: '--c-info',
   lesson: '--c-info',
-  // Notas y trabajo práctico comparten el tono de "contenido producido por el
-  // usuario": son las dos cosas que el estudiante escribe/crea, no material leído.
+  // Notes and practice work share the "user-produced content" tone: they are
+  // what the learner writes/creates, not material read.
   note: '--c-success',
   practice: '--c-success',
   resource: '--c-warning'
 };
 
-/** Relleno y borde de un nodo, derivados del token de acento de su tipo. */
+/** Node fill and border, derived from its type's accent token. */
 export function nodeColors(type: GraphNodeType, theme: ThemeMode): { background: string; border: string } {
   const base = readToken(NODE_ACCENT_VAR[type], FALLBACK_TOKENS[theme].accent);
   const isDark = theme === 'dark';
-  // En oscuro el relleno se apoya hacia el negro; en claro, hacia el papel.
+  // On dark the fill leans toward black; on light, toward paper.
   return {
     background: translucent(base, isDark ? 0.22 : 0.14),
     border: shade(base, isDark ? 0.12 : -0.12)

@@ -1,19 +1,18 @@
 """
-Validación del estado de migraciones Alembic al arrancar la aplicación.
+Alembic migration-state validation at application startup.
 
-Objetivo: detectar de forma temprana una base de datos cuyo
-esquema no corresponde al historial de migraciones, con un mensaje accionable,
-en lugar de permitir que la aplicación arranque y falle más tarde en un
-ALTER TABLE o una consulta.
+Goal: fail early on a database whose schema does not match the migration
+ history, with an actionable message, instead of letting the app boot and fail
+later on an ALTER TABLE or a query.
 
-Decisiones de diseño:
-- La revisión esperada se lee del PROPIO historial de Alembic
-  (`ScriptDirectory.get_heads()`), nunca de una versión codificada a mano.
-- La validación es de solo lectura: no modifica la base de datos, no ejecuta
-  migraciones y no elimina datos.
-- Los modos explícitos de desarrollo con creación automática de tablas
-  (`AUTO_CREATE_TABLES=1`) no pasan por esta validación.
-- `SKIP_MIGRATION_VALIDATION=1` permite desactivarla (pruebas/desarrollo).
+Design decisions:
+- The expected revision is read from Alembic's OWN history
+  (`ScriptDirectory.get_heads()`), never from a hand-coded version.
+- Validation is read-only: it never modifies the database, runs migrations,
+  or deletes data.
+- Explicit dev modes with automatic table creation (`AUTO_CREATE_TABLES=1`)
+  skip this validation.
+- `SKIP_MIGRATION_VALIDATION=1` disables it (tests/development).
 """
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,12 +21,12 @@ from typing import Optional
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Ruta canónica del alembic.ini del proyecto (backend/alembic.ini).
+# Canonical project alembic.ini path (backend/alembic.ini).
 ALEMBIC_INI_PATH = Path(__file__).resolve().parent.parent.parent / "alembic.ini"
 
-# Tablas que solo existen si el esquema de la aplicación se ha creado de alguna
-# forma (migración o create_all). Sirven para distinguir una base "fresca" de
-# una base con esquema pero sin registro de migraciones.
+# Tables that only exist once the app schema was created somehow (migration or
+# create_all). They tell a "fresh" database apart from one with a schema but
+# no migration record.
 _APPLICATION_TABLES = {
     "learning_resource",
     "course",
@@ -49,7 +48,7 @@ _UPGRADE_COMMAND = "PYTHONPATH=. alembic -c backend/alembic.ini upgrade head"
 
 @dataclass(frozen=True)
 class MigrationStateReport:
-    """Resultado de la validación del estado de migraciones."""
+    """Migration-state validation result."""
 
     # 'ok' | 'fresh' | 'missing-version' | 'behind-head' | 'divergent' | 'multiple-heads'
     status: str
@@ -63,7 +62,7 @@ class MigrationStateReport:
 
 
 def get_script_directory(ini_path: Optional[Path] = None):
-    """Devuelve el ScriptDirectory de Alembic leyendo el historial real."""
+    """Return Alembic's ScriptDirectory by reading the real history."""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
@@ -72,7 +71,7 @@ def get_script_directory(ini_path: Optional[Path] = None):
 
 
 def read_database_revision(engine: Engine) -> Optional[str]:
-    """Lee la revisión aplicada en `alembic_version`, si existe."""
+    """Read the applied revision from `alembic_version`, if present."""
     inspector = inspect(engine)
     if "alembic_version" not in inspector.get_table_names():
         return None
@@ -82,17 +81,17 @@ def read_database_revision(engine: Engine) -> Optional[str]:
 
 
 def has_application_tables(engine: Engine) -> bool:
-    """¿Contiene la base alguna tabla del esquema de la aplicación?"""
+    """Does the database contain any app-schema table?"""
     inspector = inspect(engine)
     return bool(set(inspector.get_table_names()) & _APPLICATION_TABLES)
 
 
 def validate_migration_state(engine: Engine, ini_path: Optional[Path] = None) -> MigrationStateReport:
     """
-    Compara la revisión aplicada en la base con la cabeza real del historial.
+    Compare the applied database revision against the real history head.
 
-    No modifica nada. Devuelve un informe con un mensaje accionable en español
-    cuando el estado no es válido.
+    Changes nothing. Returns a report with an actionable Spanish-language
+    message when the state is invalid.
     """
     script = get_script_directory(ini_path)
     heads = script.get_heads()
@@ -157,7 +156,7 @@ def validate_migration_state(engine: Engine, ini_path: Optional[Path] = None) ->
             message=f"Base de datos en la última revisión de Alembic ({head}).",
         )
 
-    # ¿La revisión aplicada forma parte del historial actual?
+    # Is the applied revision part of the current history?
     try:
         known_revisions = {rev.revision for rev in script.iterate_revisions(head, "base")}
     except Exception:
@@ -188,14 +187,14 @@ def validate_migration_state(engine: Engine, ini_path: Optional[Path] = None) ->
 
 
 def is_migration_validation_skipped() -> bool:
-    """¿Se ha desactivado explícitamente la validación por entorno?"""
+    """Was validation explicitly disabled via environment?"""
     import os
 
     return os.getenv("SKIP_MIGRATION_VALIDATION", "0").lower() in ("1", "true", "yes")
 
 
 def is_auto_create_enabled() -> bool:
-    """¿Está habilitada la creación automática de tablas (modo desarrollo)?"""
+    """Is automatic table creation enabled (dev mode)?"""
     import os
 
     return os.getenv("AUTO_CREATE_TABLES", "0").lower() in ("1", "true", "yes")

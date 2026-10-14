@@ -1,5 +1,5 @@
 /**
- * Sistema de plantillas de prompts pedagógicos y anti-alucinación para CrossedArts.
+ * Template system for CrossedArts pedagogical and anti-hallucination prompts.
  */
 
 export const ANTI_HALLUCINATION_DIRECTIVES = `
@@ -13,7 +13,7 @@ INSTRUCCIONES ESTRICTAS DE VERACIDAD (ZERO-HALLUCINATION) Y SEGURIDAD:
 `.trim();
 
 export function buildAssistantPrompt(query: string, retrievedContext: string): { system: string; user: string } {
-  // Limitar longitud de la consulta del usuario para evitar desbordamiento del contexto
+  // Cap the user query so a long paste cannot overflow the model context window.
   const safeQuery = query.length > 500 ? query.slice(0, 500) + '... [consulta acotada]' : query;
 
   const system = `Eres el Asistente Pedagógico Local de CrossedArts (Learning Operating System), ejecutándote 100% en el dispositivo del usuario.

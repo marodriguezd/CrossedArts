@@ -1,13 +1,13 @@
 /**
- * Sesiones de estudio: KPIs, actividad diaria, ciclo de vida y analítica.
+ * Study sessions: KPIs, daily activity, lifecycle, analytics.
  *
- * Ámbito de dominio (regla única en `services/sessionScope.ts`): una sesión es
- * de LECCIÓN, de RECURSO o GLOBAL (repaso transversal sin anclas). El ámbito se
- * persiste explícito y se deriva de las anclas al escribir.
+ * Domain scope (single rule in `services/sessionScope.ts`): a session is LESSON,
+ * RESOURCE, or GLOBAL (anchorless cross-cutting review). Scope persists
+ * explicitly and derives from anchors on write.
  *
- * Este módulo no conoce el resto del dominio: usa `dbBridge` y las constantes
- * de proyección propias. Las llamadas a métodos hermanos (`this.*`) las resuelve
- * el objeto `dao` compuesto que lo incorpora.
+ * This module knows nothing else of the domain: it uses `dbBridge` and its own
+ * projection constants. Sibling-method calls (`this.*`) resolve through the
+ * composed `dao` object.
  */
 import { dbBridge } from '../sqliteBridge.ts';
 import {
@@ -38,7 +38,6 @@ export const sessionDao = {
     const studyMins = db.exec("SELECT SUM(duration_minutes) FROM learning_session")[0]?.values[0][0] as number || 0;
     const pendingReviews = db.exec("SELECT COUNT(*) FROM flashcard WHERE datetime(due_date) <= datetime('now')")[0]?.values[0][0] as number || 0;
 
-    // Cálculo dinámico y real de racha de estudio basado en learning_session
     const streakDays = await this.getActiveStreak();
     const today = await this.getTodayStudySummary();
 
@@ -53,9 +52,9 @@ export const sessionDao = {
   },
   async getTodayStudySummary(): Promise<TodayStudySummary> {
     const db = dbBridge.getDatabase();
-    // El "día de hoy" es el día calendario LOCAL del usuario, resuelto en
-    // JavaScript y pasado como parámetro. Antes se usaba `date('now')` (UTC),
-    // lo que desplazaba el día de estudio respecto al reloj del usuario.
+    // "Today" is the user's LOCAL calendar day, resolved in JavaScript and
+    // passed as a parameter. It used to be `date('now')` (UTC), which shifted
+    // the study day away from the user's clock.
     const { day, utcOffsetModifier } = resolveLocalDay();
     const res = db.exec(`
       SELECT COALESCE(SUM(cards_reviewed), 0), COALESCE(SUM(questions_answered), 0), COALESCE(SUM(correct_answers), 0)
@@ -101,12 +100,12 @@ export const sessionDao = {
   },
   async getRecentStudySessions(limit: number = 5): Promise<LearningSession[]> {
     const db = dbBridge.getDatabase();
-    // Una sesión completada es historial de aprendizaje en los TRES ámbitos
-    // canónicos: lección, recurso y global (repaso transversal). Se mantiene el
-    // filtro por `status` (una sesión cancelada o sin actividad no es historial)
-    // y ya no se descarta el ámbito global, que es una sesión legítima y
-    // explícita, no una sesión "sin ámbito". No se inventa ningún resource_id:
-    // `resource_title` y `lesson_title` siguen resolviendose por LEFT JOIN.
+    // A completed session is learning history in all THREE canonical scopes:
+    // lesson, resource, and global (cross-cutting review). The `status` filter
+    // stays (a cancelled or activity-less session is not history), and the
+    // global scope is no longer dropped: it is a legitimate, explicit session,
+    // not a "scopeless" one. No resource_id is invented: `resource_title` and
+    // `lesson_title` still resolve via LEFT JOIN.
     const res = db.exec(`${SESSION_SELECT}
       WHERE s.status = 'completed'
       ORDER BY datetime(s.started_at) DESC, s.id DESC
@@ -173,8 +172,8 @@ export const sessionDao = {
     try {
       await dbBridge.persist();
     } catch (err) {
-      // Revertir el cambio en memoria: la sesión sigue activa y la UI no reporta
-      // una finalización que no llegó a persistirse.
+      // Roll back the in-memory change: the session stays active and the UI
+      // reports no unpersisted finalization.
       db.run("UPDATE learning_session SET status = 'active', ended_at = NULL, duration_minutes = ? WHERE id = ?", [prevDuration, sessionId]);
       throw err;
     }

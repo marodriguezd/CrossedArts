@@ -2,9 +2,9 @@ import { tokenizeLexical } from '../localRag/retrieval.ts';
 import type { GroundingCheckResult } from './types.ts';
 
 /**
- * Validador heurístico de fundamentación (grounding check):
- * Verifica que el contenido generado (pregunta, respuesta o tarjeta) contenga términos
- * clave presentes en el contexto recuperado, impidiendo alucinaciones desconectadas.
+ * Heuristic grounding check: verifies the generated content (question, answer,
+ * or card) contains key terms present in the retrieved context, blocking
+ * disconnected hallucinations.
  */
 export function checkGrounding(
   textToCheck: string,
@@ -43,7 +43,7 @@ export function checkGrounding(
 }
 
 /**
- * Valida la estructura de una lista de tarjetas de memoria candidatas.
+ * Validates the structure of a candidate flashcard list.
  */
 export function validateFlashcardBatch(
   parsed: any,
@@ -83,7 +83,7 @@ export function validateFlashcardBatch(
 
     const normalizedFront = front.toLowerCase();
     if (seenFronts.has(normalizedFront)) {
-      continue; // Ignorar duplicados
+      continue; // Ignore duplicates
     }
     seenFronts.add(normalizedFront);
 
@@ -108,7 +108,7 @@ export function validateFlashcardBatch(
 }
 
 /**
- * Valida la estructura de preguntas tipo test (opción múltiple).
+ * Validates the structure of multiple-choice quiz questions.
  */
 export function validateQuestionBatch(
   parsed: any,
@@ -146,7 +146,7 @@ export function validateQuestionBatch(
     if (options.length < 3 || options.length > 5) {
       return { valid: false, error: `La pregunta ${i + 1} debe tener entre 3 y 5 opciones (recibidas: ${options.length})` };
     }
-    // Verificar unicidad de opciones
+    // Reject duplicated options
     const uniqueOptions = new Set(options.map((o: string) => o.toLowerCase()));
     if (uniqueOptions.size !== options.length) {
       return { valid: false, error: `Opciones duplicadas encontradas en pregunta ${i + 1}` };
@@ -156,7 +156,7 @@ export function validateQuestionBatch(
     }
 
     if (contextSnippets.length > 0) {
-      // Verificar que el conjunto (pregunta + opción correcta + explicación) tenga respaldo en las fuentes
+      // Verify the set (question + correct option + explanation) is backed by the sources
       const textToVerify = `${question} ${options[correctIndex]} ${explanation}`;
       const gCheck = checkGrounding(textToVerify, contextSnippets, 0.15);
       if (!gCheck.grounded) {

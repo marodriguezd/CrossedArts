@@ -18,23 +18,23 @@ const VALID_TABS = new Set([
   'review',
   'graph',
   'notes',
-  // El identificador real de la vista «Hoy» en el resto de la app es `focus`
-  // (Shell, Dashboard y la paleta de comandos). `today` fue un alias temprano:
-  // se acepta por compatibilidad, pero SIEMPRE se normaliza a `focus`, de modo
-  // que `#tab=today` no renderiza una vista vacía ni rompe los enlaces guardados.
+  // The real id of the "Today" view across the app is `focus` (Shell,
+  // Dashboard, and the command palette). `today` was an early alias: accepted
+  // for compatibility but ALWAYS normalized to `focus`, so `#tab=today` never
+  // renders an empty view or breaks saved links.
   'focus',
   'analytics',
   'goals',
   'settings',
 ]);
 
-/** Alias históricos de `tab` → identificador canónico renderizado por la app. */
+/** Historic `tab` aliases -> canonical id rendered by the app. */
 const TAB_ALIASES: Record<string, string> = { today: 'focus' };
 
 /**
- * Parsea el estado navegable desde la URL (hash o searchParams).
- * Soporta tanto formato hash (#tab=course_detail&courseId=123) como search (?tab=...).
- * Da prioridad a hash por ser completamente seguro para SPAs estáticas en GitHub Pages.
+ * Parses navigable state from the URL (hash or searchParams). Supports both
+ * hash (#tab=course_detail&courseId=123) and search (?tab=...) formats. Hash
+ * wins because it is fully safe for static SPAs on GitHub Pages.
  */
 export function parseUrlState(hashOrSearch: string): AppUrlState {
   const raw = hashOrSearch.startsWith('#') || hashOrSearch.startsWith('?')
@@ -69,9 +69,6 @@ export function parseUrlState(hashOrSearch: string): AppUrlState {
   };
 }
 
-/**
- * Serializa el estado navegable de la aplicación a una cadena hash/search.
- */
 export function serializeUrlState(state: AppUrlState): string {
   const params = new URLSearchParams();
   if (state.tab && state.tab !== 'dashboard') {

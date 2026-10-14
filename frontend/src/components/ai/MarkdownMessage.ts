@@ -2,13 +2,13 @@ import { createElement, type ReactNode } from 'react';
 import { parseMarkdown, type InlineToken, type MarkdownBlock } from '../../lib/markdown/parseMarkdown.ts';
 
 /**
- * Renderizador seguro del Markdown del tutor.
+ * Safe tutor Markdown renderer.
  *
- * Se implementa con `createElement` (sin JSX) para poder importarse desde el
- * runner de pruebas de Node con `--experimental-strip-types`. Nunca usa
- * `dangerouslySetInnerHTML`: cada token del parser se convierte en un elemento
- * React con texto escapado, de modo que el HTML en bruto del modelo queda como
- * texto literal. Hereda únicamente los tokens semánticos del sistema de diseño.
+ * Implemented with `createElement` (no JSX) so the Node test runner with
+ * `--experimental-strip-types` can import it. It never uses
+ * `dangerouslySetInnerHTML`: every parser token becomes a React element with
+ * escaped text, so the model's raw HTML stays literal text. It inherits only
+ * the design system's semantic tokens.
  */
 
 const INLINE_CODE_CLASS =
@@ -85,7 +85,7 @@ interface MarkdownMessageProps {
   className?: string;
 }
 
-/** Renderiza el cuerpo Markdown de un mensaje del asistente. Solo assistant. */
+/** Renders the Markdown body of an assistant message. Assistant turns only. */
 export const MarkdownMessage = ({ content, className }: MarkdownMessageProps) =>
   createElement('div', { className }, ...parseMarkdown(content).map((block, index) => renderBlock(block, `b${index}`)));
 
@@ -95,14 +95,14 @@ interface MessageBodyProps {
 }
 
 /**
- * Cuerpo del mensaje según su rol: el asistente renderiza Markdown; el usuario
- * conserva texto plano exactamente como lo escribió (sin interpretar nada).
+ * Message body by role: the assistant renders Markdown; the user keeps plain
+ * text exactly as typed (nothing interpreted).
  */
 export const MessageBody = ({ role, content }: MessageBodyProps) =>
   role === 'user'
     ? createElement('span', { className: 'whitespace-pre-wrap' }, content)
     : createElement(MarkdownMessage, { content });
 
-/** Título de fuente RAG como texto plano (nunca Markdown), truncado con wrap. */
+/** RAG source title as plain text (never Markdown), wrapped for truncation. */
 export const SourceTitle = ({ title }: { title: string }) =>
   createElement('span', { className: 'break-words', title }, title);

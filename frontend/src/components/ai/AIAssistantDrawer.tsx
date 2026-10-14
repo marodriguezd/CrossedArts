@@ -12,13 +12,13 @@ interface MessageItem extends AIChatMessage {
   sources?: string[];
   isLocalOnDevice?: boolean;
   retrievalMode?: 'hybrid' | 'lexical' | 'semantic';
-  /** Citas estructuradas de la respuesta final (ausente en streaming/saludos). */
+  /** Structured citations of the final answer (absent in streaming/greetings). */
   citations?: RagSourceCitation[];
-  /** Modelo concreto que generó la respuesta final. */
+  /** Concrete model that produced the final answer. */
   modelUsed?: string;
-  /** Proveedor que generó la respuesta final. */
+  /** Provider that produced the final answer. */
   provider?: AIProvider;
-  /** Falso cuando el contexto se apoya solo en coincidencias débiles de metadatos. */
+  /** False when context rests only on weak metadata matches. */
   hasSubstantiveContext?: boolean;
 }
 
@@ -26,17 +26,17 @@ interface AIAssistantDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   activeContext: string;
-  /** Recurso activo: prioriza de forma determinista su contexto relacionado en el RAG. */
+  /** Active resource: deterministically prioritizes its related RAG context. */
   activeResourceId?: string;
-  /** Lección activa: extiende el ámbito determinista de recuperación a la lección. */
+  /** Active lesson: extends the deterministic retrieval scope to the lesson. */
   activeLessonId?: string;
-  /** Abre la fuente de una cita en su vista de origen (navegación determinista). */
+  /** Opens a citation source in its origin view (deterministic navigation). */
   onOpenCitation?: (citation: RagSourceCitation) => void;
-  /** Navega directamente a la vista de configuración para activar WebGPU o cambiar de modelo. */
+  /** Navigates straight to Settings to enable WebGPU or switch models. */
   onOpenSettings?: () => void;
 }
 
-/** Etiquetas de tipo para las rutas de procedencia de las citas. */
+/** Type labels for citation provenance routes. */
 const CITATION_TYPE_LABELS: Record<RagSourceCitation['sourceType'], string> = {
   course: 'Curso',
   lesson: 'Lección',
@@ -55,9 +55,9 @@ const PROVIDER_LABELS: Record<AIProvider, string> = {
 };
 
 /**
- * Cajón del tutor pedagógico. Mantiene visible el contexto activo, las fuentes
- * RAG recuperadas de SQLite y el PROVEEDOR real: nunca sugiere que una
- * interacción con proveedor remoto ocurre en el dispositivo.
+ * Tutoring drawer. Keeps the active context, the RAG sources retrieved from
+ * SQLite, and the REAL provider visible: it never implies that a
+ * remote-provider interaction happens on the device.
  */
 export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
   isOpen,
@@ -85,17 +85,17 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
   const [gpuReport, setGpuReport] = useState<WebGPUCapabilityReport | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sincronizar ajustes en tiempo real cuando el usuario cambie de proveedor
+  // Sync settings in real time when the user switches provider
   useEffect(() => aiService.subscribeSettings(setCurrentSettings), []);
 
-  // Diagnóstico de capacidades al abrir el cajón
+  // Capability diagnostics when the drawer opens
   useEffect(() => {
     if (!isOpen) return;
     void detectWebGPUCapability().then(setGpuReport);
   }, [isOpen]);
 
-  // Accesibilidad del cajón: Escape cierra el cajón, pero primero permite
-  // descartar el consentimiento cuando el modal de activación está abierto.
+  // Drawer accessibility: Escape closes it, but first allows dismissing
+  // consent while the activation modal is open.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -115,15 +115,15 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose, consentDismissed]);
 
-  // La preparación de IA local es automática: se refleja en la UI sin que el
-  // usuario gestione modelos, WebGPU ni índices.
+  // Local AI preparation is automatic: it reflects in the UI without the user
+  // managing models, WebGPU, or indexes.
   useEffect(() => localAiRuntime.subscribe(setRuntimeStatus), []);
 
   useEffect(() => {
     if (!isOpen) return;
     if (currentSettings.provider !== 'local') return;
     void localAiRuntime.prepareForTutor('local');
-    // Solo al abrir el cajón / cambiar de proveedor: nunca descarga por arrancar la app.
+    // Only when opening the drawer / switching provider: never downloads on app start.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentSettings.provider]);
 
@@ -138,8 +138,8 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     isLocalProvider && ['preparing', 'downloading', 'compiling'].includes(runtimeStatus.stage);
   const needsConsent = isLocalProvider && runtimeStatus.stage === 'consent-required';
   const localUnavailable = isLocalProvider && runtimeStatus.stage === 'unsupported';
-  // La acción del usuario comparte la preparación en vuelo y continúa al terminar.
-  // Solo la decisión de primera descarga bloquea el envío.
+  // The user action shares the in-flight preparation and continues when it ends.
+  // Only the first-download decision blocks sending.
   const sendBlocked = needsConsent;
 
 
@@ -158,8 +158,8 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
       const response: AssistantResponse = await aiService.askTutor(
         newHistory.map(m => ({ role: m.role, content: m.content })),
         activeContext,
-        // CONTRATO DE STREAMING: cada callback entrega un DELTA (solo texto
-        // nuevo), nunca el acumulado. Por eso se CONCATENA.
+        // STREAMING CONTRACT: each callback delivers a DELTA (new text only),
+        // never the accumulated text. Hence the CONCATENATION.
         (tokenChunk) => {
           streamingText += tokenChunk;
           setMessages([
@@ -207,7 +207,6 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
       aria-label="Tutor pedagógico"
       className="fixed inset-y-0 right-0 z-50 flex w-full animate-slide-left flex-col border-l border-line bg-surface shadow-pop sm:w-[440px]"
     >
-      {/* Cabecera */}
       <div className="flex items-center justify-between border-b border-line bg-raised p-4">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="rounded-lg border border-accent/25 bg-accent-soft p-2 text-accent">
@@ -238,7 +237,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
               )}
             </div>
             <p className="truncate text-meta">Contexto: {activeContext || 'General'}</p>
-            {/* Límite honesto de privacidad del proveedor activo */}
+            {/* Honest privacy boundary of the active provider */}
             <p className="mt-0.5 flex items-center gap-1 text-micro">
               <AlertCircle size={10} aria-hidden="true" />
               {isOnDevice
@@ -258,7 +257,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         </button>
       </div>
 
-      {/* Aviso diagnóstico WebGPU / Fallback */}
+      {/* WebGPU / fallback diagnostic notice */}
       {currentSettings.provider === 'local' && gpuReport && gpuReport.state !== 'supported' && (
         <div
           data-testid="ai-drawer-webgpu-notice"
@@ -280,7 +279,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         </div>
       )}
 
-      {/* Hilos de mensajes */}
+      {/* Message threads */}
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.map((m, idx) => (
           <div
@@ -301,10 +300,10 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
                     : 'rounded-tl-none border border-line bg-canvas text-ink'
                 )}
               >
-                {/* El asistente renderiza Markdown seguro; el usuario conserva texto plano. */}
+                {/* The assistant renders safe Markdown; the user keeps plain text. */}
                 <MessageBody role={m.role} content={m.content} />
 
-                {/* Fuentes RAG recuperadas de SQLite, con procedencia navegable */}
+                {/* RAG sources retrieved from SQLite, with navigable provenance */}
                 {m.citations !== undefined && (
                   <div className="mt-2.5 border-t border-line pt-2 text-micro">
                     <span className="mb-1 flex items-center justify-between gap-1 font-semibold">
@@ -366,7 +365,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
                         })}
                       </ul>
                     )}
-                    {/* Proveniencia explícita: qué modelo generó la respuesta. */}
+                    {/* Explicit provenance: which model produced the answer. */}
                     {m.modelUsed && m.provider && (
                       <p className="mt-1.5 border-t border-line pt-1.5 text-faint">
                         Respuesta generada por {PROVIDER_LABELS[m.provider]} · {m.modelUsed}
@@ -374,7 +373,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
                     )}
                   </div>
                 )}
-                {/* Compatibilidad: respuestas antiguas solo con títulos. */}
+                {/* Compatibility: legacy answers with titles only. */}
                 {m.citations === undefined && m.sources && m.sources.length > 0 && (
                   <div className="mt-2.5 border-t border-line pt-2 text-micro">
                     <span className="mb-1 flex items-center justify-between gap-1 font-semibold">
@@ -408,7 +407,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         )}
       </div>
 
-      {/* Estado de preparación automática de IA local: estados de producto, sin jerga */}
+      {/* Automatic local AI preparation state: product states, no jargon */}
       {isLocalProvider && (preparingLocal || localUnavailable) && (
         <div className="border-t border-line bg-canvas px-4 py-2" role="status" aria-live="polite">
           <div className="flex items-center gap-2 text-meta text-accent">
@@ -431,7 +430,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         </div>
       )}
 
-      {/* Consentimiento único de primera descarga: diálogo directo y accionable. */}
+      {/* One-time first-download consent: direct, actionable dialog. */}
       {needsConsent && !consentDismissed && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/20 px-4 backdrop-blur-[2px]"
@@ -488,7 +487,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         </div>
       )}
 
-      {/* Tras posponer, queda una vía compacta para activar la IA sin repetir el modal. */}
+      {/* After postponing, a compact path remains to enable AI without repeating the modal. */}
       {needsConsent && consentDismissed && (
         <div className="border-t border-line bg-accent-soft/40 px-4 py-2.5" role="status" aria-live="polite">
           <div className="flex items-center gap-2">
@@ -509,7 +508,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         </div>
       )}
 
-      {/* Acción rápida: Explicar este recurso */}
+      {/* Quick action: explain this resource */}
       {activeContext && activeContext !== 'General' && activeContext !== 'dashboard' && activeContext !== 'settings' && (
         <div className="flex items-center justify-between border-t border-line bg-canvas px-3 pb-1 pt-2">
           <button
@@ -558,7 +557,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         </div>
       )}
 
-      {/* Entrada de chat */}
+      {/* Chat input */}
       <form onSubmit={handleSend} className="flex gap-2 border-t border-line bg-raised p-3">
         <label htmlFor="ai-chat-input" className="sr-only">
           Pregunta sobre tus cursos, libros o notas

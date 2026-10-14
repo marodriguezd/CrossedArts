@@ -1,15 +1,14 @@
-"""Validación estructural de material de estudio generado por LLM.
+"""Structural validation of LLM-generated study material.
 
-El frontend ya valida estructura Y fundamentación de las respuestas de los
-modelos locales (studyGeneration/validators.ts). El backend solo hacía
-`json.loads()` y sustituía el fallo por material genérico fabricado, que se
-presentaba como si la generación hubiera tenido éxito. Este módulo centra la
-validación del backend para que material malformado o vacío JAMÁS se persista
-ni se devuelva como si fuera válido.
+The frontend already validates structure AND grounding of local-model answers
+(studyGeneration/validators.ts). The backend used to `json.loads()` and swap
+failure for fabricated generic material presented as a successful generation.
+This module centralizes backend validation so malformed or empty material is
+NEVER persisted or returned as valid.
 """
 from typing import Any, Dict, List, Optional, Tuple
 
-# Límites de tamaño razonables: ni lotes vacíos ni volúmenes absurdos.
+# Sane size limits: neither empty batches nor absurd volumes.
 MAX_QUESTIONS = 20
 MAX_FLASHCARDS = 30
 MAX_OPTIONS = 6
@@ -19,7 +18,7 @@ ALLOWED_QUESTION_TYPES = {"multiple_choice", "short_answer"}
 
 
 class StudyMaterialValidationError(ValueError):
-    """El material generado por el LLM no cumple la estructura mínima."""
+    """LLM-generated material fails the minimum structure."""
 
 
 def _clean_text(value: Any) -> str:
@@ -45,12 +44,12 @@ def validate_quiz_questions(
     max_questions: int = MAX_QUESTIONS,
 ) -> List[Dict[str, Any]]:
     """
-    Valida la estructura de un lote de preguntas de quiz.
+    Validate a quiz-question batch's structure.
 
-    Exige: lista con `min_questions..max_questions` ítems; cada ítem objeto con
-    enunciado no vacío, tipo permitido ('multiple_choice'|'short_answer'),
-    respuesta presente; y para opción múltiple, entre 2 y MAX_OPTIONS opciones
-    únicas no vacías, con la respuesta incluida en ellas.
+    Requires: a list of `min_questions..max_questions` items; each an object with
+    a non-empty prompt, an allowed type ('multiple_choice'|'short_answer'), and
+    a present answer; multiple-choice needs 2..MAX_OPTIONS unique non-empty
+    options including the answer.
     """
     if payload is None:
         raise StudyMaterialValidationError("La respuesta del modelo está vacía.")
@@ -120,11 +119,11 @@ def validate_flashcards(
     max_cards: int = MAX_FLASHCARDS,
 ) -> List[Dict[str, str]]:
     """
-    Valida la estructura de un lote de flashcards.
+    Validate a flashcard batch's structure.
 
-    Exige: lista con `min_cards..max_cards` ítems; cada ítem objeto con
-    anverso (front/question) y reverso (back/answer) no vacíos y de longitud
-    acotada. Rechaza duplicados exactos de anverso.
+    Requires: a list of `min_cards..max_cards` items, each with non-empty
+    length-bounded front (front/question) and back (back/answer). Rejects exact
+    front duplicates.
     """
     if payload is None:
         raise StudyMaterialValidationError("La respuesta del modelo está vacía.")

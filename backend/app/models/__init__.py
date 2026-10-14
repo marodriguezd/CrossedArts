@@ -44,12 +44,12 @@ __all__ = [
 
 from sqlalchemy import event, or_, and_
 
-# Listener de eventos para limpiar automáticamente EmbeddingRecord y KnowledgeConnection al eliminar registros
+# Event listener: auto-clean EmbeddingRecord and KnowledgeConnection rows on delete.
 def clean_polymorphic_orphans(mapper, connection, target):
     target_id = target.id
     class_name = target.__class__.__name__
 
-    # Mapear el nombre de la clase al tipo polimórfico correspondiente
+    # Map the class name to its polymorphic type.
     entity_type = None
     if class_name == "Note":
         entity_type = "note"
@@ -67,7 +67,7 @@ def clean_polymorphic_orphans(mapper, connection, target):
         entity_type = "resource"
 
     if entity_type:
-        # Eliminar registros de embedding huérfanos
+        # Delete orphan embedding rows.
         connection.execute(
             EmbeddingRecord.__table__.delete().where(
                 and_(
@@ -76,7 +76,7 @@ def clean_polymorphic_orphans(mapper, connection, target):
                 )
             )
         )
-        # Eliminar conexiones conceptuales huérfanas
+        # Delete orphan concept connections.
         connection.execute(
             KnowledgeConnection.__table__.delete().where(
                 or_(

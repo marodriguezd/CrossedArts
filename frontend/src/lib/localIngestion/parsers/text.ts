@@ -2,21 +2,21 @@ import type { ParsedDocument, DocumentSection } from '../types.ts';
 import { computeBinarySha256 } from '../fingerprint.ts';
 
 /**
- * Limpia y normaliza texto plano eliminando caracteres de control nulos
- * y preservando saltos de línea y párrafos.
+ * Cleans and normalizes plain text by removing null control characters while
+ * preserving line breaks and paragraphs.
  */
 export function sanitizePlainText(input: string): string {
   return input
-    .replace(/\0/g, '') // Eliminar null bytes
-    .replace(/\r\n/g, '\n') // Normalizar saltos CRLF a LF
+    .replace(/\0/g, '') // Strip null bytes
+    .replace(/\r\n/g, '\n') // Normalize CRLF breaks to LF
     .replace(/\r/g, '\n')
-    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Eliminar caracteres de control no imprimibles
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Strip non-printable control characters
     .trim();
 }
 
 /**
- * Parsea un archivo .txt plano dividiéndolo en secciones lógicas o párrafos
- * si supera una longitud determinada.
+ * Parses a plain .txt file by splitting it into logical sections or paragraphs
+ * once it exceeds a given length.
  */
 export async function parseTextFile(
   file: { name: string; size: number; text: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }
@@ -29,10 +29,10 @@ export async function parseTextFile(
     throw new Error(`El archivo de texto "${file.name}" está vacío o contiene sólo caracteres no válidos.`);
   }
 
-  // Título derivado del nombre del archivo (sin extensión)
+  // Title derived from the filename (without extension)
   const title = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim();
 
-  // Dividir en secciones acotadas por párrafos dobles
+  // Split into sections bounded by double paragraph breaks
   const rawParagraphs = clean.split(/\n\s*\n+/);
   const sections: DocumentSection[] = [];
   

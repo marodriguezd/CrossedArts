@@ -6,11 +6,11 @@
 
 alembic==1.13.3
 defusedxml==0.7.1
-# fastapi 0.115.0 fijaba starlette<0.39 (0.38.6), anterior al soporte de
-# peticiones Range (HTTP 206) en FileResponse. El endpoint
-# `GET /media/{id}/stream` anuncia `Accept-Ranges: bytes`, así que el entorno
-# fijado debe resolver una starlette con Range: fastapi 0.142.2 → starlette 1.7.0.
-# Verificado: la suite de backend pasa con este pin.
+# fastapi 0.115.0 pinned starlette<0.39 (0.38.6), predating Range request
+# support (HTTP 206) in FileResponse. The `GET /media/{id}/stream` endpoint
+# advertises `Accept-Ranges: bytes`, so the pinned environment must resolve a
+# starlette with Range support: fastapi 0.142.2 -> starlette 1.7.0.
+# Verified: the backend suite passes with this pin.
 fastapi==0.142.2
 httpx==0.27.2
 langchain==0.3.30
@@ -30,11 +30,11 @@ pyyaml==6.0.2
 sentence-transformers==3.1.1
 sqlalchemy==2.0.35
 
-# --- Herramientas de calidad (CI) ---
-# El job de backend ejecuta `python -m ruff check` y `python -m mypy`, que
-# requieren ruff/mypy IMPORTABLES en el mismo intérprete. No deben depender de
-# binarios preinstalados en la imagen del runner (ubuntu-latest solo trae
-# pipx: yamllint y ansible-core). Se fijan aquí para que el entorno de CI sea
-# reproducible desde requirements.lock.
+# --- Quality tooling (CI) ---
+# The backend job runs `python -m ruff check` and `python -m mypy`, which
+# require ruff/mypy IMPORTABLE in the same interpreter. They must not rely on
+# binaries preinstalled on the runner image (ubuntu-latest only ships
+# pipx: yamllint and ansible-core). Pinned here so the CI environment stays
+# reproducible from requirements.lock.
 mypy==2.4.0
 ruff==0.16.10

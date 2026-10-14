@@ -30,7 +30,7 @@ def test_no_test_file_references_real_application_engine():
     ]
     offenders = []
     for test_file in TESTS_DIR.glob("test_*.py"):
-        # Este guardián contiene los patrones prohibidos como literales: se excluye.
+        # This guardian embeds the banned patterns as literals: excluded.
         if test_file.name == Path(__file__).name:
             continue
         source = test_file.read_text(encoding="utf-8")
@@ -49,7 +49,7 @@ def test_conftest_does_not_initialize_real_schema():
     conftest = (TESTS_DIR / "conftest.py").read_text(encoding="utf-8")
     assert "real_engine" not in conftest
     assert "from backend.app.core.database import engine" not in conftest
-    # La única creación de esquema permitida es sobre el engine de la prueba.
+    # Schema creation is only allowed on the test engine.
     assert "Base.metadata.create_all(bind=engine)" in conftest
 
 
@@ -74,8 +74,8 @@ def test_background_style_write_goes_to_test_database(db, db_engine, isolated_ba
     from backend.app.models.resource import Course
     from backend.app.models.base import ResourceStatus
 
-    # Patrón idéntico al de los trabajadores en segundo plano: nueva sesión
-    # desde `SessionLocal` importada DENTRO de la función.
+    # Same pattern as background workers: fresh session from a function-local
+    # `SessionLocal` import.
     def run_background_task():
         from backend.app.core.database import SessionLocal
 
@@ -97,7 +97,7 @@ def test_background_style_write_goes_to_test_database(db, db_engine, isolated_ba
 
     # El recurso existe en la base de la prueba...
     assert db.query(Course).filter(Course.id == course_id).first() is not None
-    # ...y el engine de la prueba es el único con tablas creadas por ella.
+    # ...and the test engine is the only one with tables it created.
     assert "course" in inspect(db_engine).get_table_names()
 
 
@@ -150,5 +150,5 @@ def test_real_application_database_file_is_never_created_by_tests():
         import backend.app.core.database as database_module
 
         assert str(database_module.engine.url) == str(settings.database_url)
-    # Si no existía, ninguna prueba debería haberla creado: el engine real solo
+    # When absent, no test may have created it: the real engine only
     # se conecta perezosamente y las pruebas no lo usan.

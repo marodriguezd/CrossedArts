@@ -78,8 +78,8 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
   const [packageFeedback, setPackageFeedback] = useState<string | null>(null);
 
   /**
-   * Exporta el MATERIAL del recurso (estructura, contenido y trabajo práctico)
-   * como paquete JSON. Nunca incluye notas, sesiones ni progreso del alumno.
+   * Exports the resource MATERIAL (structure, content, and practice work) as a
+   * JSON package. Never includes notes, sessions, or learner progress.
    */
   const handleExportPackage = async () => {
     try {
@@ -190,7 +190,6 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
         <ArrowLeft size={15} aria-hidden="true" /> {t('res.back')}
       </button>
 
-      {/* Cabecera editorial del objeto de estudio */}
       <header className="border-b border-line pb-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
@@ -236,7 +235,6 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
           </div>
         </div>
 
-        {/* Metadatos discretos */}
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-meta sm:grid-cols-3">
           <div>
             <dt className="text-faint">{t('res.type')}</dt>
@@ -276,7 +274,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
           )}
         </dl>
 
-        {/* Información técnica disponible sin dominar la lectura */}
+        {/* Technical info available without dominating the read */}
         <div className="mt-4 space-y-1 rounded-lg border border-line bg-canvas px-3 py-2.5">
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-meta">
             <span className="flex items-center gap-1 text-muted">
@@ -378,7 +376,7 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
         )}
       </header>
 
-      {/* Contenido extraído (tratado como datos): protagonista de la página */}
+      {/* Extracted content (treated as data): the page's centerpiece */}
       {fragments.length > 0 && (
         <section className="rounded-xl border border-line bg-surface p-5 shadow-card" aria-label={t('res.indexedLabel')}>
           <h2 className="type-section mb-3 border-b border-line pb-2 text-ink">
@@ -413,14 +411,14 @@ export const ResourceDetail: React.FC<ResourceDetailProps> = ({
         </section>
       )}
 
-      {/* Trabajo práctico: artefactos producidos por el estudiante, vinculados al recurso */}
+      {/* Practice work: learner-produced artifacts linked to the resource */}
       <PracticeWorkPanel
         resourceId={resource.id}
         onChanged={onRefresh}
         onOpenResource={onOpenResource}
       />
 
-      {/* Relacionado (solo relaciones canónicas) */}
+      {/* Related (canonical relations only) */}
       <section className="rounded-xl border border-line bg-surface p-5 shadow-card" aria-label={t('res.relatedLabel')}>
         <h2 className="type-section mb-3 border-b border-line pb-2 text-ink">
           {t('res.relatedCount', { n: related.length })}

@@ -1,13 +1,13 @@
 /**
- * DDL canónico del trabajo práctico.
+ * Canonical DDL for practice work.
  *
- * El trabajo práctico es EVIDENCIA PRODUCIDA POR EL ESTUDIANTE: no es un dato
- * derivado del recurso, así que sus vínculos al recurso y a la lección usan
- * `ON DELETE SET NULL`. Borrar una lección o un recurso NO debe destruir el
- * trabajo del usuario; el artefacto queda huérfano pero visible y explicable.
+ * Practice work is EVIDENCE PRODUCED BY THE LEARNER: not data derived from a
+ * resource, so its resource and lesson links use `ON DELETE SET NULL`. Deleting
+ * a lesson or resource must NOT destroy the user's work; the artifact is left
+ * orphaned but visible and explainable.
  *
- * Se expone como función para que la migración de bases existentes construya
- * la tabla con exactamente la misma definición (una sola fuente de verdad).
+ * Exposed as a function so the existing-database migration builds the table
+ * with exactly the same definition (a single source of truth).
  */
 export function buildPracticeWorkTableSql(tableName: string): string {
   return `CREATE TABLE IF NOT EXISTS ${tableName} (
@@ -30,7 +30,7 @@ export function buildPracticeWorkTableSql(tableName: string): string {
 );`;
 }
 
-/** Índices del trabajo práctico (mismos nombres para la tabla canónica y la migrada). */
+/** Practice-work indexes (same names for the canonical and migrated tables). */
 export const PRACTICE_WORK_INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS idx_practice_work_resource ON practice_work(resource_id);
 CREATE INDEX IF NOT EXISTS idx_practice_work_lesson ON practice_work(lesson_id);
@@ -87,15 +87,15 @@ CREATE TABLE IF NOT EXISTS lesson (
   is_completed BOOLEAN DEFAULT 0
 );
 
--- Ámbito de la sesión (regla canónica en services/sessionScope.ts):
---   'lesson'   -> sesión iniciada en una lección (resource_id opcional)
---   'resource' -> sesión iniciada en un recurso, sin lección
---   'global'   -> repaso transversal: ninguna ancla (ámbito explícito, no ausencia)
--- Al escribir, el DAO valida la coherencia estricta del ámbito con sus anclas.
--- La base solo garantiza el dominio de valores y que 'global' nunca tenga
--- ancla, porque la regla ON DELETE SET NULL puede desvincular la lección de una
--- sesión de lección ya terminada: el historial se conserva y su ámbito se
--- reclasifica en la lectura (el DAO deriva el ámbito efectivo de las anclas).
+-- Session scope (canonical rule in services/sessionScope.ts):
+--   'lesson'   -> session started in a lesson (resource_id optional)
+--   'resource' -> session started in a resource, with no lesson
+--   'global'   -> cross-cutting review: no anchors (explicit scope, not absence)
+-- On write, the DAO strictly validates scope coherence against its anchors.
+-- The database only enforces the value domain and that 'global' never carries
+-- an anchor, because ON DELETE SET NULL may unlink the lesson from an already
+-- finished lesson session: history is preserved and its scope is reclassified
+-- on read (the DAO derives the effective scope from the remaining anchors).
 CREATE TABLE IF NOT EXISTS learning_session (
   id TEXT PRIMARY KEY,
   resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
@@ -162,29 +162,28 @@ CREATE TABLE IF NOT EXISTS knowledge_connection (
   weight REAL DEFAULT 1.0
 );
 
--- knowledge_connection es polimorfica (los extremos pueden ser conceptos,
--- recursos, cursos, módulos, lecciones o notas), por lo que NO se fuerzan
--- claves foráneas. La integridad de existencia se valida en la aplicación; el
--- índice único de tripleta evita duplicados exactos y los índices de extremos
--- aceleran el podado de conexiones huérfanas.
+-- knowledge_connection is polymorphic (either end may be a concept, resource,
+-- course, module, lesson, or note), so foreign keys are deliberately NOT
+-- enforced. Existence integrity is validated in the application; the triple
+-- unique index prevents exact duplicates and the endpoint indexes speed up
+-- pruning of orphaned connections.
 CREATE INDEX IF NOT EXISTS idx_knowledge_connection_source ON knowledge_connection(source_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_connection_target ON knowledge_connection(target_id);
 
--- Trabajo práctico: artefactos producidos por el estudiante y ligados al
--- aprendizaje (recurso, lección o concepto). Se añade de forma ADITIVA: el DDL
--- usa IF NOT EXISTS y se ejecuta en cada apertura, así que las bases existentes
--- se migran solas sin perder datos. Los vínculos usan SET NULL (ver
--- buildPracticeWorkTableSql): borrar el padre no debe destruir el trabajo del
--- usuario. Las bases antiguas con CASCADE se reconstruyen en
+-- Practice work: learner-produced artifacts linked to learning (resource,
+-- lesson, or concept). Added ADDITIVELY: the DDL uses IF NOT EXISTS and runs on
+-- every open, so existing databases migrate themselves without data loss. Links
+-- use SET NULL (see buildPracticeWorkTableSql): deleting the parent must not
+-- destroy the user's work. Legacy databases with CASCADE are rebuilt by
 -- migratePracticeWorkParentCascade().
 ${buildPracticeWorkTableSql('practice_work')}
 ${PRACTICE_WORK_INDEX_SQL}
 
--- Metas de aprendizaje: planificación personal derivada de datos reales.
--- El progreso NUNCA se persiste aquí: se calcula en cada lectura desde el
--- recurso enlazado, el trabajo práctico o las sesiones de estudio. Se añade de
--- forma ADITIVA (IF NOT EXISTS en cada apertura): las bases existentes crean la
--- tabla solas sin tocar sus datos.
+-- Learning goals: personal planning derived from real data. Progress is NEVER
+-- persisted here: it is computed on every read from the linked resource,
+-- practice work, or study sessions. Added ADDITIVELY (IF NOT EXISTS on every
+-- open): existing databases create the table on their own without touching
+-- their data.
 CREATE TABLE IF NOT EXISTS learning_goal (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -200,15 +199,15 @@ CREATE TABLE IF NOT EXISTS learning_goal (
 );
 CREATE INDEX IF NOT EXISTS idx_learning_goal_status ON learning_goal(status);
 CREATE INDEX IF NOT EXISTS idx_learning_goal_resource ON learning_goal(resource_id);
--- Las columnas 'content' y 'checklist' de practice_work existen solo en bases
--- nuevas; la migración idempotente migratePracticeWorkspace() las añade a bases
--- creadas por versiones anteriores (ALTER TABLE ADD COLUMN).
+-- The 'content' and 'checklist' columns of practice_work exist only in new
+-- databases; the idempotent migratePracticeWorkspace() migration adds them to
+-- databases created by earlier versions (ALTER TABLE ADD COLUMN).
 `;
 
 /**
- * Índice único determinista de tripletas (source_id, target_id, connection_type).
- * Se crea en una migración explícita (no en el DDL base) para poder deduplicar
- * primero bases de datos existentes sin romper la inicialización.
+ * Deterministic unique index on the (source_id, target_id, connection_type)
+ * triples. Created in an explicit migration (not in the base DDL) so existing
+ * databases can be deduplicated first without breaking initialization.
  */
 export const KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL =
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_connection_triple ON knowledge_connection(source_id, target_id, connection_type);';

@@ -24,18 +24,18 @@ export interface GenerationOptions {
   maxTokens?: number;
   topP?: number;
   /**
-   * Callback de streaming.
+   * Streaming callback.
    *
-   * CONTRATO DE STREAMING (único para todos los backends): cada invocación
-   * entrega un DELTA, es decir SOLO el texto nuevo. Nunca el texto acumulado ni
-   * la respuesta final completa. Por tanto:
+   * STREAMING CONTRACT (single one for all backends): each invocation delivers a
+   * DELTA, that is ONLY the new text. Never the accumulated text nor the full
+   * final answer. Therefore:
    *
-   *   chunks.join('') === respuesta final
+   *   chunks.join('') === final answer
    *
-   * Los backends que producen texto acumulado por naturaleza (Transformers.js
-   * en WASM, tanto en hilo principal como en worker) calculan el delta ANTES de
-   * invocar el callback, y la respuesta final NO se emite una segunda vez.
-   * Los backends que ya emiten deltas (WebGPU) los delivers tal cual.
+   * Backends that naturally produce accumulated text (Transformers.js on WASM,
+   * in the main thread and in a worker alike) compute the delta BEFORE invoking
+   * the callback, and the final answer is NOT emitted a second time. Backends
+   * that already emit deltas (WebGPU) pass them through unchanged.
    */
   onChunk?: (delta: string) => void;
   signal?: AbortSignal;
@@ -47,26 +47,26 @@ export interface ChatMessage {
 }
 
 /**
- * Abstracción de Runtime de Modelo Local (WebLLM, Transformers.js WASM, WebGPU).
+ * Local Model Runtime abstraction (WebLLM, Transformers.js WASM, WebGPU).
  *
- * Contrato único: `generate()` es el nombre canónico de la API de generación. Los
- * nombres históricos (`generateChat`) existen solo como alias delgado para no
- * romper llamantes externos: no son un segundo contrato.
+ * Single contract: `generate()` is the canonical name of the generation API.
+ * Historic names (`generateChat`) exist only as a thin alias so external callers
+ * keep working: they are not a second contract.
  */
 export interface LocalModelRuntime {
   loadModel(modelId: string, onProgress?: RuntimeProgressCallback): Promise<void>;
   unload(): Promise<void>;
-  /** API canónica de generación. Devuelve SIEMPRE el texto final completo. */
+  /** Canonical generation API. ALWAYS returns the complete final text. */
   generate(messages: ChatMessage[], options?: GenerationOptions): Promise<string>;
   /**
-   * Alias de compatibilidad de `generate`. Mismo comportamiento, incluido el
-   * contrato de streaming por deltas.
+   * Compatibility alias of `generate`. Same behavior, including the delta
+   * streaming contract.
    */
   generateChat?(
     messages: ChatMessage[],
     options?: GenerationOptions & { stream?: boolean }
   ): Promise<string>;
-  /** Iterador de deltas (mismo contrato que `onChunk`). */
+  /** Delta iterator (same contract as `onChunk`). */
   generateStream?(messages: ChatMessage[], options?: GenerationOptions): AsyncIterable<string>;
   getStatus(): RuntimeStatus;
   getLoadedModelId(): string | null;
@@ -77,20 +77,19 @@ export interface LocalModelRuntime {
 }
 
 /**
- * Emisor de deltas para backends que solo saben producir texto ACUMULADO.
+ * Delta emitter for backends that can only produce ACCUMULATED text.
  *
- * Convierte una secuencia de instantáneas acumuladas en deltas reales y
- * garantiza que la concatenación de todo lo emitido reproduce exactamente el
- * texto final (una vez normalizado). Si el texto acumulado se "corrige" (el
- * backend reescribe el final), el emisor emite únicamente el sufijo que aún no
- * había entregado y descarta el prefijo ya emitido, de modo que nunca se
- * duplica ni se pierde contenido.
+ * It turns a sequence of accumulated snapshots into real deltas and guarantees
+ * that concatenating everything emitted reproduces exactly the final text (once
+ * normalized). When the accumulated text is "corrected" (the backend rewrites
+ * the tail), the emitter emits only the suffix not yet delivered and discards
+ * the already-emitted prefix, so content is never duplicated or lost.
  *
- * Determinista y sin estado global: cada generación usa su propia instancia.
+ * Deterministic with no global state: each generation uses its own instance.
  */
 export class DeltaStream {
   private emitted = '';
-  /** Espacio final retenido de la última instantánea. */
+  /** Trailing whitespace held back from the last snapshot. */
   private pendingWhitespace = '';
   private readonly chunks: string[] = [];
   private readonly onChunk: (delta: string) => void;
@@ -98,29 +97,29 @@ export class DeltaStream {
 
   constructor(onChunk: (delta: string) => void, normalize?: (text: string) => string) {
     this.onChunk = onChunk;
-    // Normalización de MARCADORES, no de espacios: el recorte exterior se aplica
-    // una sola vez sobre la respuesta final, no en cada instantánea (si no, un
-    // corte de palabra perdería el espacio que lo une con lo siguiente).
+    // MARKER normalization, not whitespace: outer trimming applies once over the
+    // final answer, not on every snapshot (otherwise a word split would lose the
+    // space joining it to the next one).
     this.normalize = normalize ?? stripTemplateMarkers;
   }
 
   /**
-   * Ingesta una instantánea de texto (acumulado o delta) y emite SOLO lo nuevo.
+   * Ingests a text snapshot (accumulated or delta) and emits ONLY what is new.
    *
-   * El espacio en blanco final de cada instantánea se RETIENE hasta que llega
-   * más contenido (o hasta `finish`), de modo que un corte de palabra no obliga
-   * a emitir un delTA terminado en espacio que después se recorta: los deltas
-   * reconstruyen la respuesta EXACTAMENTE.
+   * Trailing whitespace of each snapshot is HELD BACK until more content arrives
+   * (or until `finish`), so a word split does not force emitting a
+   * space-terminated delta that is later trimmed: deltas reconstruct the answer
+   * EXACTLY.
    *
-   * Es idempotente con el mismo contenido acumulado y nunca emite vacío.
+   * Idempotent with the same accumulated content and never emits empty output.
    */
   push(snapshot: string): void {
     const normalized = this.normalize(snapshot);
     if (normalized.length <= this.emitted.length) return;
 
     if (!normalized.startsWith(this.emitted)) {
-      // El backend reescribió el texto ya emitido: se entrega solo el sufijo
-      // realmente nuevo, nunca el prefijo duplicado.
+      // The backend rewrote already-emitted text: only the genuinely new suffix
+      // is delivered, never the duplicated prefix.
       const commonPrefix = commonPrefixLength(normalized, this.emitted);
       this.emitted = normalized;
       this.pendingWhitespace = '';
@@ -133,7 +132,7 @@ export class DeltaStream {
 
     const trailing = diff.length - diff.replace(/\s+$/, '').length;
     if (trailing === diff.length) {
-      // Solo espacio: se retiene hasta que llegue contenido real.
+      // Whitespace only: held back until real content arrives.
       this.pendingWhitespace += diff;
       return;
     }
@@ -144,10 +143,10 @@ export class DeltaStream {
   }
 
   /**
-   * Cierra el flujo. Si el texto final normalizado tiene contenido que no se
-   * emitió, se entrega como delTA final; en ningún caso se reemite la respuesta
-   * completa que ya llegó por deltas. El espacio retenido se descarta porque la
-   * respuesta final está normalizada (sin espacios exteriores).
+   * Closes the stream. When the normalized final text has content not yet
+   * emitted, it is delivered as a final delta; the complete answer that already
+   * arrived via deltas is never re-emitted. The held-back whitespace is dropped
+   * because the final answer is normalized (no outer whitespace).
    */
   finish(finalText: string): void {
     this.push(this.normalize(finalText));
@@ -160,16 +159,16 @@ export class DeltaStream {
     this.onChunk(delta);
   }
 
-  /** Texto reconstruido concatenando los deltas emitidos. */
+  /** Text rebuilt by concatenating the emitted deltas. */
   get text(): string {
     return this.chunks.join('');
   }
 }
 
 /**
- * Elimina los marcadores de fin de plantilla de chat (`<|im_end|>`,
- * `<|endoftext|>`) SIN recortar el espacio exterior: es la normalización que se
- * aplica a cada instantánea durante el streaming.
+ * Strips chat-template end markers (`<|im_end|>`, `<|endoftext|>`) WITHOUT
+ * trimming outer whitespace: this is the normalization applied to each snapshot
+ * during streaming.
  */
 export function stripTemplateMarkers(text: string): string {
   if (typeof text !== 'string') return '';
@@ -179,9 +178,9 @@ export function stripTemplateMarkers(text: string): string {
 }
 
 /**
- * Normalización de la RESPUESTA FINAL: marcadores de plantilla y recorte del
- * espacio exterior. Es la forma exacta que devuelve `generate()`, de modo que
- * lo emitido por streaming y lo devuelto coinciden.
+ * FINAL-ANSWER normalization: template markers plus outer whitespace trimming.
+ * This is the exact shape `generate()` returns, so streamed output and returned
+ * output match.
  */
 export function stripGenerationArtifacts(text: string): string {
   return stripTemplateMarkers(text).trim();

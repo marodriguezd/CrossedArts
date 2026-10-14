@@ -15,7 +15,7 @@ import {
 } from '../../services/pomodoro.ts';
 import { cn } from '../ui/index.tsx';
 
-/** Señal sonora suave generada con Web Audio API (sin archivos externos). */
+/** Soft chime generated with the Web Audio API (no external files). */
 function playSoftChime(): void {
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
@@ -37,7 +37,7 @@ function playSoftChime(): void {
     });
     setTimeout(() => void ctx.close().catch(() => {}), 1500);
   } catch {
-    // Sin audio disponible: el aviso visual basta.
+    // No audio available (blocked or unsupported): the visual alert suffices.
   }
 }
 
@@ -55,7 +55,7 @@ export const PomodoroTimer: React.FC = () => {
     savePomodoro(next);
   }, []);
 
-  // Reloj: refresca cada segundo solo mientras corre y detecta el fin de fase.
+  // Clock: ticks only while running, refreshing the display and detecting phase end.
   useEffect(() => {
     if (state.status !== 'running') return;
     const id = setInterval(() => {
@@ -71,7 +71,7 @@ export const PomodoroTimer: React.FC = () => {
     return () => clearInterval(id);
   }, [state.status, commit]);
 
-  // Atajo accesible: sincroniza el título de la pestaña con la cuenta atrás.
+  // Accessible cue: sync the tab title with the countdown.
   useEffect(() => {
     const original = document.title;
     if (state.status === 'running') {

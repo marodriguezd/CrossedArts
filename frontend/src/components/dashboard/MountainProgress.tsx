@@ -13,34 +13,34 @@ import {
 } from '../../services/mountainPath.ts';
 
 interface MountainProgressProps {
-  /** Recursos reales cuya media alimenta la subida (vista global). */
+  /** Real resources whose average drives the climb (global view). */
   resources?: ProgressSource[];
   /**
-   * Progreso ya calculado por el llamador (vista con ámbito, p. ej. un curso).
-   * Si se indica, tiene prioridad sobre `resources`: la MISMA matemática del
-   * sendero se reutiliza y no hay dos implementaciones de montaña.
+   * Progress already computed by the caller (scoped view, e.g. one course).
+   * When present it takes priority over `resources`: the SAME trail math is
+   * reused, so no second mountain implementation exists.
    */
   progress?: number;
   /**
-   * Hitos a mostrar. Sin ellos se usan los genéricos de la biblioteca; con
-   * estructura real (módulos de un curso) se pasan los módulos como hitos.
+   * Milestones to show. Without them the library generics are used; with real
+   * structure (a course's modules) the modules are passed as milestones.
    */
   stages?: readonly MountainStageDefinition[];
   title?: string;
-  /** Texto descriptivo opcional mostrado bajo el título. */
+  /** Optional description shown under the title. */
   subtitle?: string;
-  /** Etiqueta accesible del SVG cuando el contexto no es la biblioteca global. */
+  /** SVG accessible label when the context is not the global library. */
   scopeLabel?: string;
   className?: string;
 }
 
 /**
- * Vista de progreso tipo montaña.
+ * Mountain-style progress view.
  *
- * El marcador sube por el sendero en función de la media real de progreso de la
- * biblioteca; la etiqueta accesible describe la posición exacta. Es puramente
- * visual (SVG + tokens semánticos) y no introduce datos sintéticos: si no hay
- * recursos, el progreso es 0 y se indica con un texto vacío honesto.
+ * The marker climbs the trail based on the library's real average progress;
+ * the accessible label describes the exact position. Purely visual (SVG +
+ * semantic tokens) with no synthetic data: without resources progress is 0 and
+ * an honest empty message says so.
  */
 export const MountainProgress: React.FC<MountainProgressProps> = ({
   resources = [],
@@ -83,13 +83,13 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
         role="img"
         aria-label={`Progreso de ${scopeLabel}: ${progress} por ciento del camino a la cumbre`}
       >
-        {/* Silueta de la montaña alineada con la cumbre (82, 12) y el sendero ascendente */}
+        {/* Mountain silhouette aligned with the summit (82, 12) and the ascending trail */}
         <path
           d="M0 100 L8 92 L24 78 L34 82 L50 48 L64 42 L82 12 L92 48 L100 70 L100 100 Z"
           className="fill-accent-soft"
         />
 
-        {/* Arista/sombra de la cumbre. */}
+        {/* Summit ridge/shadow. */}
         <polyline
           points={toPolylinePoints([{ x: 82, y: 12 }, { x: 74, y: 32 }])}
           className="stroke-line"
@@ -98,7 +98,7 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
           strokeLinecap="round"
         />
 
-        {/* Sendero ascendente. */}
+        {/* Ascending trail. */}
         <polyline
           points={toPolylinePoints(MOUNTAIN_TRAIL)}
           className="stroke-ink/50"
@@ -109,7 +109,7 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
           strokeLinejoin="round"
         />
 
-        {/* Hitos alcanzados. */}
+        {/* Reached milestones. */}
         {milestones
           .filter((milestone) => milestone.reached && milestone.percent > 0)
           .map((milestone) => {
@@ -125,12 +125,12 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
             );
           })}
 
-        {/* Marcador de la posición actual. */}
+        {/* Current-position marker. */}
         <circle cx={marker.x} cy={marker.y} r="3.4" className="fill-accent" />
         <circle cx={marker.x} cy={marker.y} r="1.3" className="fill-on-accent" />
       </svg>
 
-      {/* Hitos en texto: accesible y legible sin depender del SVG. */}
+      {/* Milestones as text: accessible and readable without relying on the SVG. */}
       <ol className="mt-3 space-y-1.5" aria-label="Hitos del camino">
         {milestones.map((milestone) => (
           <li key={milestone.percent} className="flex items-start justify-between gap-3">

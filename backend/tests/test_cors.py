@@ -35,7 +35,7 @@ def test_cors_uses_explicit_origins_never_wildcard():
 def test_cors_configured_origins_match_local_development():
     kwargs = _app_middleware_config()
     assert set(kwargs.get("allow_origins")) == set(ALLOWED_ORIGINS)
-    # Métodos y cabeceras explícitos en lugar de comodines innecesarios.
+    # Explicit methods/headers instead of overbroad wildcards.
     assert set(kwargs.get("allow_methods")) <= {
         "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"
     }
@@ -70,8 +70,8 @@ def test_preflight_from_foreign_origin_is_rejected(client):
             "Access-Control-Request-Method": "GET",
         },
     )
-    # CORSMiddleware responde 400 a la preflight de un origen no permitido y
-    # nunca expone cabeceras CORS para él.
+    # CORSMiddleware answers 400 to a disallowed origin's preflight and never
+    # exposes CORS headers for it.
     assert response.status_code == 400
     assert "access-control-allow-origin" not in response.headers
 

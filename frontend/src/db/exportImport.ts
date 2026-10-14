@@ -8,11 +8,11 @@ import {
 } from '../services/sessionScope.ts';
 
 /**
- * Versión del formato de respaldo JSON.
+ * JSON backup format version.
  *
- * Se introduce de forma COMPATIBLE: la clave vive bajo un objeto de metadatos
- * con nombre reservado (`__meta`), que se acepta tanto si está presente como si
- * no. Los respaldos antiguos (sin `__meta`) siguen importándose sin cambios.
+ * Introduced COMPATIBLY: the key lives under a reserved-name metadata object
+ * (`__meta`), accepted present or absent. Old backups (no `__meta`) still import
+ * unchanged.
  */
 export const JSON_BACKUP_FORMAT_VERSION = 1;
 const META_KEY = '__meta';
@@ -36,9 +36,9 @@ export function getDatabaseTables(): string[] {
 }
 
 /**
- * Columnas reales de una tabla, leídas del esquema vivo.
- * Se usa `PRAGMA table_info` en lugar de una lista codificada para que la
- * validación nunca se desincronice del esquema ni acepte columnas inventadas.
+ * A table's real columns, read from the live schema. Uses `PRAGMA table_info`
+ * instead of a hardcoded list so validation never drifts from the schema or
+ * accepts invented columns.
  */
 function getTableColumns(db: any, table: string): Set<string> {
   const res = db.exec(`PRAGMA table_info(${table})`);
@@ -75,23 +75,22 @@ export function generateJsonBackup(): Record<string, any> {
 
 export interface BackupValidationResult {
   valid: boolean;
-  /** Mensaje en español apto para el usuario. Solo se rellena si `valid` es false. */
+  /** User-facing message in Spanish. Only set when `valid` is false. */
   error?: string;
 }
 
 /**
- * Valida un respaldo JSON COMPLETO antes de tocar la base de datos.
+ * Validate a FULL JSON backup before touching the database.
  *
- * Se ejecuta como una pasada previa y total: si algo falla, la base de datos
- * existente queda intacta. Esto corrige el defecto por el que la importación
- * empezaba a borrar e insertar filas y solo entonces descubría que el payload
- * era inválido, dejando datos del usuario a medias.
+ * Runs as one upfront total pass: on any failure the existing database stays
+ * intact. This fixes the defect where import started deleting/inserting rows and
+ * only then found the payload invalid, leaving user data half-written.
  *
- * Reglas:
- *  1. La raíz debe ser un objeto plano (no un array, null ni primitivo).
- *  2. Las tablas conocidas deben ser arrays cuando están presentes.
- *  3. Se rechazan las tablas de nivel superior desconocidas.
- *  4. Cada fila debe ser un objeto plano cuyas columnas existan en el esquema real.
+ * Rules:
+ *  1. The root must be a plain object (no array, null, or primitive).
+ *  2. Known tables must be arrays when present.
+ *  3. Unknown top-level tables are rejected.
+ *  4. Every row must be a plain object whose columns exist in the real schema.
  */
 export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): BackupValidationResult {
   if (data === null || typeof data !== 'object' || Array.isArray(data)) {
@@ -101,7 +100,7 @@ export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): Ba
   const payload = data as Record<string, unknown>;
   const db = dbBridge.getDatabase();
 
-  // 3. Sin tablas desconocidas (compatibilidad explícita: solo `__meta`).
+  // 3. No unknown tables (explicit compatibility: only `__meta`).
   const known = new Set<string>([...getDatabaseTables(), META_KEY]);
   const unknownKeys = Object.keys(payload).filter(key => !known.has(key));
   if (unknownKeys.length > 0) {
@@ -111,7 +110,7 @@ export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): Ba
     };
   }
 
-  // 5. Versión de formato: opcional y retrocompatible.
+  // 5. Format version: optional and backward-compatible.
   const meta = payload[META_KEY];
   if (meta !== undefined) {
     if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) {
@@ -129,10 +128,10 @@ export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): Ba
     }
   }
 
-  // 2 + 4. Cada tabla conocida debe ser un array de filas con columnas reales.
+  // 2 + 4. Every known table must be a row array with real columns.
   for (const table of getDatabaseTables()) {
     const rows = payload[table];
-    if (rows === undefined) continue; // tabla ausente: se conserva lo existente
+    if (rows === undefined) continue; // Absent table: not an error, keep existing rows.
     if (!Array.isArray(rows)) {
       return { valid: false, error: `La tabla "${table}" del respaldo debería ser una lista de registros y no es válida.` };
     }
@@ -165,14 +164,14 @@ export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): Ba
 }
 
 /**
- * Completa la fila de una sesión al restaurarla.
+ * Complete a session row on restore.
  *
- * Un respaldo creado antes de que existiera `learning_session.scope` no trae esa
- * columna: insertarla tal cual aplicaría el valor por defecto (`global`) sobre
- * filas que SÍ tienen recurso o lección, y la restricción de integridad del
- * esquema rechazaría la restauración completa. El ámbito se deriva aquí de las
- * anclas con la MISMA regla canónica (`services/sessionScope.ts`), de modo que un
- * respaldo antiguo se restaura íntegro y con su ámbito coherente.
+ * A backup predating `learning_session.scope` lacks that column: inserting it
+ * verbatim would apply the default (`global`) onto rows that DO have a resource
+ * or lesson, and the schema integrity check would reject the whole restore.
+ * Scope derives here from anchors under the SAME canonical rule
+ * (`services/sessionScope.ts`), so an old backup restores whole with coherent
+ * scope.
  */
 function normalizeRestoredRow(table: string, row: Record<string, any>): Record<string, any> {
   if (table !== 'learning_session') return row;
@@ -186,11 +185,10 @@ function normalizeRestoredRow(table: string, row: Record<string, any>): Record<s
 }
 
 /**
- * Importa un respaldo JSON tras validarlo por completo.
+ * Import a JSON backup after fully validating it.
  *
- * La validación ocurre ANTES de cualquier `DELETE`. Si la persistencia final
- * falla, la operación lanza y la UI no informa de una restauración que no se
- * guardó.
+ * Validation runs BEFORE any `DELETE`. When final persistence fails, the
+ * operation throws and the UI never reports an unsaved restore.
  */
 export async function importJsonBackup(data: Record<string, any[]>, lang: LanguageCode = 'es'): Promise<void> {
   const validation = validateJsonBackup(data, lang);
@@ -201,7 +199,7 @@ export async function importJsonBackup(data: Record<string, any[]>, lang: Langua
   const db = dbBridge.getDatabase();
   const tables = getDatabaseTables();
 
-  // La restauración completa debe ser una sola transacción.
+  // The full restore must be a single transaction.
   db.run('PRAGMA foreign_keys = OFF;');
   db.run('BEGIN TRANSACTION;');
 
@@ -227,12 +225,12 @@ export async function importJsonBackup(data: Record<string, any[]>, lang: Langua
     }
     db.run('COMMIT;');
   } catch (err) {
-    try { db.run('ROLLBACK;'); } catch { /* rollback defensivo */ }
+    try { db.run('ROLLBACK;'); } catch { /* defensive rollback */ }
     throw err;
   } finally {
-    // SQLite ignora `PRAGMA foreign_keys` dentro de una transacción: la
-    // reafirmación debe ejecutarse fuera, tras COMMIT o ROLLBACK, o la conexión
-    // quedaría con la integridad referencial desactivada para todo lo posterior.
+    // SQLite ignores `PRAGMA foreign_keys` inside a transaction: re-assert it
+    // outside, after COMMIT or ROLLBACK, or the connection keeps referential
+    // integrity off for everything after.
     db.run('PRAGMA foreign_keys = ON;');
   }
   await dbBridge.persist();
@@ -270,9 +268,9 @@ export async function exportJsonBackup(): Promise<void> {
 }
 
 /**
- * Descarga un objeto JSON como archivo. Se usa tanto para respaldos completos
- * como para paquetes de curso; comparte el mismo patrón seguro de creación y
- * revocación del object URL (nunca se filtra el `blob:`).
+ * Downloads a JSON object as a file. Used for full backups and course
+ * packages alike; shares the same safe object-URL create/revoke pattern
+ * (the `blob:` URL never leaks).
  */
 export function downloadJsonFile(payload: unknown, filename: string): void {
   if (typeof document === 'undefined') return;
@@ -287,7 +285,7 @@ export function downloadJsonFile(payload: unknown, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Nombre de archivo estable y sin caracteres problemáticos a partir de un título. */
+/** Stable filename without problematic chars, derived from a title. */
 export function slugifyForFilename(title: string, fallback = 'recurso'): string {
   const slug = title
     .normalize('NFD')

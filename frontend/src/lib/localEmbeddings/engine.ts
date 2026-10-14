@@ -23,9 +23,6 @@ export interface EmbeddingProgress {
   text: string;
 }
 
-/**
- * Calcula la norma L2 (euclidiana) de un vector.
- */
 export function vectorNorm(v: number[]): number {
   let sumSq = 0;
   for (let i = 0; i < v.length; i++) {
@@ -35,7 +32,7 @@ export function vectorNorm(v: number[]): number {
 }
 
 /**
- * Normaliza un vector mediante norma L2. Rechaza vectores con valores no finitos o norma 0.
+ * L2-normalizes a vector. Throws on non-finite values or a zero norm.
  */
 export function l2NormalizeVector(v: number[], expectedDimensions?: number): number[] {
   if (!v || v.length === 0) {
@@ -57,7 +54,8 @@ export function l2NormalizeVector(v: number[], expectedDimensions?: number): num
 }
 
 /**
- * Calcula la similitud de coseno pura entre dos vectores normalizados L2.
+ * Cosine similarity. Inputs need not be pre-normalized (norms are computed
+ * internally); zero-length or zero-norm inputs score 0.
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
@@ -80,7 +78,7 @@ function stripKnownEmbeddingPrefix(text: string): string {
   );
 }
 
-/** Petición normalizada al motor de embeddings (modelo, dtype, dispositivo). */
+/** Normalized request to the embeddings engine (model, dtype, device). */
 export interface EmbeddingPipelineRequest {
   modelId: string;
   dtype: NonNullable<EmbeddingModelDefinition['preferredDtype']>;
@@ -89,21 +87,20 @@ export interface EmbeddingPipelineRequest {
 }
 
 /**
- * Fábrica del pipeline de Transformers.js.
+ * Transformers.js pipeline factory.
  *
- * Punto de inyección único del motor: la implementación por defecto importa
- * `@huggingface/transformers` en diferido y configura su entorno local; los
- * tests (y cualquier entorno sin red) pueden sustituir la descarga real del
- * modelo por un doble determinista sin tocar la lógica de selección de
- * backend, prefijos ni dimensiones.
+ * Single engine injection point: the default implementation lazily imports
+ * `@huggingface/transformers` and configures its local env; tests (and any
+ * offline env) can swap the real model download for a deterministic double
+ * without touching backend, prefix, or dimension selection logic.
  */
 export type EmbeddingPipelineFactory = (request: EmbeddingPipelineRequest) => Promise<any>;
 
 const defaultEmbeddingPipelineFactory: EmbeddingPipelineFactory = async ({ modelId, dtype, device, onProgress }) => {
   const { pipeline, env } = await import('@huggingface/transformers');
 
-  // Configuración de entorno local: los modelos se resuelven contra el Hub y
-  // se cachean en el navegador (primera descarga, después sin red).
+  // Local env setup: models resolve against the Hub and cache in the browser
+  // (first download, then offline).
   env.allowLocalModels = false;
   env.useBrowserCache = true;
   if (env.backends?.onnx?.wasm) {
@@ -121,14 +118,14 @@ const defaultEmbeddingPipelineFactory: EmbeddingPipelineFactory = async ({ model
 };
 
 /**
- * Resuelve el dispositivo con el que se debe cargar un modelo.
+ * Resolves which device a model must load on.
  *
- * Reglas, en orden:
- *  1. Si el registro declara `preferredBackend`, ese valor manda siempre que
- *     el entorno lo soporte (EmbeddingGemma declara `wasm` y se carga en wasm
- *     aunque el navegador ofrezca WebGPU).
- *  2. Sin preferencia declarada, se usa el backend detectado por capacidades.
- *  3. Si se pide `webgpu` y el entorno no lo soporta, se degrada a `wasm`.
+ * Rules, in order:
+ *  1. When the registry declares `preferredBackend`, it wins whenever the env
+ *     supports it (EmbeddingGemma declares `wasm` and loads on wasm even when
+ *     the browser offers WebGPU).
+ *  2. Without a declared preference, use the capability-detected backend.
+ *  3. When `webgpu` is requested but unsupported, degrade to `wasm`.
  */
 function resolveEmbeddingDevice(
   modelDef: EmbeddingModelDefinition,
@@ -149,10 +146,9 @@ export class LocalEmbeddingEngine {
   private listeners: Set<(status: EmbeddingEngineStatus, progress: EmbeddingProgress) => void> = new Set();
   private loadPromise: Promise<void> | null = null;
   /**
-   * Identificador de sesión de carga. Se incrementa en cada `loadModel()` y en
-   * cada `unload()`. Toda continuación asíncrona comprueba que su sesión sigue
-   * vigente antes de tocar el estado, de modo que una carga antigua nunca puede
-   * pisar a otra más reciente ni reactivar una instancia ya descargada.
+   * Load-session id. Bumped on every `loadModel()` and `unload()`. Each async
+   * continuation checks its session is still current before touching state, so
+   * a stale load can never overwrite a newer one or revive an unloaded instance.
    */
   private loadSessionId: number = 0;
   private currentJobId: number = 0;
@@ -217,12 +213,11 @@ export class LocalEmbeddingEngine {
   }
 
   /**
-   * Carga perezosamente el modelo de embeddings usando Transformers.js.
+   * Lazily loads the embeddings model via Transformers.js.
    *
-   * `options` es el punto de inyección para entornos deterministas (tests):
-   * permite sustituir la detección de capacidades y/o la fábrica del pipeline
-   * sin descargar el modelo. En producción no se pasa y se usan los valores
-   * por defecto.
+   * `options` is the injection point for deterministic envs (tests): it can
+   * replace capability detection and/or the pipeline factory without
+   * downloading the model. Production omits it and uses defaults.
    */
   public async loadModel(
     modelId: string = DEFAULT_EMBEDDING_MODEL_ID,
@@ -235,7 +230,7 @@ export class LocalEmbeddingEngine {
       return;
     }
 
-    // Carga ya en curso del MISMO modelo: se comparte la promesa (una sola descarga).
+    // Load of the SAME model already in flight: share the promise (one download).
     if (this.loadPromise && this.currentModelId === modelId && (this.status === 'loading' || this.status === 'checking')) {
       return this.loadPromise;
     }
@@ -248,7 +243,7 @@ export class LocalEmbeddingEngine {
       this.notify();
 
       const caps = await (options?.detectCapabilities ?? detectEmbeddingCapabilities)();
-      if (sessionId !== this.loadSessionId) return; // sesión reemplazada durante la detección
+      if (sessionId !== this.loadSessionId) return; // session superseded during detection
       if (caps.state !== 'supported') {
         this.status = 'unsupported';
         this.lastError = 'Entorno sin soporte para ejecución de embeddings.';
@@ -264,14 +259,14 @@ export class LocalEmbeddingEngine {
         throw new Error(this.lastError);
       }
 
-      // Backend efectivo: respeta la preferencia del registro y solo degrada
-      // cuando el entorno no la soporta. Se fija ANTES de crear el pipeline y
-      // se expone vía getBackend() para que la UI y los tests lo verifiquen.
+      // Effective backend: honors the registry preference and only degrades
+      // when the env lacks support. Fixed BEFORE creating the pipeline and
+      // exposed via getBackend() for UI and tests to assert.
       const device = resolveEmbeddingDevice(modelDef, caps);
       const dtype = modelDef.preferredDtype ?? 'q8';
       const createPipeline = options?.createPipeline ?? defaultEmbeddingPipelineFactory;
-      // Los callbacks de una sesión obsoleta se ignoran por completo: no pueden
-      // sobrescribir el progreso ni el estado de una carga más reciente.
+      // Stale-session callbacks are fully ignored: they cannot overwrite the
+      // progress or state of a newer load.
       const onProgress = (item: any) => {
         if (sessionId !== this.loadSessionId) return;
         if (item.status === 'progress' && item.progress !== undefined) {
@@ -283,7 +278,7 @@ export class LocalEmbeddingEngine {
         }
       };
 
-      // Nunca conviven dos pipelines: se libera el anterior antes de reemplazarlo.
+      // Two pipelines never coexist: the previous one is disposed before replacing.
       await this.disposePipeline(this.pipelineInstance);
       if (sessionId !== this.loadSessionId) return;
       this.pipelineInstance = null;
@@ -299,7 +294,7 @@ export class LocalEmbeddingEngine {
           pipe = await createPipeline({ modelId, dtype, device, onProgress });
         } catch (deviceErr: any) {
           if (sessionId !== this.loadSessionId) return;
-          // Solo se reintenta si el intento FALLIDO fue sobre WebGPU.
+          // Retry only when the FAILED attempt ran on WebGPU.
           if (device === 'webgpu') {
             console.warn('Fallo inicializando embeddings en WebGPU, aplicando fallback a CPU/WASM:', deviceErr);
             pipe = await createPipeline({ modelId, dtype, device: 'wasm', onProgress });
@@ -317,8 +312,8 @@ export class LocalEmbeddingEngine {
         throw err;
       }
 
-      // Sesión reemplazada mientras se descargaba el modelo: la instancia recién
-      // creada se libera y NUNCA se publica como activa.
+      // Session superseded while the model downloaded: the freshly created
+      // instance is disposed and NEVER published as active.
       if (sessionId !== this.loadSessionId) {
         await this.disposePipeline(pipe);
         return;
@@ -334,7 +329,7 @@ export class LocalEmbeddingEngine {
     try {
       await this.loadPromise;
     } finally {
-      // Solo la sesión vigente limpia el puntero compartido.
+      // Only the current session clears the shared pointer.
       if (sessionId === this.loadSessionId) {
         this.loadPromise = null;
       }
@@ -342,30 +337,29 @@ export class LocalEmbeddingEngine {
   }
 
   /**
-   * Libera un pipeline de forma segura: nunca lanza y acepta `null`.
+   * Safely disposes a pipeline: never throws and accepts `null`.
    *
-   * Es la única rutina usada para descargar instancias (reemplazo de modelo,
-   * sesión obsoleta y `unload()`), de modo que el ciclo de vida de la instancia
-   * nativa se gestiona en un único punto.
+   * The only routine used to tear down instances (model replacement, stale
+   * session, `unload()`), so native-instance lifecycle lives in one place.
    */
   private async disposePipeline(pipe: any): Promise<void> {
     if (!pipe || typeof pipe.dispose !== 'function') return;
     try {
       await pipe.dispose();
     } catch {
-      /* liberar nunca debe enmascarar el resultado de la operación */
+      /* dispose must never mask the operation result */
     }
   }
 
   /**
-   * Genera el vector de embedding para un texto dado usando el modelo ACTIVO.
+   * Embeds text with the ACTIVE model.
    *
-   * - Aplica el prefijo del modelo (`queryPrefix`/`documentPrefix` del
-   *   registro: para EmbeddingGemma, "task: search result | query: " /
+   * - Applies the model prefix (`queryPrefix`/`documentPrefix` from the
+   *   registry: for EmbeddingGemma, "task: search result | query: " /
    *   "title: none | text: ").
-   * - Ejecuta pooling 'mean' sin normalizar, valida la salida nativa
-   *   (768d para EmbeddingGemma), trunca a la dimensión EFEECTIVA del modelo
-   *   (`outputDimension`, 256d vía MRL) y solo entonces normaliza L2.
+   * - Runs unnormalized 'mean' pooling, validates native output (768d for
+   *   EmbeddingGemma), truncates to the model's EFFECTIVE dimension
+   *   (`outputDimension`, 256d via MRL), then L2-normalizes.
    */
   public async embedText(text: string, isQuery: boolean = true): Promise<number[]> {
     const modelId = this.currentModelId ?? DEFAULT_EMBEDDING_MODEL_ID;
@@ -373,12 +367,12 @@ export class LocalEmbeddingEngine {
   }
 
   /**
-   * Genera el embedding con una identidad de modelo CONCRETA.
+   * Embeds with one CONCRETE model identity.
    *
-   * Falla si el modelo activo ya no es ese, de modo que el vector devuelto
-   * siempre corresponde a la identidad con la que el llamador va a cachearlo.
-   * Así la indexación queda ligada al modelo y no a un estado mutable que pudo
-   * cambiar durante un `await` (p. ej. si otro `loadModel` la reemplaza).
+   * Fails when the active model is no longer that one, so the returned vector
+   * always matches the identity the caller will cache it under. Indexing thus
+   * binds to the model, not to mutable state that may change across an `await`
+   * (e.g. when another `loadModel` supersedes it).
    */
   private async embedTextForModel(modelId: string, text: string, isQuery: boolean): Promise<number[]> {
     if (this.status !== 'ready' || !this.pipelineInstance) {
@@ -415,9 +409,9 @@ export class LocalEmbeddingEngine {
       const truncatedVector = rawVector.slice(0, outputDimension);
       const vector = l2NormalizeVector(truncatedVector, outputDimension);
 
-      // Si un `loadModel`/`unload` cambió el modelo mientras se calculaba, el
-      // estado lo gestiona esa operación: aquí no se revierte a 'ready' ni se
-      // marca 'error' sobre una identidad que ya no es la activa.
+      // When a `loadModel`/`unload` switched models mid-compute, that operation
+      // owns the state: this path neither reverts to 'ready' nor flags 'error'
+      // on an identity that is no longer active.
       if (this.currentModelId === modelId) {
         this.status = 'ready';
         this.notify();
@@ -434,16 +428,15 @@ export class LocalEmbeddingEngine {
   }
 
   /**
-   * Indexa un conjunto de fragmentos de forma incremental y asíncrona, usando el caché de IndexedDB.
-   * Previene carreras de indexación concurrentes y soporta cancelación inmediata.
+   * Incrementally and asynchronously indexes a chunk set via the IndexedDB cache.
+   * Guards against concurrent indexing races and supports instant cancellation.
    */
   /**
-   * Purga proactiva de vectores de modelos/pipelines distintos del activo.
+   * Proactively purges vectors from non-active models/pipelines.
    *
-   * Se invoca al preparar el índice semántico: al cambiar de modelo de
-   * embeddings las entradas del anterior dejan de ser válidas, pero hasta ahora
-   * solo se liberaban si el usuario limpiaba la caché a mano. Nunca lanza: una
-   * purga fallida no debe impedir la indexación.
+   * Runs while preparing the semantic index: switching embedding models
+   * invalidates prior entries, which previously were freed only by manual cache
+   * clears. Never throws: a failed purge must not block indexing.
    */
   public async pruneStaleCache(activeModelId?: string): Promise<number> {
     const modelId = activeModelId || this.currentModelId || DEFAULT_EMBEDDING_MODEL_ID;
@@ -466,7 +459,7 @@ export class LocalEmbeddingEngine {
     const jobId = ++this.currentJobId;
     let newlyIndexed = 0;
 
-    /** El trabajo sigue vigente sólo si nada lo canceló NI el modelo activo cambió. */
+    /** A job stays current only when nothing cancelled it AND the active model is unchanged. */
     const assertJobCurrent = () => {
       if (this.currentJobId !== jobId || this.currentModelId !== modelId) {
         throw new Error('Indexación cancelada o reemplazada por una nueva solicitud.');
@@ -477,11 +470,11 @@ export class LocalEmbeddingEngine {
       assertJobCurrent();
 
       const chunk = chunks[i];
-      // La identidad de caché es el trío (chunk, modelo, versión de pipeline):
-      // dos modelos nunca se pisan el vector del mismo fragmento.
+      // Cache identity is the (chunk, model, pipeline-version) triple: two
+      // models never overwrite one chunk's vector.
       const cached = await embeddingCache.getEntry(chunk.chunkId, modelId);
 
-      // Si existe, el hash SHA-256 no ha cambiado y la versión de pipeline coincide, reutilizar
+      // On a hit with unchanged SHA-256 hash and matching pipeline version, reuse
       if (
         cached &&
         cached.modelId === modelId &&
@@ -494,7 +487,7 @@ export class LocalEmbeddingEngine {
         continue;
       }
 
-      // Generar nuevo embedding con prefijo passage, ligado al modelo del trabajo
+      // Generate a fresh embedding with the passage prefix, bound to the job model
       const vector = await this.embedTextForModel(modelId, chunk.text, false);
 
       assertJobCurrent();
@@ -516,7 +509,7 @@ export class LocalEmbeddingEngine {
       newlyIndexed++;
       if (onProgress) onProgress(i + 1, chunks.length);
 
-      // Ceder el hilo de ejecución para no congelar la UI
+      // Yield to keep the UI responsive
       await new Promise(r => setTimeout(r, 0));
     }
 
@@ -524,11 +517,11 @@ export class LocalEmbeddingEngine {
   }
 
   /**
-   * Descarga el modelo y limpia recursos.
+   * Unloads the model and releases resources.
    */
   public async unload(): Promise<void> {
-    // Invalida cualquier carga en vuelo: sus continuaciones se vuelven no-ops y
-    // la instancia que pudiera crear se libera como huérfana.
+    // Invalidates any in-flight load: its continuations become no-ops and any
+    // instance it might create is disposed as orphaned.
     this.loadSessionId++;
     this.loadPromise = null;
 

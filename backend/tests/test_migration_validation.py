@@ -1,15 +1,15 @@
 """
-A-2 — Regresión: validación del estado de migraciones Alembic al arrancar.
+A-2 - Regression: Alembic migration-state validation at boot.
 
-Cubre:
-  - Base fresca (sin esquema): estado accionable "ejecuta alembic upgrade head".
-  - Base con esquema pero sin alembic_version: el estado dañado que producía el
-    antiguo fixture de pruebas; debe detectarse y explicarse.
-  - Base migrada con Alembic (upgrade head real sobre un archivo temporal): ok.
-  - Base detrás de la cabeza: behind-head.
-  - Revisión desconocida: divergent.
-  - El arranque (lifespan) falla de forma temprana y accionable.
-  - AUTO_CREATE_TABLES y SKIP_MIGRATION_VALIDATION siguen funcionando.
+Covers:
+  - Fresh database (no schema): actionable "run alembic upgrade head" state.
+  - Database with schema but no alembic_version: the corrupt state the old test
+    fixture produced; must be detected and explained.
+  - Alembic-migrated database (real upgrade head on a temp file): ok.
+  - Database behind head: behind-head.
+  - Unknown revision: divergent.
+  - Boot (lifespan) fails early and actionably.
+  - AUTO_CREATE_TABLES and SKIP_MIGRATION_VALIDATION keep working.
 """
 
 import pytest
@@ -28,7 +28,7 @@ from backend.app.core.migrations import (
 
 
 def _make_schema_without_version(target_engine):
-    """Crea el esquema de la aplicación directamente (sin alembic_version)."""
+    """Build the app schema directly (no alembic_version)."""
     from backend.app.core.database import Base
 
     Base.metadata.create_all(bind=target_engine)
@@ -45,7 +45,7 @@ def test_fresh_database_reported_with_actionable_message():
 
 
 def test_schema_without_alembic_version_is_detected():
-    """El daño real reproducido por el antiguo fixture: esquema sin revisión."""
+    """The real damage the old fixture reproduced: schema without revision."""
     engine = create_engine("sqlite:///:memory:")
     _make_schema_without_version(engine)
     assert has_application_tables(engine)
@@ -62,10 +62,10 @@ def test_schema_without_alembic_version_is_detected():
 
 def test_migrated_database_reports_ok(tmp_path, monkeypatch):
     """
-    `alembic upgrade head` sobre un archivo temporal produce estado válido.
+    `alembic upgrade head` on a temp file yields a valid state.
 
-    Esta prueba usa la MISMA ruta de migración que producción (env.py lee
-    settings.database_url, que se parchea al archivo temporal).
+    This test uses the SAME migration path as production (env.py reads
+    settings.database_url, patched to the temp file).
     """
     import alembic.command
     from alembic.config import Config
@@ -98,7 +98,7 @@ def test_database_behind_head_is_detected(tmp_path, monkeypatch):
     config = Config(str(ALEMBIC_INI_PATH))
     alembic.command.upgrade(config, "head")
 
-    # Rebobinar la revisión registrada a la primera del historial real.
+    # Rewind the recorded revision to the real history's first.
     from backend.app.core.migrations import get_script_directory
 
     script = get_script_directory()
@@ -148,8 +148,8 @@ def test_lifespan_blocks_startup_on_invalid_migration_state(tmp_path, monkeypatc
     Base.metadata.create_all(bind=broken_engine)  # esquema sin alembic_version
 
     monkeypatch.setattr(main_module, "engine", broken_engine)
-    # La fixture autouse del conftest desactiva la validación: aquí se reactiva
-    # expresamente para probar el comportamiento de producción.
+    # The conftest autouse fixture disables validation: re-enable it here to
+    # exercise production behavior.
     monkeypatch.delenv("SKIP_MIGRATION_VALIDATION", raising=False)
     monkeypatch.delenv("AUTO_CREATE_TABLES", raising=False)
 
@@ -179,18 +179,18 @@ def test_lifespan_starts_normally_when_validation_skipped(tmp_path, monkeypatch)
 
 
 def test_auto_create_mode_does_not_run_validation(tmp_path, monkeypatch):
-    """AUTO_CREATE_TABLES=1 (desarrollo explícito) no pasa por la validación."""
+    """AUTO_CREATE_TABLES=1 (explicit dev) skips validation."""
     from backend.app.core.database import Base
     import backend.app.main as main_module
 
-    # Archivo temporal (no :memory:): TestClient arranca el lifespan en otro
-    # hilo y una base en memoria sería distinta por hilo.
+    # Temp file (not :memory:): TestClient boots lifespan on another thread and
+    # an in-memory DB would differ per thread.
     dev_engine = create_engine(f"sqlite:///{tmp_path / 'auto_create.db'}")
     monkeypatch.setattr(main_module, "engine", dev_engine)
     monkeypatch.delenv("SKIP_MIGRATION_VALIDATION", raising=False)
     monkeypatch.setenv("AUTO_CREATE_TABLES", "1")
 
-    # Sin esquema ni revisión: la validación habría bloqueado el arranque.
+    # No schema, no revision: validation would have blocked boot.
     with TestClient(main_module.app) as client:
         assert client.get("/api/health").status_code == 200
     assert "learning_resource" in inspect(dev_engine).get_table_names()

@@ -8,9 +8,9 @@ export interface DocumentSection {
 }
 
 /**
- * Motivos por los que una extracción local puede fracasar. Se exponen como
- * código estable (no como texto) para que la UI y los tests puedan distinguir
- * un PDF cifrado de uno escaneado sin comparar cadenas en español.
+ * Reasons a local extraction can fail. Exposed as a stable code (not text) so
+ * the UI and tests can tell an encrypted PDF from a scanned one without
+ * comparing Spanish strings.
  */
 export type ExtractionFailureCode =
   | 'malformed'
@@ -23,8 +23,8 @@ export type ExtractionFailureCode =
   | 'unsafe-path';
 
 /**
- * Error tipado de extracción. `message` está en español (texto de UI) y `code`
- * es el contrato estable que consumen el servicio de ingesta y los tests.
+ * Typed extraction error. `message` is in Spanish (UI text) and `code` is the
+ * stable contract consumed by the ingestion service and the tests.
  */
 export class DocumentExtractionError extends Error {
   readonly code: ExtractionFailureCode;
@@ -36,14 +36,14 @@ export class DocumentExtractionError extends Error {
 }
 
 /**
- * Estado explícito de la extracción. `ok` implica que TODO el documento aportó
- * texto; `partial` que algunas páginas/capítulos se omitieron (p. ej. páginas
- * escaneadas dentro de un PDF mixto). Nunca se devuelve un documento sin
- * `extraction` cuando se obtuvo texto.
+ * Explicit extraction state. `ok` means the WHOLE document contributed text;
+ * `partial` means some pages/chapters were omitted (e.g. scanned pages inside a
+ * mixed PDF). A document with extracted text never comes back without
+ * `extraction`.
  */
 export interface ExtractionInfo {
   status: 'ok' | 'partial';
-  /** Páginas (PDF) o capítulos (EPUB) sin texto aprovechable. */
+  /** Pages (PDF) or chapters (EPUB) with no usable text. */
   skippedSections: number;
   warning?: string;
 }
@@ -66,7 +66,7 @@ export type ResourceDestinationType = 'standalone' | 'course' | 'module' | 'less
 
 export interface ResourceDestination {
   type: ResourceDestinationType;
-  targetId?: string; // id del curso, módulo, lección o libro existente si se asocia
+  targetId?: string; // id of the existing course, module, lesson, or book when associated
   targetTitle?: string;
 }
 

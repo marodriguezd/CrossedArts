@@ -11,9 +11,8 @@ from backend.app.services.extractor import PDFExtractor, TranscriptExtractor
 from backend.app.services.search import SearchService
 
 def test_pdf_extraction(db: Session, tmp_path: Path):
-    # Crear un PDF mock básico
-    # Como crear un PDF binario real válido requiere pypdf para poder ser leído,
-    # podemos escribir un PDF minimalista usando pypdf o usar una firma PDF básica.
+    # A genuinely readable PDF needs pypdf: write a minimal PDF with pypdf or fall
+    # back to a bare PDF signature.
     # Dado que instalamos pypdf, podemos usarlo para escribir un archivo PDF simple de prueba.
     from pypdf import PdfWriter
     writer = PdfWriter()
@@ -27,7 +26,6 @@ def test_pdf_extraction(db: Session, tmp_path: Path):
     with open(pdf_path, "wb") as f:
         writer.write(f)
 
-    # Crear modelos en BD
     book = Book(id=uuid.uuid4(), title="Test PDF Book", status=ResourceStatus.NOT_STARTED)
     db.add(book)
     db.commit()
@@ -43,7 +41,6 @@ def test_pdf_extraction(db: Session, tmp_path: Path):
     db.add(asset)
     db.commit()
 
-    # Ejecutar extractor
     extractor = PDFExtractor()
     extractor.extract(db, asset.id, pdf_path)
 
@@ -61,7 +58,6 @@ def test_pdf_extraction(db: Session, tmp_path: Path):
 
 
 def test_transcript_extraction_srt(db: Session, tmp_path: Path):
-    # Crear srt mock
     srt_content = """1
 00:00:01,000 --> 00:00:04,500
 Hola y bienvenidos a este curso de fotografia.
@@ -73,7 +69,6 @@ Hoy aprenderemos sobre la exposicion y la apertura.
     srt_path = tmp_path / "lesson.srt"
     srt_path.write_text(srt_content, encoding="utf-8")
 
-    # Crear curso y asset
     course = Course(id=uuid.uuid4(), title="Curso de Foto", status=ResourceStatus.NOT_STARTED)
     db.add(course)
     db.commit()
@@ -92,8 +87,8 @@ Hoy aprenderemos sobre la exposicion y la apertura.
     extractor = TranscriptExtractor()
     extractor.extract(db, asset.id, srt_path)
 
-    # Validar. La fuente SRT no declara idioma: no se etiqueta falsamente como
-    # español, se registra como indeterminado ('und').
+    # SRT source declares no language: never falsely labeled Spanish, recorded as
+    # undetermined ('und').
     transcript = db.scalars(select(Transcript).where(Transcript.media_asset_id == asset.id)).first()
     assert transcript is not None
     assert transcript.language == "und"
@@ -106,7 +101,6 @@ Hoy aprenderemos sobre la exposicion y la apertura.
 
 
 def test_search_service(db: Session):
-    # Crear registros semilla de prueba
     course = Course(id=uuid.uuid4(), title="Aprende Iluminacion", description="Domina el triangulo de exposicion", status=ResourceStatus.NOT_STARTED)
     db.add(course)
     
@@ -115,7 +109,6 @@ def test_search_service(db: Session):
     db.add(note)
     db.commit()
 
-    # Ejecutar búsquedas
     res_title = SearchService.search(db, "Iluminacion")
     assert len(res_title) == 1
     assert res_title[0]["match_type"] == "title"

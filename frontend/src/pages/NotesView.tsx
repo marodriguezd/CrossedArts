@@ -51,12 +51,10 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
   const { t, effective } = useLanguage();
   const [selectedNote, setSelectedNote] = useState<Note | null>(notes[0] || null);
 
-  // Estados de creación y edición
   const [isCreating, setIsCreating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write');
 
-  // Formulario unificado de creación / edición
   const [formData, setFormData] = useState({
     title: '',
     content: '',
@@ -263,7 +261,6 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
 
   return (
     <div className="animate-fade-in space-y-6">
-      {/* Cabecera */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="type-display text-ink">{t('notes.title')}</h1>
@@ -289,7 +286,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        {/* Lista de notas (izquierda) */}
+        {/* Note list (left pane) */}
         <div className="md:col-span-1">
           <SearchInput
             label={t('notes.searchLabel')}
@@ -398,7 +395,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
           </div>
         </div>
 
-        {/* Lector / editor del documento (derecha) */}
+        {/* Document reader / editor (right pane) */}
         <div className="min-h-[450px] rounded-xl border border-line bg-surface p-6 shadow-card md:col-span-2 sm:p-8">
           {isCreating || isEditing ? (
             <form onSubmit={handleSubmitForm} className="space-y-4">
@@ -406,7 +403,6 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                 <h3 className="type-section text-ink">
                   {isCreating ? t('notes.createTitle') : t('notes.editTitle', { title: selectedNote?.title ?? '' })}
                 </h3>
-                {/* Pestañas Escribir / Vista previa */}
                 <div className="flex items-center gap-1 rounded-lg border border-line bg-canvas p-1" role="tablist">
                   <button
                     type="button"
@@ -543,7 +539,6 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
             </form>
           ) : selectedNote ? (
             <article className="space-y-4">
-              {/* Cabecera documental de la nota */}
               <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
                 <div className="min-w-0">
                   <h2 className="type-title text-ink break-words">{selectedNote.title}</h2>
@@ -595,7 +590,6 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                     </div>
                   )}
                 </div>
-                {/* Acciones de la nota */}
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
                     size="sm"
@@ -630,7 +624,6 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
                 </div>
               </header>
 
-              {/* Contenido con MarkdownViewer */}
               <div className="p-1">
                 <MarkdownViewer content={selectedNote.content} />
               </div>
@@ -645,7 +638,7 @@ export const NotesView: React.FC<NotesViewProps> = ({ notes, onRefresh, initialN
         </div>
       </div>
 
-      {/* Diálogo accesible de confirmación para eliminar nota */}
+      {/* Accessible confirmation dialog for note deletion */}
       <ConfirmDialog
         isOpen={deleteConfirmOpen}
         title={t('notes.deleteTitle')}

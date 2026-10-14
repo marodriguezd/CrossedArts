@@ -15,9 +15,9 @@ export interface FormattedCitation {
 }
 
 /**
- * Extrae y valida la procedencia estricta de cada documento seleccionado para RAG.
- * Asegura que ninguna cita sea fabricada y que los enlaces de navegación apunten
- * a identificadores válidos en el grafo o SQLite.
+ * Extracts and validates strict provenance for every document selected for
+ * RAG. Ensures no citation is fabricated and that navigation links point at
+ * valid graph or SQLite ids.
  */
 export function buildVerifiedProvenance(documents: RetrievedDocument[]): FormattedCitation[] {
   return documents.map((doc) => {

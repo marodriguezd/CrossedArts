@@ -10,27 +10,26 @@ class LearningSessionResponse(BaseResponse):
     id: uuid.UUID
     resource_id: Optional[uuid.UUID] = None
     lesson_id: Optional[uuid.UUID] = None
-    #: Ámbito canónico y explícito de la sesión: `lesson`, `resource` o
-    #: `global` (repaso transversal sin anclas).
+    #: Canonical explicit session scope: `lesson`, `resource`, or `global`
+    #: (cross-cutting review without anchors).
     scope: str = "global"
     started_at: datetime
     ended_at: Optional[datetime] = None
-    #: `True` cuando la sesión ya fue finalizada formalmente (ver
-    #: `SessionService.end_session`, idempotente).
+    #: `True` once the session is formally finalized (see idempotent
+    #: `SessionService.end_session`).
     finalized: bool = False
     duration_minutes: int
 
 
 class StartSessionRequest(BaseModel):
     """
-    Solicitud de inicio de sesión de estudio.
+    Study-session start request.
 
-    Contrato de dominio (idéntico al del frontend SQLite WASM): la sesión queda
-    acotada a una LECCIÓN, a un RECURSO o es GLOBAL (repaso transversal de la
-    biblioteca). El ámbito se deriva de las anclas y puede declararse
-    explícitamente para dejar de ser ambiguo; un ámbito declarado que no sea
-    coherente con las anclas es un error de validación, nunca una fila
-    reinterpretada en silencio.
+    Domain contract (mirrors the frontend SQLite WASM): the session is scoped to
+    a LESSON, a RESOURCE, or is GLOBAL (cross-library review). Scope derives
+    from anchors and may be declared explicitly to remove ambiguity; a declared
+    scope inconsistent with the anchors is a validation error, never a silently
+    reinterpreted row.
     """
     resource_id: Optional[uuid.UUID] = None
     lesson_id: Optional[uuid.UUID] = None
@@ -40,8 +39,8 @@ class StartSessionRequest(BaseModel):
     def validate_scope(self) -> "StartSessionRequest":
         derived = resolve_session_scope(self.resource_id, self.lesson_id)
         if self.scope is None:
-            # El ámbito se deriva de las anclas: no se exige ningún ancla porque
-            # el repaso global es un ámbito legítimo de primera clase.
+            # Scope derives from anchors: no anchor is required because global
+            # review is a legitimate first-class scope.
             object.__setattr__(self, "scope", derived)
             return self
 

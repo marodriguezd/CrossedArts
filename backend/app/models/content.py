@@ -24,7 +24,6 @@ class ExtractedMetadata(Base):
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True) # Full extracted text content
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
-    # Relación
     media_asset: Mapped["MediaAsset"] = relationship("MediaAsset", back_populates="extracted_metadata")
 
 
@@ -38,12 +37,11 @@ class Transcript(Base):
         nullable=False,
         unique=True
     )
-    # Idioma declarado por la fuente (metadatos) o 'und' (indeterminado, ISO 639-2)
-    # cuando no puede inferirse. Nunca se etiqueta falsamente un idioma conocido.
+    # Source-declared language (metadata) or 'und' (undetermined, ISO 639-2) when
+    # it cannot be inferred. A known language is never falsely labeled.
     language: Mapped[str] = mapped_column(String(10), default="und", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
-    # Relaciones
     media_asset: Mapped["MediaAsset"] = relationship("MediaAsset", back_populates="transcript")
     segments: Mapped[List["TranscriptSegment"]] = relationship(
         "TranscriptSegment",
@@ -61,18 +59,17 @@ class TranscriptSegment(Base):
         ForeignKey("transcript.id", ondelete="CASCADE"),
         nullable=False
     )
-    start_time: Mapped[float] = mapped_column(Float, nullable=False) # Segundos
-    end_time: Mapped[float] = mapped_column(Float, nullable=False)   # Segundos
+    start_time: Mapped[float] = mapped_column(Float, nullable=False)  # Seconds
+    end_time: Mapped[float] = mapped_column(Float, nullable=False)  # Seconds
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Relación
     transcript: Mapped["Transcript"] = relationship("Transcript", back_populates="segments")
 
 
 class ContentIndex(Base):
     """
-    Tabla de búsqueda tradicional para indexar bloques de texto (páginas, transcripciones, etc.)
-    facilitando las consultas de búsqueda de texto completo.
+    Legacy search table indexing text blocks (pages, transcripts, ...) for
+    full-text queries.
     """
     __tablename__ = "content_index"
 
@@ -86,7 +83,6 @@ class ContentIndex(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
-    # Relación
     media_asset: Mapped["MediaAsset"] = relationship("MediaAsset")
 
 
@@ -115,7 +111,6 @@ class Quiz(Base):
     questions: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, nullable=False) # List of question objects
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
-    # Relación
     resource: Mapped["LearningResource"] = relationship("LearningResource")
 
 

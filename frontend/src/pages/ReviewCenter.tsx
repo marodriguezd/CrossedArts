@@ -43,11 +43,11 @@ import { Button, InlineStatus, ProgressBar, Kbd, Chip, cn } from '../components/
 interface ReviewCenterProps {
   flashcards: Flashcard[];
   onRefresh: () => void;
-  /** Recurso preseleccionado cuando se inicia el estudio desde otra vista. */
+  /** Resource preselected when study starts from another view. */
   initialResourceId?: string | null;
-  /** Lección preseleccionada: activa el ámbito de estudio/recuperación a nivel de lección. */
+  /** Preselected lesson: activates lesson-level study/retrieval scope. */
   initialLessonId?: string | null;
-  /** Modalidad preseleccionada desde la vista de origen. */
+  /** Mode preselected from the origin view. */
   initialMode?: StudySessionMode;
 }
 
@@ -56,9 +56,9 @@ type StudyItem =
   | { key: string; kind: 'practice'; question: GeneratedQuestion };
 
 /**
- * Tonos de calificación SM-2: 0-2 son fallo de memorización (error), 3 es
- * difícil (aviso), 4 bien (informativo) y 5 perfecto (éxito). El color nunca
- * va solo: cada botón muestra grado, etiqueta y descripción.
+ * SM-2 grade tones: 0-2 are memory failure (error), 3 is hard (warning), 4
+ * good (informative), and 5 perfect (success). Color never stands alone: each
+ * button shows grade, label, and description.
  */
 const GRADE_OPTIONS: Array<{ grade: number; label: string; hint: string; tone: string }> = [
   { grade: 0, label: '0 · Apagón', hint: 'Sin recuerdo alguno', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
@@ -212,7 +212,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
             questions = res.questions;
           }
         } catch (err: any) {
-          // Un fallo de generación local no debe invalidar la sesión.
+          // A local generation failure must not invalidate the session.
           setPrepareError(err?.message || 'No se pudieron generar las preguntas de práctica.');
         }
       }
@@ -280,7 +280,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
     try {
       await dao.finalizeStudySession(pendingResume.id);
     } catch {
-      /* Silencioso: una sesión abandonada sin actividad no genera historial. */
+      /* Silent: an abandoned session with no activity creates no history. */
     }
     setPendingResume(null);
     onRefresh();
@@ -391,13 +391,12 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
     if (state.phase !== 'active' || isPreparing || isFlashcardModalOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Las combinaciones con modificador NO pertenecen a este atajo: son de la
-      // aplicación o del sistema (por ejemplo Ctrl+K / Cmd+K abren la paleta de
-      // comandos global). Sin esta guarda, Cmd+K calificaría la tarjeta en curso
-      // mientras abría la paleta.
+      // Modified combos do NOT belong to this shortcut: they belong to the app
+      // or the OS (e.g. Ctrl+K / Cmd+K open the global command palette). Without
+      // this guard, Cmd+K would grade the current card while opening the palette.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      // Ignorar si el foco está en un campo de texto interactivo
+      // Ignore when focus sits in an interactive text field
       const target = e.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName.toLowerCase();
@@ -406,7 +405,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         }
       }
 
-      // Atajos de flashcards
       if (currentCard) {
         if (e.key === 'r' || e.key === 'R') {
           e.preventDefault();
@@ -445,7 +443,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         }
       }
 
-      // Atajos de preguntas de práctica
       if (currentQuestion) {
         if (!isAnswerSubmitted) {
           const optIdx = resolveShortcutOptionIndex(e.key, currentQuestion.options.length);
@@ -454,14 +451,14 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
             setSelectedOption(optIdx);
             return;
           }
-          // Enter para comprobar respuesta si hay opción elegida
+          // Enter to check the answer when an option is chosen
           if (e.key === 'Enter' && selectedOption !== null) {
             e.preventDefault();
             handleSubmitAnswer();
             return;
           }
         } else {
-          // Ya comprobada: Enter o Espacio para avanzar
+          // Already checked: Enter or Space to advance
           if (e.key === 'Enter' || e.code === 'Space') {
             e.preventDefault();
             advance();
@@ -549,7 +546,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
 
   return (
     <div className="mx-auto max-w-3xl animate-fade-in space-y-6">
-      {/* Cabecera */}
       <header className="border-b border-line pb-5 text-center">
         <h1 className="type-display text-ink">Centro de repaso</h1>
         <p className="type-secondary mx-auto mt-2 max-w-xl">
@@ -558,7 +554,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         </p>
       </header>
 
-      {/* Banner de sesión activa pendiente (reanudación tras recarga) */}
+      {/* Pending active-session banner (resume after reload) */}
       {state.phase === 'idle' && pendingResume && (
         <InlineStatus tone="warning" className="justify-between">
           <span className="flex min-w-0 items-start gap-3">
@@ -581,7 +577,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         </InlineStatus>
       )}
 
-      {/* Panel de inicio */}
       {(state.phase === 'idle' || state.phase === 'failed') && !isPreparing && (
         <section className="space-y-5 rounded-xl border border-line bg-surface p-5 shadow-card sm:p-6" aria-label="Configuración de la sesión">
           <div className="space-y-2">
@@ -616,7 +611,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
             </div>
           </div>
 
-          {/* Filtro por origen de tarjeta */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="type-micro flex items-center gap-1.5">
@@ -737,7 +731,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         </section>
       )}
 
-      {/* Preparando / starting */}
       {(isPreparing || state.phase === 'starting') && (
         <div className="space-y-3 rounded-xl border border-line bg-surface p-8 text-center shadow-card">
           <Loader2 size={26} className="mx-auto animate-spin text-accent" aria-hidden="true" />
@@ -746,10 +739,8 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         </div>
       )}
 
-      {/* Sesión activa */}
       {isActive && !isPreparing && (
         <div className="space-y-5">
-          {/* Barra superior de sesión */}
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5">
             <div className="flex min-w-0 items-center gap-2 text-meta text-muted">
               <Clock size={14} className="text-accent" aria-hidden="true" />
@@ -1012,7 +1003,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                 />
               )}
 
-              {/* Barra de atajos de teclado contextual */}
               <div
                 className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-line bg-surface/70 px-4 py-2.5 text-meta text-muted shadow-sm backdrop-blur"
                 aria-label="Guía de atajos de teclado"
@@ -1075,7 +1065,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         </div>
       )}
 
-      {/* Resumen de sesión */}
       {(state.phase === 'completed' || state.phase === 'cancelled') && (
         <div className="space-y-4 rounded-xl border border-line bg-surface p-6 text-center shadow-card sm:p-8">
           <div className={cn(
@@ -1127,7 +1116,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         </div>
       )}
 
-      {/* Modal de generación de tarjetas */}
       <FlashcardGenerationModal
         isOpen={isFlashcardModalOpen}
         onClose={() => setIsFlashcardModalOpen(false)}
@@ -1138,7 +1126,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         }}
       />
 
-      {/* Modal de editor de oclusión de imagen */}
       <ImageOcclusionEditor
         isOpen={isOcclusionModalOpen}
         onClose={() => setIsOcclusionModalOpen(false)}

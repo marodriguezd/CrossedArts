@@ -30,7 +30,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const [aiConfig, setAiConfig] = useState<AISettings>(aiService.getSettings());
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  // WebGPU & Local LLM state
   const [gpuReport, setGpuReport] = useState<WebGPUCapabilityReport>({
     state: 'checking',
     runtimeBackend: 'none',
@@ -41,7 +40,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<LocalAiStatus>(localAiRuntime.getStatus());
 
-  // Semantic Embedding & Indexing state
   const [embStatus, setEmbStatus] = useState<EmbeddingEngineStatus>(localEmbeddingEngine.getStatus());
   const [, setEmbProgress] = useState(localEmbeddingEngine.getProgress());
   const [embCount, setEmbCount] = useState<number>(0);
@@ -52,7 +50,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   );
   const selectedEmbeddingModelDef = getEmbeddingModelById(selectedEmbeddingModelId);
 
-  // Speech & Voice state
   const [speechConfig, setSpeechConfig] = useState<SpeechSettings>(speechService.getSettings());
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>(speechService.getAvailableVoices());
   const [isTestingVoice, setIsTestingVoice] = useState(false);
@@ -174,7 +171,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   const handleSaveAi = (e: React.FormEvent) => {
     e.preventDefault();
-    // Si el usuario deja de usar OpenAI, la clave se descarta por completo.
+    // When the user stops using OpenAI, the key is dropped entirely.
     if (aiConfig.provider !== 'openai' && aiConfig.apiKey) {
       aiService.clearApiKey();
       setAiConfig({ ...aiConfig, apiKey: '', persistApiKey: false });
@@ -258,7 +255,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // La confirmación destructiva se gestiona con ConfirmDialog (accesible), no con confirm() nativo.
+    // Destructive confirmation goes through ConfirmDialog (accessible), not native confirm().
     e.target.value = '';
     if (!file) return;
     setDbFeedback(null);
@@ -266,11 +263,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   };
 
   /**
-   * Importa un paquete de curso (profesor → alumno).
+   * Imports a course package (teacher -> student).
    *
-   * A diferencia del respaldo, esta operación es ADITIVA e idempotente: nunca
-   * borra ni sobrescribe, así que no requiere confirmación destructiva. Se valida
-   * el paquete completo ANTES de escribir nada.
+   * Unlike a backup, this operation is ADDITIVE and idempotent: it never
+   * deletes or overwrites, so it needs no destructive confirmation. The whole
+   * package is validated BEFORE anything is written.
    */
   const handlePackageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -293,8 +290,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       }
 
       const { created, skipped, conflicts } = await dao.importCoursePackage(validation.package);
-      // El conflicto no es un error: la importación es aditiva y conserva la
-      // versión local. Se informa aparte para que el usuario entienda el resultado.
+      // A conflict is not an error: the import is additive and keeps the local
+      // version. It is reported separately so the user understands the outcome.
       const conflictNote = describeConflicts(conflicts, effective);
       setPackageFeedback({
         type: 'success',
@@ -351,7 +348,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-10">
-      {/* Cabecera */}
       <header className="border-b border-line pb-5">
         <h1 className="type-display text-ink">Ajustes</h1>
         <p className="type-secondary mt-1">
@@ -360,7 +356,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       </header>
 
       {/* ---------------------------------------------------------------
-          Almacenamiento local y respaldos
+          Local storage and backups
       --------------------------------------------------------------- */}
       <section aria-labelledby="settings-storage" className="space-y-4">
         <SectionHeading
@@ -387,7 +383,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </Badge>
           </div>
 
-          {/* Métricas reales de almacenamiento */}
+          {/* Real storage metrics */}
           <dl className="grid grid-cols-1 gap-3 rounded-lg border border-line bg-canvas p-3 text-meta sm:grid-cols-3">
             <div>
               <dt className="text-faint">Tamaño BD SQLite</dt>
@@ -409,7 +405,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </div>
           </dl>
 
-          {/* Acciones de respaldo y restauración */}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Button variant="outline" onClick={handleExport}>
               <Download size={15} aria-hidden="true" /> Exportar (.sqlite)
@@ -423,7 +418,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </label>
           </div>
 
-          {/* Paquetes de curso (profesor → alumno): importación aditiva. */}
+          {/* Course packages (teacher -> student): additive import. */}
           <div className="rounded-lg border border-line bg-canvas p-3">
             <p className="type-micro mb-2">Paquete de curso</p>
             <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-secondary font-medium text-ink transition-colors hover:bg-accent-soft/60">
@@ -459,7 +454,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </InlineStatus>
           )}
 
-          {/* Nota informativa de dominios de almacenamiento */}
+          {/* Informational note on storage domains */}
           <div className="flex items-start gap-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
             <Info size={15} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
             <span>
@@ -482,7 +477,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </div>
       </section>
 
-      {/* Confirmación accesible de acciones destructivas de datos (reemplaza confirm() nativo) */}
+      {/* Accessible confirmation for destructive data actions (replaces native confirm()) */}
       <ConfirmDialog
         isOpen={!!pendingImport}
         title="Restaurar base de datos"
@@ -502,7 +497,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       />
 
       {/* ---------------------------------------------------------------
-          Apariencia
+          Appearance
       --------------------------------------------------------------- */}
       <section aria-labelledby="settings-theme" className="space-y-4">
         <SectionHeading
@@ -527,7 +522,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       </section>
 
       {/* ---------------------------------------------------------------
-          Idioma
+          Language
       --------------------------------------------------------------- */}
       <section aria-labelledby="settings-language" className="space-y-4">
         <SectionHeading
@@ -555,7 +550,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       </section>
 
       {/* ---------------------------------------------------------------
-          Audio y Accesibilidad por Voz (Web Speech API)
+          Audio and Voice Accessibility (Web Speech API)
       --------------------------------------------------------------- */}
       <section aria-labelledby="settings-speech" className="space-y-4">
         <SectionHeading
@@ -636,7 +631,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       </section>
 
       {/* ---------------------------------------------------------------
-          IA local y proveedores
+          Local AI and providers
       --------------------------------------------------------------- */}
       <form onSubmit={handleSaveAi} className="space-y-4" aria-labelledby="settings-ai">
         <SectionHeading
@@ -666,7 +661,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
               <option value="ollama">Ollama local (http://localhost:11434)</option>
               <option value="openai">OpenAI API (GPT-4o / GPT-4o-mini)</option>
             </select>
-            {/* Límite honesto de privacidad por proveedor */}
+            {/* Honest per-provider privacy boundary */}
             <p className="type-meta mt-1.5">
               {aiConfig.provider === 'demo' && '✓ Sin conexión: respuestas heurísticas generadas localmente.'}
               {aiConfig.provider === 'local' && '✓ 100% en tu dispositivo. La primera descarga del modelo sí requiere red.'}
@@ -675,10 +670,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </p>
           </div>
 
-          {/* Sección específica de IA Local WebLLM */}
           {aiConfig.provider === 'local' && (
             <div className="space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
-              {/* Estado de producto: la preparación es automática. */}
+              {/* Product state: preparation is automatic. */}
               <div className="rounded-lg border border-line bg-surface p-3" role="status" aria-live="polite">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-meta font-semibold text-ink">IA local</span>
@@ -717,7 +711,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                 )}
               </div>
 
-              {/* Guía y diagnóstico interactivo de WebGPU */}
               <WebGpuDiagnosticGuide
                 initialReport={gpuReport}
                 onCapabilityChange={setGpuReport}
@@ -795,7 +788,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                 )}
               </div>
 
-              {/* Aviso honesto de descarga */}
+              {/* Honest download notice */}
               <div className="flex items-start gap-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
                 <Info size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
                 <span>
@@ -806,7 +799,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                 </span>
               </div>
 
-              {/* Controles de carga / descarga de modelo */}
               <div className="flex flex-col gap-3 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-meta">
                   <span className="text-faint">Estado del motor: </span>
@@ -955,7 +947,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </div>
           )}
 
-          {/* Sección de Índice Semántico Local (embeddings on-device) */}
+          {/* Local semantic-index section (on-device embeddings) */}
           <div className="space-y-3 border-t border-line pt-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>

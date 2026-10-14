@@ -180,8 +180,8 @@ def get_due_reviews(db: Session = Depends(get_db)):
 @router.post("/reviews/{item_id}/ai-concept-check")
 async def generate_ai_concept_check(item_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Usa LLM para generar una pregunta o prompt de verificación conceptual dinámico
-    basado en el contenido del ítem de repaso (Nota o Quiz).
+    Use the LLM to generate a dynamic concept-check question/prompt from the
+    review item's content (Note or Quiz).
     """
     item = db.get(ReviewItem, item_id)
     if not item:

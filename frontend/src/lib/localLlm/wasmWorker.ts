@@ -1,6 +1,8 @@
 import { pipeline, env, TextStreamer } from '@huggingface/transformers';
 
-// Configurar entorno ONNX WASM en el Worker (hilo secundario)
+// ONNX WASM environment inside the inference Worker: models resolve from the
+// Hub and cache in the browser, and the thread count stays bounded by the
+// device's hardware concurrency so the main thread is not starved.
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 if (env.backends?.onnx?.wasm) {

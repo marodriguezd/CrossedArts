@@ -8,7 +8,6 @@ from backend.app.models.base import ResourceStatus
 
 
 def test_api_list_and_get_resources(client: TestClient, db: Session):
-    # Sembrar un recurso
     course = Course(
         id=uuid.uuid4(),
         title="Curso API Test",
@@ -32,7 +31,6 @@ def test_api_list_and_get_resources(client: TestClient, db: Session):
 
 
 def test_api_toggle_lesson_completion(client: TestClient, db: Session):
-    # Sembrar curso -> módulo -> lección
     course = Course(id=uuid.uuid4(), title="Curso Progreso API", status=ResourceStatus.NOT_STARTED)
     db.add(course)
     module = Module(id=uuid.uuid4(), course_id=course.id, title="Modulo Test")
@@ -53,7 +51,6 @@ def test_api_toggle_lesson_completion(client: TestClient, db: Session):
 
 
 def test_api_update_book_progress(client: TestClient, db: Session):
-    # Sembrar libro
     book = Book(id=uuid.uuid4(), title="Libro API Test", reading_percentage=0.0)
     db.add(book)
     db.commit()
@@ -70,12 +67,10 @@ def test_api_update_book_progress(client: TestClient, db: Session):
 
 
 def test_api_notes_crud(client: TestClient, db: Session):
-    # Sembrar recurso
     book = Book(id=uuid.uuid4(), title="Libro para Notas")
     db.add(book)
     db.commit()
 
-    # 1. Crear Nota
     response = client.post(
         "/api/v1/notes",
         json={"resource_id": str(book.id), "content": "Nota test API"}
@@ -83,12 +78,10 @@ def test_api_notes_crud(client: TestClient, db: Session):
     assert response.status_code == 201
     note_id = response.json()["id"]
 
-    # 2. Listar Notas
     response = client.get(f"/api/v1/resources/{book.id}/notes")
     assert response.status_code == 200
     assert len(response.json()) == 1
 
-    # 3. Actualizar Nota
     response = client.patch(
         f"/api/v1/notes/{note_id}",
         json={"content": "Nota modificada API"}
@@ -96,7 +89,6 @@ def test_api_notes_crud(client: TestClient, db: Session):
     assert response.status_code == 200
     assert response.json()["content"] == "Nota modificada API"
 
-    # 4. Eliminar Nota
     response = client.delete(f"/api/v1/notes/{note_id}")
     assert response.status_code == 204
 
@@ -106,16 +98,13 @@ def test_api_sessions_lifecycle(client: TestClient, db: Session):
     db.add(book)
     db.commit()
 
-    # 1. Iniciar sesión
     response = client.post("/api/v1/sessions/start", json={"resource_id": str(book.id)})
     assert response.status_code == 201
     session_id = response.json()["id"]
 
-    # 2. Heartbeat
     response = client.post(f"/api/v1/sessions/{session_id}/heartbeat")
     assert response.status_code == 200
 
-    # 3. Finalizar sesión
     response = client.post(f"/api/v1/sessions/{session_id}/end")
     assert response.status_code == 200
     assert response.json()["ended_at"] is not None

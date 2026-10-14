@@ -41,31 +41,26 @@ import {
 } from '../../services/commandPalette.ts';
 
 /**
- * Paleta de comandos global (Ctrl+K / Cmd+K), en `.ts` con `createElement`.
+ * Global command palette (Ctrl+K / Cmd+K), in `.ts` with `createElement`. It
+ * stays out of `.tsx` on purpose: `node --test --experimental-strip-types`
+ * strips types but not JSX, so a `.tsx` file **cannot be imported from the
+ * suite**. JSX-free code lets `tests/command_palette_render.test.ts` render it
+ * with `renderToStaticMarkup` and assert on real HTML instead of auditing
+ * source strings. Same treatment as `MarkdownMessage.ts`. `cn` and `Kbd` live
+ * in `components/ui/primitives.ts` for the same reason: importing them from
+ * `ui/index.tsx` (a `.tsx`) would break the runner. `h` aliases `createElement`
+ * only to keep six-level nesting readable. No new abstraction: every element
+ * keeps the same classes and ARIA attributes as its JSX version.
  *
- * No está en `.tsx` por una razón concreta: `node --test --experimental-strip-types`
- * elimina tipos pero no JSX, así que un `.tsx` **no puede importarse desde la suite**.
- * Escribirlo sin JSX es lo que permite que `tests/command_palette_render.test.ts` lo
- * renderice con `renderToStaticMarkup` y afirme sobre el HTML real en lugar de auditar
- * cadenas en el archivo fuente. Es el mismo trato que recibe `MarkdownMessage.ts`.
- *
- * `cn` y `Kbd` viven en `components/ui/primitives.ts` por el mismo motivo: si este
- * componente importara de `ui/index.tsx` (que es `.tsx`), el runner no podría cargarlo.
- *
- * `h` es un alias de `createElement` solo para que el anidamiento a seis niveles sea
- * legible. No es una abstracción nueva: cada elemento conserva sus mismas clases y
- * sus mismos atributos ARIA que tenía en la versión JSX.
- *
- * Accesibilidad:
- * - `role="dialog"` + `aria-modal` con título enlazado por `useId`.
- * - El campo es un `combobox` con `aria-expanded`, `aria-controls`,
- *   `aria-autocomplete` y `aria-activedescendant`, y la lista es un `listbox`
- *   con `option` por fila. Es la primera vez que el proyecto usa semántica
- *   combobox, y sigue la misma filosofía de `ui/index.tsx`: el estado nunca se
- *   transmite solo por color.
- * - Escape cierra y el foco vuelve al elemento que abrió la paleta.
- * - El foco queda contenido dentro del diálogo al tabular.
- * - Una región `aria-live` anuncia el número de resultados.
+ * Accessibility:
+ * - `role="dialog"` + `aria-modal` with `useId`-linked title.
+ * - The field is a `combobox` with `aria-expanded`, `aria-controls`,
+ *   `aria-autocomplete`, and `aria-activedescendant`; the list is a `listbox`
+ *   with one `option` per row. First combobox semantics in the project,
+ *   following the `ui/index.tsx` rule: state is never color-only.
+ * - Escape closes and focus returns to the palette opener.
+ * - Focus stays trapped inside the dialog on Tab.
+ * - An `aria-live` region announces the result count.
  */
 
 const h = createElement;
@@ -73,19 +68,17 @@ const h = createElement;
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Catálogo completo ya construido por el padre (acciones + entidades). */
+  /** Full catalog already built by the parent (actions + entities). */
   items: PaletteItem[];
-  /** Ejecuta el elemento elegido. El padre decide qué hacer con cada id. */
+  /** Runs the chosen item. The parent decides what each id does. */
   onExecute: (item: PaletteItem) => void;
-  /** Handoff a la búsqueda completa de la Biblioteca con la consulta actual. */
+  /** Handoff to full Library search with the current query. */
   onSearchAll?: (query: string) => void;
   /**
-   * Consulta inicial, sembrada cada vez que se abre la paleta.
-   *
-   * Existe por testabilidad: sin ella no hay forma de que el resaltado con `<mark>`
-   * sea alcanzable desde un render estático, porque `useState('')` siempre parte de
-   * vacío. Es la vía estándar de React para abrir un componente con estado inicial
-   * y de paso habilita abrir la paleta con una consulta ya escrita.
+   * Initial query, seeded on every palette open. Exists for testability:
+   * without it `<mark>` highlighting is unreachable from a static render
+   * because `useState('')` always starts empty. Standard React way to open a
+   * component with initial state; it also enables opening with a typed query.
    */
   initialQuery?: string;
 }
@@ -116,10 +109,10 @@ export function CommandPalette({
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
-  // El valor inicial del estado YA viene sembrado, y no solo desde el efecto: en
-  // render estático (`renderToStaticMarkup`) los efectos NO se ejecutan, así que
-  // sembrar únicamente en `useEffect` haría que `initialQuery` no apareciera nunca
-  // fuera del navegador. El efecto de apertura cubre el caso real de reabrirla.
+  // State already starts seeded, not only via the effect: in static renders
+  // (`renderToStaticMarkup`) effects NEVER run, so seeding only in `useEffect`
+  // would hide `initialQuery` outside the browser. The open effect covers real
+  // reopen cases.
   const { effective } = useLanguage();
   const [query, setQuery] = useState(initialQuery ?? '');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -128,8 +121,8 @@ export function CommandPalette({
   const results = useMemo(() => matches.map(match => match.item), [matches]);
   const groups = useMemo(() => groupPaletteItems(matches, effective), [matches, effective]);
 
-  // El índice activo se recorta al rango real: la lista cambia de longitud con
-  // cada pulsación y el activo nunca debe quedar fuera.
+  // The active index is clamped to the real range: the list changes length on
+  // every keystroke and the active row must never fall outside.
   const safeIndex = results.length === 0 ? -1 : Math.min(Math.max(activeIndex, 0), results.length - 1);
   const indexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -137,9 +130,9 @@ export function CommandPalette({
     return map;
   }, [results]);
 
-  // Restablece la consulta y la selección en cada apertura: reabrir la paleta
-  // nunca muestra el estado de la búsqueda anterior, salvo que el padre pida otra
-  // cosa explícitamente con `initialQuery`.
+  // Resets query and selection on every open: reopening never shows the prior
+  // search state, unless the parent explicitly requests otherwise via
+  // `initialQuery`.
   useEffect(() => {
     if (!isOpen) return;
     setQuery(initialQuery ?? '');
@@ -165,11 +158,9 @@ export function CommandPalette({
   }, [isOpen, onClose, initialQuery]);
 
   /**
-   * Pinta el texto envolviendo lo coincidente en `<mark>`.
-   *
-   * Los segmentos se renderizan como hijos de React, que los escapa: una nota
-   * puede contener `<script>` o Markdown y debe MOSTRARSE como texto, jamás
-   * interpretarse. Por eso aquí no hay `dangerouslySetInnerHTML`.
+   * Paints text by wrapping matches in `<mark>`. Segments render as React
+   * children, which escape them: a note may hold `<script>` or Markdown and
+   * must SHOW as text, never execute. Hence no `dangerouslySetInnerHTML` here.
    */
   const highlighted = (text: string, ranges: PaletteMatch['titleRanges']): ReactNode => {
     if (!text) return null;
@@ -216,8 +207,8 @@ export function CommandPalette({
         execute(results[safeIndex]);
         return;
       case 'Tab': {
-        // Contención del foco dentro del diálogo: sin ella, Tab se iría a los
-        // controles que quedan detrás del overlay.
+        // Focus containment inside the dialog: without it, Tab would escape to
+        // controls behind the overlay.
         const focusables = panelRef.current?.querySelectorAll<HTMLElement>(
           'input, button:not([disabled]), a[href], select, textarea, [tabindex]:not([tabindex="-1"])'
         );
@@ -257,7 +248,7 @@ export function CommandPalette({
           isActive ? 'bg-accent-soft' : 'hover:bg-accent-soft/50'
         ),
       },
-      // Indicador de activo: forma y posición, no solo color.
+      // Active indicator: shape and position, not color alone.
       h('span', {
         key: 'marca',
         'aria-hidden': 'true',
@@ -307,7 +298,7 @@ export function CommandPalette({
     h(
       'div',
       { key: group.group, role: 'group', 'aria-label': group.label },
-      // El rótulo visible se oculta al lector de pantalla: el grupo ya se anuncia con aria-label.
+      // The visible caption hides from screen readers: the group already announces via aria-label.
       h(
         'p',
         {
@@ -339,7 +330,7 @@ export function CommandPalette({
       },
       h('h2', { key: 'titulo', id: titleId, className: 'sr-only' }, 'Paleta de comandos'),
 
-      // Campo de consulta: combobox con el patrón ARIA completo.
+      // Query field: combobox with the full ARIA pattern.
       h(
         'div',
         { key: 'campo', className: 'flex items-center gap-2 border-b border-line px-3' },
@@ -378,14 +369,11 @@ export function CommandPalette({
         )
       ),
 
-      // Resultados agrupados.
-      //
-      // El `listbox` se monta SIEMPRE, incluso sin resultados: `aria-controls`
-      // del campo debe apuntar a un id que exista de verdad, y antes el id solo
-      // existía cuando había resultados, dejando una referencia colgante justo
-      // en el caso de "sin resultados", que es cuando más se necesita leer el
-      // estado con un lector de pantalla. El mensaje de vacío va FUERA del
-      // listbox porque su contenido no son opciones.
+      // Grouped results. The `listbox` ALWAYS mounts, even empty: the field's
+      // `aria-controls` must point at a real id; previously the id only existed
+      // with results, leaving a dangling reference exactly in the "no results"
+      // case when screen-reader state matters most. The empty message sits
+      // OUTSIDE the listbox because its content is not options.
       h(
         'div',
         { key: 'resultados', className: 'min-h-0 flex-1 overflow-y-auto' },
@@ -408,7 +396,7 @@ export function CommandPalette({
             )
           ),
 
-        // Handoff a la búsqueda completa, para quien no encuentre lo que busca aquí.
+        // Handoff to full search, for users who find nothing here.
         query.trim() &&
           onSearchAll &&
           h(
@@ -435,7 +423,7 @@ export function CommandPalette({
           )
       ),
 
-      // Pie: leyenda de teclado y contador de resultados.
+      // Footer: keyboard legend and result counter.
       h(
         'div',
         { key: 'pie', className: 'flex items-center justify-between gap-3 border-t border-line px-3 py-2' },

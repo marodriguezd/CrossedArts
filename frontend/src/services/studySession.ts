@@ -1,13 +1,13 @@
 import type { StudySessionMode } from '../types/models.ts';
 
 /**
- * Máquina de estados pura y determinista para el ciclo de vida de una sesión de estudio.
- * Se mantiene independiente de React para poder testearla sin DOM.
+ * Pure deterministic state machine for the study-session lifecycle. Kept
+ * independent of React so it can be tested without a DOM.
  *
  *   idle -> starting -> active -> paused -> active ... -> completed
  *                          \-> completed
  *                          \-> cancelled
- *   starting -> failed (persistencia fallida)
+ *   starting -> failed (persistence failed)
  */
 export type StudySessionPhase =
   | 'idle'
@@ -22,12 +22,11 @@ export interface StudySessionState {
   phase: StudySessionPhase;
   mode: StudySessionMode;
   resourceId?: string;
-  /** Ámbito de lección opcional asociado a la sesión (Iteración 14). */
+  /** Optional lesson scope associated with the session (Iteration 14). */
   lessonId?: string;
   sessionId: string | null;
   startedAt: number | null;
   error: string | null;
-  /** Indica si el registro de la sesión fue persistido correctamente. */
   persisted: boolean;
 }
 
@@ -118,8 +117,8 @@ export function studySessionReducer(
       return { ...state, phase: 'cancelled', error: null };
 
     case 'FINALIZE_FAILED':
-      // Nunca se reporta una finalización si la persistencia falló: la sesión
-      // permanece activa para permitir reintentar.
+      // Completion is never reported when persistence failed: the session
+      // stays active so the user can retry.
       if (state.phase !== 'active' && state.phase !== 'paused') return state;
       return { ...state, phase: 'active', error: action.error, persisted: true };
 

@@ -1,22 +1,18 @@
 /**
- * Metas de aprendizaje: validación, progreso derivado y estados de fecha.
- *
- * Lógica PURA (sin React, sin SQLite, sin red) para poder probarla con
- * `node:test`. Principios que rigen este módulo:
- *
- *  - El progreso NUNCA se persiste: se deriva de los datos reales (curso,
- *    libro, trabajo práctico, sesiones de estudio) en cada lectura.
- *  - Cada tipo de meta mide UNA sola cosa. Los tipos no se mezclan jamás en un
- *    mismo porcentaje (una meta de curso no "avanza" por repasar tarjetas).
- *  - Cuando no hay medida honesta posible (sin recurso, sin total de páginas,
- *    sin objetivo numérico), `measurable` es `false` y el porcentaje es `null`:
- *    la UI debe decirlo, no inventar un 0%.
+ * Learning goals: validation, derived progress, and date states. Pure logic
+ * (no React, no SQLite, no network) for node:test coverage. Governing
+ * principles: progress is NEVER persisted — it derives from real data (course,
+ * book, practice work, study sessions) on every read. Each goal kind measures
+ * ONE thing only; kinds never blend into one percent (a course goal does not
+ * "advance" by reviewing cards). Without an honest measure (no resource, no
+ * page total, no numeric target), `measurable` is `false` and percent is
+ * `null`: the UI must say so, never invent 0%.
  */
 import type { Book, Course, LearningGoal, GoalKind, PracticeWork } from '../types/models.ts';
 import { translateKey } from '../i18n/dictionaries.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 
-/** Etiquetas en español de los tipos de meta. */
+/** Localized goal-kind labels. Defaults to Spanish. */
 export const GOAL_KIND_LABELS: Record<GoalKind, string> = {
   course: 'Completar un curso',
   book: 'Terminar un libro',
@@ -25,7 +21,7 @@ export const GOAL_KIND_LABELS: Record<GoalKind, string> = {
   custom: 'Meta personalizada'
 };
 
-/** Orden estable para poblar selectores. */
+/** Stable order for populating selectors. */
 export const GOAL_KINDS: GoalKind[] = ['course', 'book', 'practice', 'study_time', 'custom'];
 
 /**
@@ -49,10 +45,10 @@ export function goalUnitLabel(unit: GoalUnit, lang: LanguageCode = 'es'): string
   return translateKey(lang, `goals.unit.${GOAL_UNIT_KEYS[unit] ?? 'none'}`);
 }
 
-/** Tipos de meta ligados a un recurso concreto (curso o libro). */
+/** Goal kinds tied to a concrete resource (course or book). */
 export const GOAL_KINDS_REQUIRING_RESOURCE: ReadonlySet<GoalKind> = new Set<GoalKind>(['course', 'book']);
 
-/** Unidades de medida por tipo de meta. La UI nunca las concatena entre sí. */
+/** Measure units per goal kind. The UI never concatenates them together. */
 export type GoalUnit = 'lecciones' | 'páginas' | 'piezas' | 'minutos' | 'ninguna';
 
 const GOAL_UNIT_BY_KIND: Record<GoalKind, GoalUnit> = {
@@ -64,7 +60,7 @@ const GOAL_UNIT_BY_KIND: Record<GoalKind, GoalUnit> = {
 };
 
 /* -------------------------------------------------------------------------- */
-/* Validación                                                                  */
+/* Validation                                                                  */
 /* -------------------------------------------------------------------------- */
 
 export interface GoalDraft {
@@ -78,14 +74,14 @@ export interface GoalDraft {
 
 export interface GoalValidation {
   ok: boolean;
-  /** Mensaje accionable en español; solo presente cuando `ok` es false. */
+  /** Actionable localized message; present only when `ok` is false. */
   error?: string;
 }
 
-/** `YYYY-MM-DD` o ISO con hora. Se acepta también `YYYY-MM-DD HH:MM:SS`. */
+/** `YYYY-MM-DD` or ISO with time. `YYYY-MM-DD HH:MM:SS` also accepted. */
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 
-/** Normaliza una fecha a `YYYY-MM-DD`; devuelve null si no es interpretable. */
+/** Normalizes a date to `YYYY-MM-DD`; null when uninterpretable. */
 export function normalizeGoalDate(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
@@ -98,15 +94,11 @@ export function normalizeGoalDate(value: string | null | undefined): string | nu
 }
 
 /**
- * Valida un borrador de meta antes de escribir en SQLite.
- *
- * Reglas:
- *  1. Título obligatorio.
- *  2. Curso/libro exigen recurso enlazado (sin él no hay nada que medir).
- *  3. El objetivo numérico, si existe, debe ser finito y mayor que cero.
- *  4. Tiempo de estudio exige objetivo en minutos (si no, no hay progreso).
- *  5. La fecha objetivo, si existe, debe ser una fecha real.
- *  6. Nunca se aceptan URLs `blob:` en la descripción (no son referencias).
+ * Validates a goal draft before SQLite writes. Rules: 1. Title required. 2.
+ * Course/book require a linked resource (nothing measurable without it). 3. A
+ * numeric target, when present, must be finite and above zero. 4. Study time
+ * requires a minute target (else no progress). 5. Target dates, when present,
+ * must be real dates. 6. `blob:` URLs are never accepted in descriptions.
  */
 export function validateGoalDraft(draft: GoalDraft, lang: LanguageCode = 'es'): GoalValidation {
   if (!draft.title || !draft.title.trim()) {
@@ -138,17 +130,17 @@ export function validateGoalDraft(draft: GoalDraft, lang: LanguageCode = 'es'): 
 }
 
 /* -------------------------------------------------------------------------- */
-/* Progreso derivado                                                           */
+/* Derived progress                                                            */
 /* -------------------------------------------------------------------------- */
 
-/** Curso mínimo necesario para medir una meta (contadores ya calculados). */
+/** Minimal course data for goal measurement (precomputed counters). */
 export interface GoalCourseContext {
   title: string;
   total_lessons: number;
   completed_lessons: number;
 }
 
-/** Libro mínimo necesario para medir una meta. */
+/** Minimal book data for goal measurement. */
 export interface GoalBookContext {
   title: string;
   page_count?: number | null;
@@ -161,27 +153,27 @@ export interface GoalProgressContext {
   books: ReadonlyMap<string, GoalBookContext>;
   practice: readonly PracticeWork[];
   /**
-   * Minutos de estudio registrados desde la creación de cada meta, por id de
-   * meta. Se inyecta desde el DAO para no acoplar este módulo a SQLite.
+   * Study minutes logged since each goal's creation, keyed by goal id.
+   * Injected from the DAO to keep this module SQLite-free.
    */
   studyMinutesByGoal: ReadonlyMap<string, number>;
 }
 
 export interface GoalProgress {
-  /** true solo cuando existe una medida honesta y completa del avance. */
+  /** True only with an honest complete measure of progress. */
   measurable: boolean;
-  /** Valor actual medido (null cuando no es medible). */
+  /** Measured current value (null when unmeasurable). */
   current: number | null;
-  /** Valor objetivo (null cuando la meta no lo define). */
+  /** Target value (null when the goal defines none). */
   target: number | null;
-  /** Porcentaje 0..100 redondeado (null cuando no es medible). */
+  /** Rounded 0..100 percent (null when unmeasurable). */
   percent: number | null;
   unit: GoalUnit;
-  /** Explicación honesta de QUÉ se mide. La UI la muestra siempre. */
+  /** Honest account of WHAT is measured. The UI always shows it. */
   basis: string;
-  /** true si el recurso enlazado ya no existe (borrado por el usuario). */
+  /** True when the linked resource no longer exists (user-deleted). */
   missingResource: boolean;
-  /** true si la medida alcanza o supera el objetivo. */
+  /** True when the measure meets or exceeds the target. */
   reachedTarget: boolean;
 }
 
@@ -221,14 +213,11 @@ function measured(
 }
 
 /**
- * Deriva el progreso de una meta desde datos reales.
- *
- * Casos borde documentados (todos prueban en tests):
- *  - Curso sin lecciones → no medible (no se divide entre cero).
- *  - Libro sin número de páginas → no medible.
- *  - Recurso enlazado borrado → `missingResource`, no medible.
- *  - Práctica sin objetivo ni piezas registradas → no medible.
- *  - Meta personalizada → nunca medible: se completa manualmente.
+ * Derives goal progress from real data. Documented edge cases (all tested):
+ * lessons-less course -> unmeasurable (no divide-by-zero); page-less book ->
+ * unmeasurable; deleted linked resource -> `missingResource`, unmeasurable;
+ * practice without target or pieces -> unmeasurable; custom goals -> never
+ * measurable, completed manually.
  */
 export function computeGoalProgress(
   goal: LearningGoal,
@@ -307,12 +296,12 @@ export function computeGoalProgress(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Fecha objetivo                                                              */
+/* Target date                                                                 */
 /* -------------------------------------------------------------------------- */
 
 export type GoalDeadlineState = 'completed' | 'overdue' | 'due_soon' | 'upcoming' | 'no_deadline';
 
-/** Días dentro de los cuales una meta se considera "por vencer". */
+/** Days within which a goal counts as "due soon". */
 export const GOAL_DUE_SOON_DAYS = 7;
 
 export const GOAL_DEADLINE_LABELS: Record<GoalDeadlineState, string> = {
@@ -335,14 +324,10 @@ export function goalDeadlineLabel(
 }
 
 /**
- * Clasifica la fecha objetivo de una meta respecto a `today` (`YYYY-MM-DD`).
- *
- * Estados:
- *  - completed: la meta está completada (la fecha deja de ser relevante).
- *  - overdue: la fecha ya pasó. Sin dramatismo: es información, no un castigo.
- *  - due_soon: quedan 0..7 días.
- *  - upcoming: quedan más de 7 días.
- *  - no_deadline: sin fecha o fecha ilegible (se reporta honestamente).
+ * Classifies a goal target date against `today` (`YYYY-MM-DD`). States:
+ * completed (date no longer matters); overdue (date passed — information, not
+ * punishment); due_soon (0..7 days left); upcoming (over 7 days); no_deadline
+ * (missing or unreadable date, reported honestly).
  */
 export function classifyGoalDeadline(
   goal: Pick<LearningGoal, 'status' | 'target_date'>,
@@ -359,7 +344,7 @@ export function classifyGoalDeadline(
   return 'upcoming';
 }
 
-/** Días entre dos fechas `YYYY-MM-DD` (positivo si `to` es posterior). */
+/** Days between two `YYYY-MM-DD` dates (positive when `to` is later). */
 export function diffDays(from: string, to: string): number {
   const a = Date.parse(`${from.slice(0, 10)}T00:00:00Z`);
   const b = Date.parse(`${to.slice(0, 10)}T00:00:00Z`);
@@ -368,7 +353,7 @@ export function diffDays(from: string, to: string): number {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Resumen                                                                     */
+/* Summary                                                                     */
 /* -------------------------------------------------------------------------- */
 
 export interface GoalSummary {
@@ -377,13 +362,13 @@ export interface GoalSummary {
   completed: number;
   overdue: number;
   dueSoon: number;
-  /** Metas activas cuya medida ya alcanza el objetivo (listas para cerrar). */
+  /** Active goals already at target (ready to close). */
   readyToComplete: number;
 }
 
 /**
- * Resumen determinista para tarjetas de estado. Solo agrega estados y medidas
- * ya calculados: no introduce ninguna métrica nueva.
+ * Deterministic summary for status cards. Aggregates already computed states
+ * and measures only: introduces no new metric.
  */
 export function summarizeGoals(
   goals: readonly LearningGoal[],
@@ -415,7 +400,7 @@ export function summarizeGoals(
   return summary;
 }
 
-/** Cursos mínimos para el contexto de medición (desde las filas en memoria). */
+/** Minimal courses for the measurement context (from in-memory rows). */
 export function buildGoalContextCourses(courses: readonly Course[]): Map<string, GoalCourseContext> {
   const map = new Map<string, GoalCourseContext>();
   for (const course of courses) {
@@ -428,7 +413,7 @@ export function buildGoalContextCourses(courses: readonly Course[]): Map<string,
   return map;
 }
 
-/** Libros mínimos para el contexto de medición. */
+/** Minimal books for the measurement context. */
 export function buildGoalContextBooks(books: readonly Book[]): Map<string, GoalBookContext> {
   const map = new Map<string, GoalBookContext>();
   for (const book of books) {

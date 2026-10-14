@@ -17,7 +17,7 @@ def setup_test_env(tmp_path: Path, monkeypatch):
 
 def test_upload_cover_oversized(client: TestClient, monkeypatch):
     """Prueba que portadas mayores a MAX_COVER_FILE_SIZE se rechacen con HTTP 413."""
-    monkeypatch.setattr(ingestion_module, "MAX_COVER_FILE_SIZE", 1024)  # 1 KB para test rápido
+    monkeypatch.setattr(ingestion_module, "MAX_COVER_FILE_SIZE", 1024)  # 1 KB keeps the test fast.
 
     oversized_data = b"A" * 2048
     response = client.post(
@@ -29,7 +29,7 @@ def test_upload_cover_oversized(client: TestClient, monkeypatch):
 
 
 def test_upload_cover_cleanup_on_failure(client: TestClient, monkeypatch):
-    """Prueba que si falla la subida de portada, no queden archivos huérfanos."""
+    """A failed cover upload leaves no orphan files."""
     monkeypatch.setattr(ingestion_module, "MAX_COVER_FILE_SIZE", 512)
 
     initial_files = set(settings.covers_dir.glob("*"))
@@ -43,7 +43,7 @@ def test_upload_cover_cleanup_on_failure(client: TestClient, monkeypatch):
 
 
 def test_import_from_upload_valid_file(client: TestClient):
-    """Prueba que un archivo válido dentro de los límites se procese correctamente."""
+    """A valid in-limits file is processed correctly."""
     pdf_content = b"%PDF-1.4 dummy content"
     files = [
         ("files", ("book.pdf", io.BytesIO(pdf_content), "application/pdf"))
@@ -62,7 +62,7 @@ def test_import_from_upload_valid_file(client: TestClient):
 
 
 def test_import_from_upload_oversized_file(client: TestClient, monkeypatch):
-    """Prueba que un archivo que excede el límite individual se rechace con 413 y limpie temporales."""
+    """An over-limit file is rejected with 413 and temp files are cleaned."""
     monkeypatch.setattr(ingestion_module, "MAX_UPLOAD_FILE_SIZE", 1024)  # 1 KB limit
 
     files = [
@@ -80,7 +80,6 @@ def test_import_from_upload_oversized_file(client: TestClient, monkeypatch):
     assert response.status_code == 413
     assert "supera el límite" in response.json()["detail"]
 
-    # Verificar que el directorio temporal se limpió
     if uploads_root.exists():
         subdirs = list(uploads_root.iterdir())
         assert len(subdirs) == 0
@@ -89,7 +88,7 @@ def test_import_from_upload_oversized_file(client: TestClient, monkeypatch):
 def test_import_from_upload_oversized_aggregate(client: TestClient, monkeypatch):
     """Prueba que un lote cuyo total excede MAX_TOTAL_IMPORT_SIZE se rechace con 413."""
     monkeypatch.setattr(ingestion_module, "MAX_UPLOAD_FILE_SIZE", 2048)
-    monkeypatch.setattr(ingestion_module, "MAX_TOTAL_IMPORT_SIZE", 1500)  # Límite agregado menor
+    monkeypatch.setattr(ingestion_module, "MAX_TOTAL_IMPORT_SIZE", 1500)  # Smaller aggregate cap.
 
     files = [
         ("files", ("part1.mp4", io.BytesIO(b"1" * 1000), "video/mp4")),
@@ -115,11 +114,10 @@ def test_import_from_upload_oversized_aggregate(client: TestClient, monkeypatch)
 
 def test_import_from_upload_partial_write_failure_cleanup(client: TestClient, monkeypatch):
     """
-    Prueba que un fallo de escritura/I-O a mitad de transmisión de un archivo
-    elimine el archivo parcial corrupto, permita que los archivos válidos
-    del lote continúen, y limpie totalmente los directorios temporales.
+    A mid-transfer write/I-O failure drops the corrupt partial file, lets the
+    batch's valid files continue, and fully cleans temp directories.
     """
-    pdf_content = b"%PDF-1.4 dummy content with multiple chunks " * 5000  # > 64KB para múltiples chunks
+    pdf_content = b"%PDF-1.4 dummy content with multiple chunks " * 5000  # > 64KB spans chunks.
 
     files = [
         ("files", ("broken_doc.pdf", io.BytesIO(pdf_content), "application/pdf")),
@@ -160,7 +158,6 @@ def test_import_from_upload_partial_write_failure_cleanup(client: TestClient, mo
 
     def spying_import(self, req, background_tasks=None):
         source_dir = Path(req.source_path)
-        # Registrar todos los archivos presentes en el directorio temporal antes de que se limpie
         for p in source_dir.rglob("*"):
             if p.is_file():
                 seen_files_in_temp_dir.append(p.name)
@@ -174,7 +171,7 @@ def test_import_from_upload_partial_write_failure_cleanup(client: TestClient, mo
     assert response.status_code == 201
     assert response.json()["title"] == "Lote con Archivo Corrupto"
 
-    # El directorio temporal de importación solo debe haber recibido el archivo válido
+    # The temp import dir must hold only the valid file.
     assert "valid_doc.pdf" in seen_files_in_temp_dir
     assert "broken_doc.pdf" not in seen_files_in_temp_dir
 

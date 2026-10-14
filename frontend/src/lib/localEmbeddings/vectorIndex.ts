@@ -28,9 +28,9 @@ export interface VectorIndex {
 }
 
 /**
- * Implementación optimizada de VectorIndex en memoria usando Float32Array contiguo
- * para búsquedas rápidas con similitud de coseno, cero asignaciones intermedias
- * y soporte para filtros arbitrarios.
+ * Optimized in-memory VectorIndex using a contiguous Float32Array for fast
+ * cosine-similarity search, zero intermediate allocations, and support for
+ * arbitrary filters.
  */
 export class MemoryVectorIndex implements VectorIndex {
   private items: Map<string, { vector: Float32Array; metadata?: Record<string, any> }> = new Map();
@@ -86,7 +86,8 @@ export class MemoryVectorIndex implements VectorIndex {
 
     const matches: VectorMatch[] = [];
 
-    // Calcular similitud coseno directa con Float32Array
+    // Inlined dot/norm loop instead of the shared helper: no temporaries are
+    // allocated per candidate vector.
     for (const [id, entry] of this.items.entries()) {
       if (options.filter && !options.filter(entry.metadata)) {
         continue;

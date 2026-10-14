@@ -6,10 +6,10 @@ class ContextRetrievalService:
     @staticmethod
     def get_context_for_resource(db: Session, resource_id: uuid.UUID, query: str, limit: int = 5) -> str:
         """
-        Recupera y formatea fragmentos relevantes indexados (páginas, transcripciones, notas)
-        asociados a un recurso de aprendizaje específico, sirviendo como grounding para el LLM.
+        Retrieve and format relevant indexed chunks (pages, transcripts, notes)
+        for a specific learning resource, as grounding for the LLM.
         """
-        # Realizar búsqueda semántica filtrando por el recurso a nivel de BD
+        # Semantic search filtered by resource at the DB level.
         resource_matches = SemanticSearchService.search(db, query=query, limit=limit, resource_id=resource_id)
 
         if not resource_matches:

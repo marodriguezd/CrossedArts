@@ -4,26 +4,26 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-# Añadir el directorio raíz al path de Python para que Alembic encuentre 'backend'
+# Add the repo root to the Python path so Alembic finds 'backend'.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-# Importación de la base de datos y modelos del proyecto
+# Project database and models import.
 from backend.app.core.database import Base
 from backend.app.core.settings import settings
 from backend.app.models import *
 
-# Configuración de Alembic
+# Alembic configuration.
 config = context.config
 
-# Configurar logs
+# Configure logs.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Asignar los metadatos de los modelos
+# Bind the model metadata.
 target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
-    """Ejecutar migraciones en modo offline."""
+    """Run migrations in offline mode."""
     url = settings.database_url
     context.configure(
         url=url,
@@ -36,8 +36,8 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 def run_migrations_online() -> None:
-    """Ejecutar migraciones en modo online."""
-    # Sobrescribir la URL de conexión de alembic.ini con la URL real de la app
+    """Run migrations in online mode."""
+    # Override the alembic.ini connection URL with the app's real URL.
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = settings.database_url
 
@@ -48,8 +48,8 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        # Activar el renderizado por lotes (render_as_batch) si estamos en SQLite
-        # Esto permite realizar operaciones de alteración de tablas sin fallar
+        # Enable batch rendering (render_as_batch) on SQLite so table-alter
+        # operations do not fail.
         is_sqlite = settings.database_url.startswith("sqlite")
         
         context.configure(

@@ -27,7 +27,7 @@ import { parseUrlState, serializeUrlState } from './services/deepLinking.ts';
 import { Loader2, AlertTriangle, X, RotateCcw } from 'lucide-react';
 import { Button } from './components/ui/index.tsx';
 
-// Code-splitting diferido: todas las vistas pesadas se cargan bajo demanda
+// Deferred code-splitting: every heavy view loads on demand
 const Library = lazy(() => import('./pages/Library.tsx').then(m => ({ default: m.Library })));
 const CourseDetail = lazy(() => import('./pages/CourseDetail.tsx').then(m => ({ default: m.CourseDetail })));
 const ReviewCenter = lazy(() => import('./pages/ReviewCenter.tsx').then(m => ({ default: m.ReviewCenter })));
@@ -75,7 +75,7 @@ export const App: React.FC = () => {
   const { loading, initError, kpis, courses, books, flashcards, notes, resources, practiceWork, recentSessions, goals, selectedCourse, refreshData, selectCourse, retryInit } =
     useAppData(selectedCourseId);
 
-  // Sincronizar estado React -> URL hash
+  // Sync React state -> URL hash
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const targetHash = serializeUrlState({
@@ -94,7 +94,7 @@ export const App: React.FC = () => {
     }
   }, [currentTab, selectedCourseId, initialLessonId, selectedResourceId, selectedNoteId, selectedGoalId, studyResourceId, studyLessonId, studyMode]);
 
-  // Sincronizar URL hash (back / forward / popstate) -> estado React
+  // Sync URL hash (back / forward / popstate) -> React state
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handlePopState = () => {
@@ -133,8 +133,8 @@ export const App: React.FC = () => {
   };
 
   /**
-   * Abre cualquier recurso en su destino dedicado reutilizando el modelo de
-   * navegación por estado existente (sin router).
+   * Opens any resource in its dedicated destination by reusing the existing
+   * state-based navigation model (no router).
    */
   const handleOpenResource = async (resourceId: string) => {
     const kind = await dao.resolveNodeKind(resourceId);
@@ -163,7 +163,7 @@ export const App: React.FC = () => {
         return;
       }
     }
-    // book / resource / desconocido -> vista de detalle dedicada
+    // book / resource / unknown -> dedicated detail view
     setSelectedResourceId(resourceId);
     setSelectedCourseId(null);
     setCurrentTab('resource_detail');
@@ -197,7 +197,7 @@ export const App: React.FC = () => {
     setCurrentTab('review');
   };
 
-  /** Estudio con ámbito de lección: prioriza la lección y su contenido asociado. */
+  /** Lesson-scoped study: prioritizes the lesson and its associated content. */
   const handleStudyLesson = async (lessonId: string, mode?: 'flashcards' | 'practice' | 'mixed') => {
     const courseId = await dao.getCourseIdForLesson(lessonId);
     setStudyResourceId(courseId);
@@ -212,8 +212,8 @@ export const App: React.FC = () => {
   };
 
   /**
-   * Destino determinista de una entidad: lo comparten paleta, búsqueda, grafo,
-   * Hoy y Metas, para que todas las rutas abran exactamente el mismo sitio.
+   * Deterministic target of an entity: shared by palette, search, graph, Today,
+   * and Goals, so every route opens exactly the same place.
    */
   const handleOpenDestination = (destination: ResourceDestination) => {
     switch (destination.tab) {
@@ -251,7 +251,7 @@ export const App: React.FC = () => {
 
   const handleMountLocalFolder = async () => {
     if (!localMediaService.isSupported()) {
-      // Aviso de capacidad del navegador mostrado en la propia interfaz (no con alert() nativo).
+      // Browser capability notice shown in the app UI itself (not a native alert()).
       setAppNotice(t('app.fsNotice'));
       return;
     }
@@ -282,16 +282,16 @@ export const App: React.FC = () => {
 
   const handleGraphMutated = () => {
     setGraphVersion(v => v + 1);
-    // El índice plano de la paleta puede quedar obsoleto: se invalida para que la
-    // próxima apertura lo vuelva a leer.
+    // The palette flat index may go stale: it is invalidated so the next
+    // open reads it again.
     paletteLoadRef.current = null;
-    // Tras importar/cambiar contenido, el índice semántico se regenera en segundo
-    // plano de forma automática y deduplicada (sin bloquear la interfaz).
+    // After importing/changing content, the semantic index regenerates in the
+    // background automatically and deduplicated (without blocking the UI).
     localAiRuntime.scheduleIndexing(aiService.getSettings().provider);
   };
 
   /* ------------------------------------------------------------------ */
-  /* Paleta de comandos global (Ctrl+K / Cmd+K)                          */
+  /* Global command palette (Ctrl+K / Cmd+K)                          */
   /* ------------------------------------------------------------------ */
 
   const [theme, toggleTheme] = useTheme();
@@ -310,13 +310,13 @@ export const App: React.FC = () => {
   const paletteLoadRef = useRef<Promise<void> | null>(null);
 
   /**
-   * Prepara el índice plano de lecciones, conceptos y recursos importados para que
-   * la paleta pueda filtrar en memoria. Se dispara al abrirla y se DEDUPLICA:
-   * varias aperturas seguidas comparten la misma promesa, igual que `dbBridge.init`.
+   * Prepares the flat index of lessons, concepts, and imported resources so the
+   * palette can filter in memory. It fires on open and is DEDUPLICATED: several
+   * consecutive opens share the same promise, just like `dbBridge.init`.
    *
-   * Vive aquí y no en `useAppData` a propósito: son índices de pantalla, no datos
-   * de arranque, y cargar un PDF por cada documento importado al iniciar la
-   * aplicación sería un coste que el usuario paga siempre para usar Ctrl+K una vez.
+   * It lives here and not in `useAppData` on purpose: these are screen indexes,
+   * not startup data, and loading a PDF for every imported document at app start
+   * would be a cost the user always pays to use Ctrl+K once.
    */
   const ensurePaletteIndex = useCallback(async () => {
     if (paletteLoadRef.current) return paletteLoadRef.current;
@@ -342,8 +342,8 @@ export const App: React.FC = () => {
 
   const openPalette = useCallback(() => {
     paletteOpenRef.current = true;
-    // La paleta vive por encima del cajón del Tutor IA: ambos overlays son
-    // excluyentes para que Escape y el foco no se solapen.
+    // The palette sits above the AI Tutor drawer: both overlays are mutually
+    // exclusive so Escape and focus never overlap.
     setIsAIOpen(false);
     setAiResource(null);
     setIsPaletteOpen(true);
@@ -361,19 +361,18 @@ export const App: React.FC = () => {
   }, [openPalette, closePalette]);
 
   /**
-   * El atajo es inerte mientras la aplicación no está lista.
+   * The hotkey is inert while the app is not ready.
    *
-   * El listener está montado antes de los guardas de `loading` e `initError`, así
-   * que sin esto, pulsar Ctrl+K durante el arranque dejaba `isPaletteOpen` en
-   * true y la paleta aparecía sola al terminar de cargar, sin que nadie la hubiera
-   * pedido.
+   * The listener mounts before the `loading` and `initError` guards, so without
+   * this, pressing Ctrl+K during startup left `isPaletteOpen` true and the
+   * palette appeared on its own once loading finished, with nobody asking for it.
    */
   useCommandPaletteHotkey(loading || initError ? () => undefined : togglePalette);
 
   /**
-   * "Continuar aprendiendo" apunta a la siguiente lección pendiente. Se elige un
-   * único curso candidato (primero el que ya está en progreso) y solo se resuelve
-   * UNA lección: el resto de lecciones ya están en el índice de la paleta.
+   * "Continue learning" points at the next pending lesson. A single candidate
+   * course is chosen (the in-progress one first) and only ONE lesson resolves:
+   * the remaining lessons already live in the palette index.
    */
   useEffect(() => {
     if (!isPaletteOpen) return;
@@ -425,7 +424,7 @@ export const App: React.FC = () => {
     [courses, books, notes, lessonIndex, conceptIndex, resourceIndex, practiceIndex, goals, kpis, continueTarget, theme, effective]
   );
 
-  /** Despacha el elemento elegido: destino de entidad o acción por identificador. */
+  /** Dispatches the chosen item: entity target or action by id. */
   const handlePaletteExecute = (item: PaletteItem) => {
     if (item.destination) {
       navigateToDestination(item.destination, {
@@ -457,7 +456,7 @@ export const App: React.FC = () => {
 
     switch (item.id) {
       case 'accion:review':
-        // Sesión de repaso global: sin recurso ni lección concretos.
+        // Global review session: no specific resource or lesson.
         setStudyResourceId(null);
         setStudyLessonId(null);
         setStudyMode(undefined);
@@ -492,15 +491,14 @@ export const App: React.FC = () => {
   }
 
   /**
-   * Fallo de inicialización de la base de datos.
+   * Database initialization failure.
    *
-   * Se comprueba ANTES de montar cualquier vista de datos. Antes, un fallo de
-   * inicialización solo se registraba en consola y la aplicación continuaba
-   * renderizando: las vistas hijas llegaban a `getDatabase()` y exponían el
-   * texto interno en inglés "Database not initialized". Aquí se detiene el
-   * montaje y se ofrece una vía de recuperación segura. Nunca se borran datos
-   * automáticamente: la acción destructiva sigue requiriendo confirmación
-   * explícita en Ajustes.
+   * Checked BEFORE mounting any data view. Previously, an initialization failure
+   * was only logged to console and the app kept rendering: child views reached
+   * `getDatabase()` and leaked the internal English text "Database not
+   * initialized". Here mounting stops and a safe recovery path is offered. Data
+   * is never wiped automatically: the destructive action still requires explicit
+   * confirmation in Settings.
    */
   if (initError) {
     return (
@@ -713,8 +711,8 @@ export const App: React.FC = () => {
           activeResourceId={aiResource?.id || selectedCourse?.id}
           activeLessonId={aiResource?.lessonId}
           onOpenCitation={citation => {
-            // Todo destino de cita resuelve por el mismo camino que el grafo y la
-            // paleta: `handleOpenResource` identifica el tipo y abre su vista.
+            // Every citation target resolves through the same path as the graph
+            // and palette: `handleOpenResource` identifies the type and opens its view.
             if (citation.navigate) void handleOpenResource(citation.navigate.id);
           }}
           onOpenSettings={() => {
@@ -724,8 +722,8 @@ export const App: React.FC = () => {
         />
       </Suspense>
 
-      {/* La paleta se monta como hermana del Shell para que su overlay no dependa
-          del layout de la vista activa. */}
+      {/* The palette mounts as a sibling of the Shell so its overlay does not
+          depend on the active view's layout. */}
       <CommandPalette
         isOpen={isPaletteOpen}
         onClose={closePalette}

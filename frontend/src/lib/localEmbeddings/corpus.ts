@@ -8,45 +8,44 @@ import { semanticContentManifest } from './contentManifest.ts';
 import { DEFAULT_EMBEDDING_MODEL_ID } from './registry.ts';
 
 /**
- * Construcción del corpus semántico.
+ * Semantic-corpus construction.
  *
- * Frontera canónica de indexación:
+ * Canonical indexing boundary:
  *
- *   entidades de dominio (DAO/SQLite)
+ *   domain entities (DAO/SQLite)
  *     -> `KnowledgeDocument` (ai/knowledge/adapters.ts)
- *       -> troceado semántico acotado
- *         -> vectores (embeddings)
- *           -> recuperación
+ *       -> bounded semantic chunking
+ *         -> vectors (embeddings)
+ *           -> retrieval
  *
- * Todo lo que entra al pipeline semántico pasa por `KnowledgeDocument`: es la
- * única abstracción que conoce procedencia, jerarquía y texto canónico. Aquí
- * solo se orquestan los dos pasos posteriores (troceado + identidad de
- * contenido) sin duplicar reglas de negocio.
+ * Everything entering the semantic pipeline goes through `KnowledgeDocument`:
+ * the only abstraction that knows provenance, hierarchy, and canonical text.
+ * This module just orchestrates the two later steps (chunking + content
+ * identity) without duplicating business rules.
  *
- * El texto y los identificadores de fragmentoproduced aquí son IDENTICOS a los
- * que producía el troceado directo sobre entidades de dominio: los adaptadores
- * construyen exactamente las mismas cabeceras y cuerpos. Por eso cambiar la
- * frontera no altera los resultados de recuperación ni invalida los vectores ya
- * cacheados.
+ * The text and fragment ids produced here are IDENTICAL to those the direct
+ * chunking over domain entities produced: the adapters build exactly the same
+ * headers and bodies. Changing the boundary therefore alters no retrieval
+ * result and invalidates no already-cached vectors.
  */
 
 export interface SemanticCorpusResult {
-  /** Fragmentos con su identidad de contenido ya resuelta. */
+  /** Fragments with their content identity already resolved. */
   chunks: SemanticChunk[];
-  /** Fragmentos cuyo SHA-256 se recalculó en esta pasada. */
+  /** Fragments whose SHA-256 was recomputed in this pass. */
   recomputedHashes: number;
-  /** Fragmentos cuyo SHA-256 se reutilizó del manifiesto. */
+  /** Fragments whose SHA-256 was reused from the manifest. */
   reusedHashes: number;
-  /** Entradas purgadas por material eliminado del corpus. */
+  /** Entries purged because the material left the corpus. */
   purgedHashes: number;
 }
 
 /**
- * Construye el corpus semántico completo desde entidades de dominio.
+ * Builds the full semantic corpus from domain entities.
  *
- * La identidad de contenido se resuelve a través del manifiesto local: los
- * documentos sin cambios reutilizan su SHA-256 y solo los documentos
- * modificados recalculan el suyo, invalidando únicamente sus fragmentos.
+ * Content identity resolves through the local manifest: unchanged documents
+ * reuse their SHA-256 and only modified ones recompute theirs, invalidating
+ * just their own fragments.
  */
 export async function buildSemanticCorpus(
   entities: DomainKnowledgeEntities,
@@ -64,8 +63,8 @@ export async function buildSemanticCorpus(
 }
 
 /**
- * Mapa `chunkId -> contentHash` ACTUAL del corpus, para validar la vigencia de
- * los vectores cacheados. Un fragmento ausente del mapa se considera obsoleto.
+ * CURRENT `chunkId -> contentHash` map of the corpus, used to validate cached
+ * vectors. A fragment missing from the map counts as stale.
  */
 export async function buildCurrentChunkHashes(
   entities: DomainKnowledgeEntities,

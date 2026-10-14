@@ -1,17 +1,16 @@
 """
-Registro (logging) estructurado de CrossedArts.
+CrossedArts structured logging.
 
-Todos los módulos del backend registran a través de `get_logger(...)` en lugar
-de `print(...)`: los diagnósticos quedan etiquetados con nivel y módulo, pueden
-silenciarse por configuración y no acaban en stdout mezclados con la salida de
-la API.
+Every backend module logs via `get_logger(...)` instead of `print(...)`: diagnostics
+stay tagged with level and module, can be silenced by configuration, and never
+end up on stdout mixed with API output.
 
-Reglas de contenido (nunca registrar):
-- claves de API ni secretos,
-- datos personales de usuario,
-- contenido completo de archivos o de modelos,
-- salidas largas de LLM.
-Los mensajes deben ser breves y suficientes para diagnosticar.
+Content rules (never log):
+- API keys or secrets,
+- user personal data,
+- full file or model contents,
+- long LLM outputs.
+Messages must stay short yet sufficient for diagnosis.
 """
 import logging
 import os
@@ -21,7 +20,7 @@ _configured = False
 
 
 def configure_logging(level: str | None = None) -> None:
-    """Configura el logger raíz del proyecto una única vez."""
+    """Configure the project root logger exactly once."""
     global _configured
     if _configured:
         return
@@ -38,13 +37,13 @@ def configure_logging(level: str | None = None) -> None:
     root = logging.getLogger(_ROOT_LOGGER_NAME)
     root.setLevel(getattr(logging, resolved_level, logging.INFO))
     root.addHandler(handler)
-    # Sin propagación: evita duplicar mensajes si la aplicación anfitriona ya
-    # configuró el logging raíz de Python.
+    # No propagation: avoids duplicate messages when the host app already
+    # configured the Python root logger.
     root.propagate = False
     _configured = True
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Devuelve un logger del proyecto (`crossedarts.<name>`)."""
+    """Return a project logger (`crossedarts.<name>`)."""
     configure_logging()
     return logging.getLogger(f"{_ROOT_LOGGER_NAME}.{name}")

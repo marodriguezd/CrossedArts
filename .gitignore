@@ -139,6 +139,8 @@ freebuff-chat-*.md
 # --- Auditorías y planes (artefactos, no fuente) ---
 AUDIT.md
 PLAN.md
+PENDIENTE.md
+pendiente.md
 
 # --- General Logs & Temp ---
 *.log

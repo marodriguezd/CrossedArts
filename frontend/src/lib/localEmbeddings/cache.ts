@@ -17,35 +17,35 @@ export interface CachedVectorEntry {
 }
 
 const IDB_NAME = 'CrossedArts_Embeddings';
-/** Versión 3: esquema con clave lógica compuesta (modelo::pipeline::chunk). */
+/** Version 3: schema with composite logical key (model::pipeline::chunk). */
 const IDB_VERSION = 3;
-/** Almacén legacy (v1/v2) con keyPath `chunkId`: una sola entrada por chunk. */
+/** Legacy store (v1/v2) with `chunkId` keyPath: one entry per chunk. */
 const LEGACY_STORE_NAME: string = 'vector_cache';
-/** Almacén v3 con keyPath `cacheKey`: coexisten modelo y versiones de pipeline. */
+/** v3 store with `cacheKey` keyPath: model and pipeline versions coexist. */
 const STORE_NAME: string = 'vector_cache_v3';
 
 /**
- * Clave lógica de caché. El almacén antiguo usaba `chunkId` como clave primaria,
- * de modo que el vector de un modelo PISABA al del otro para el mismo chunk.
- * La identidad real de una entrada es (chunkId, modelId, pipelineVersion).
+ * Logical cache key. The old store used `chunkId` as primary key, so one
+ * model's vector OVERWROTE another's for the same chunk. An entry's real
+ * identity is (chunkId, modelId, pipelineVersion).
  */
 export function buildCacheKey(modelId: string, pipelineVersion: string, chunkId: string): string {
   return `${modelId}::${pipelineVersion}::${chunkId}`;
 }
 
 /**
- * Dimensión EFEECTIVA (almacenada y consultada) para un modelo según el
- * registro local: la salida ya truncada por MRL (`outputDimension`), o en su
- * ausencia `dimensions`/`dimension`.
+ * EFFECTIVE dimension (stored and queried) for a model per the local
+ * registry: the MRL-truncated output (`outputDimension`), else
+ * `dimensions`/`dimension`.
  *
- * Este es el contrato de la caché: los vectores se guardan y se recuperan con
- * esta dimensión y sobre ella se calcula la similitud coseno. La dimensión
- * NATIVA del modelo (`dimension`, 768d para EmbeddingGemma) sigue declarada en
- * el registro para validar la salida cruda del pipeline, pero nunca se usa
- * aquí: validar contra ella haría invisible todo vector MRL (256d).
+ * This is the cache contract: vectors are stored and fetched with this
+ * dimension and cosine similarity runs on it. The model's NATIVE dimension
+ * (`dimension`, 768d for EmbeddingGemma) stays declared in the registry to
+ * validate raw pipeline output, but is never used here: validating against it
+ * would hide every MRL (256d) vector.
  *
- * Devuelve `undefined` para modelos desconocidos: la validación se apoya então
- * en el campo `dimensions` declarado por la propia entrada.
+ * Returns `undefined` for unknown models: validation then falls back to the
+ * entry's own declared `dimensions` field.
  */
 export function expectedDimensionsForModel(modelId: string): number | undefined {
   const def = getEmbeddingModelById(modelId);
@@ -53,8 +53,8 @@ export function expectedDimensionsForModel(modelId: string): number | undefined 
 }
 
 /**
- * Normaliza un registro legacy (sin `pipelineVersion`) a la identidad actual.
- * Idempotente: un registro ya migrado pasa por aquí sin cambios.
+ * Normalizes a legacy record (no `pipelineVersion`) to the current identity.
+ * Idempotent: an already migrated record passes through unchanged.
  */
 export function migrateLegacyCacheRecord(record: CachedVectorEntry): CachedVectorEntry {
   const pipelineVersion = record.pipelineVersion || EMBEDDING_PIPELINE_VERSION;
@@ -62,14 +62,15 @@ export function migrateLegacyCacheRecord(record: CachedVectorEntry): CachedVecto
 }
 
 class LocalEmbeddingCache {
-  /** Caché en memoria indexada por la misma clave lógica que IndexedDB. */
+  /** In-memory cache keyed by the same logical key as IndexedDB. */
   private inMemoryCache: Map<string, CachedVectorEntry> = new Map();
   /**
-   * Handle de IndexedDB reutilizado entre operaciones.
+   * IndexedDB handle reused across operations.
    *
-   * Abrir una conexión por operación y nunca cerrarla crece sin límite (cada
-   * conexión retiene memoria y bloquea `deleteDatabase` de otras pestañas).
-   * El handle se memoiza tras el primer uso y se reabre solo si algo lo cerró.
+   * Opening one connection per operation and never closing it grows without
+   * bound (each connection holds memory and blocks other tabs'
+   * `deleteDatabase`). The handle is memoized after first use and reopened
+   * only if something closed it.
    */
   private idbPromise: Promise<IDBDatabase> | null = null;
 
@@ -84,7 +85,7 @@ class LocalEmbeddingCache {
   private openIDB(): Promise<IDBDatabase> {
     if (this.idbPromise) return this.idbPromise;
     this.idbPromise = this.openIDBConnection().catch((err) => {
-      // Un fallo transitorio no debe memoizarse: el siguiente reintento reabre.
+      // A transient failure must not be memoized: the next retry reopens.
       this.idbPromise = null;
       throw err;
     });
@@ -104,10 +105,10 @@ class LocalEmbeddingCache {
           store.createIndex('modelPipeline', ['modelId', 'pipelineVersion'], { unique: false });
         }
 
-        // Migración desde el almacén legacy (keyPath `chunkId`): se copia cada
-        // registro al nuevo almacén con su clave lógica y se elimina el viejo.
-        // Se ejecuta dentro de `onupgradeneeded` (transacción de versión), es
-        // idempotente y conserva los vectores todavía representables.
+        // Migration from the legacy store (`chunkId` keyPath): each record is
+        // copied to the new store under its logical key and the old one is
+        // dropped. Runs inside `onupgradeneeded` (version transaction); it is
+        // idempotent and keeps every still-representable vector.
         if (db.objectStoreNames.contains(LEGACY_STORE_NAME) && STORE_NAME !== LEGACY_STORE_NAME) {
           const legacy = tx.objectStore(LEGACY_STORE_NAME);
           const target = tx.objectStore(STORE_NAME);
@@ -160,15 +161,15 @@ class LocalEmbeddingCache {
   ): Promise<CachedVectorEntry | null> {
     const cacheKey = buildCacheKey(modelId, pipelineVersion, chunkId);
 
-    // La caché en memoria y IndexedDB comparten UNA sola condición de
-    // validez (isEntryValid): modelo, versión de pipeline y dimensión
-    // coherentes. Sin esta validación, la memoria devolvería entradas que la
-    // ruta IndexedDB rechazaría (o al revés) y la retriección semántica
-    // cambiaría de comportamiento entre sesión y sesión.
+    // In-memory cache and IndexedDB share ONE validity condition
+    // (isEntryValid): coherent model, pipeline version, and dimension.
+    // Without it, memory would return entries the IndexedDB path rejects (or
+    // vice versa) and semantic retrieval would behave differently from one
+    // session to the next.
     const inMemory = this.inMemoryCache.get(cacheKey);
     if (inMemory !== undefined) {
       if (this.isEntryValid(inMemory, modelId, pipelineVersion)) return inMemory;
-      // Entrada inválida en memoria: se descarta y se continúa en IndexedDB.
+      // Invalid in-memory entry: dropped, then IndexedDB is tried.
       this.inMemoryCache.delete(cacheKey);
     }
 
@@ -218,12 +219,11 @@ class LocalEmbeddingCache {
   }
 
   /**
-   * Devuelve los vectores cacheados de EXACTAMENTE un modelo y versión de pipeline.
+   * Returns cached vectors for EXACTLY one model and pipeline version.
    *
-   * Usa el índice compuesto `modelPipeline` cuando existe; si no está disponible
-   * (base creada por una versión anterior), degrada al índice `modelId` y en
-   * último término a una lectura completa. En todos los caminos la validación
-   * final es la misma: modelo, versión de pipeline y dimensiones coherentes.
+   * Uses the composite `modelPipeline` index when available; otherwise falls
+   * back to the `modelId` index and finally to a full scan. Every path ends
+   * with the same check: coherent model, pipeline version, and dimensions.
    */
   public async getAllEntriesForModel(
     modelId: string,
@@ -271,12 +271,12 @@ class LocalEmbeddingCache {
   }
 
   /**
-   * Elimina una entrada lógica de la caché.
+   * Deletes one logical cache entry.
    *
-   * Con `modelId` borra EXACTAMENTE esa entrada (chunk + modelo + pipeline) y
-   * deja intactas las del mismo chunk bajo otros modelos o versiones. Sin
-   * `modelId` borra todas las versiones del chunk (el material desapareció del
-   * corpus, ninguna versión sigue siendo válida).
+   * With `modelId` it deletes EXACTLY that entry (chunk + model + pipeline)
+   * and keeps the same chunk under other models or versions. Without
+   * `modelId` it deletes every version of the chunk (the material left the
+   * corpus, so no version stays valid).
    */
   public async deleteEntry(chunkId: string, modelId?: string, pipelineVersion: string = EMBEDDING_PIPELINE_VERSION): Promise<void> {
     if (modelId) {
@@ -303,7 +303,7 @@ class LocalEmbeddingCache {
           return;
         }
 
-        // Sin modelo: recorrer y borrar cada versión del chunk.
+        // Without a model: scan and delete every version of the chunk.
         const cursorReq = store.openCursor();
         cursorReq.onsuccess = () => {
           const cursor = cursorReq.result;
@@ -319,13 +319,12 @@ class LocalEmbeddingCache {
   }
 
   /**
-   * Purga proactiva de vectores de modelos/pipelines distintos del activo.
+   * Proactively purges vectors from non-active models/pipelines.
    *
-   * La caché ya está versionada por (modelId, pipelineVersion), así que las
-   * entradas antiguas NUNCA se sirven; pero hasta ahora solo se liberaban al
-   * limpiar la caché a mano. Tras cambiar de modelo de embeddings quedaban
-   * ocupando espacio indefinidamente. Devuelve cuántas entradas se eliminaron
-   * (útil para diagnóstico y pruebas).
+   * The cache is already versioned by (modelId, pipelineVersion), so stale
+   * entries are NEVER served; but until now they were only freed by manual
+   * cache clears. After switching embedding models they lingered forever.
+   * Returns how many entries were removed (useful for diagnostics and tests).
    */
   public async pruneOtherModels(
     activeModelId: string,
@@ -366,9 +365,9 @@ class LocalEmbeddingCache {
         tx.oncomplete = () => resolve(count);
         tx.onerror = () => resolve(count);
       });
-      // IndexedDB es la fuente de verdad: se informa de las entradas realmente
-      // borradas del almacén persistente. `removed` solo se usa como resultado
-      // cuando IndexedDB no está disponible.
+      // IndexedDB is the source of truth: report entries actually deleted
+      // from persistent storage. `removed` is only the result when IndexedDB
+      // is unavailable.
       return fromIdb;
     } catch {
       return removed;
@@ -392,17 +391,16 @@ class LocalEmbeddingCache {
   }
 
   /**
-   * Cierra la conexión IndexedDB reutilizada.
+   * Closes the reused IndexedDB connection.
    *
-   * La conexión se reabre perezosamente en la siguiente operación, así que
-   * cerrar es siempre seguro. Sirve para liberar el handle al descargar la
-   * página y para que pruebas y otras pestañas no queden bloqueadas por
-   * conexiones abiertas.
+   * The connection reopens lazily on the next operation, so closing is always
+   * safe. It releases the handle on page unload and keeps tests and other
+   * tabs from blocking on open connections.
    */
   public close(): void {
     if (this.idbPromise) {
-      this.idbPromise.then(db => { try { db.close(); } catch { /* ya cerrada */ } })
-        .catch(() => { /* nunca se abrió */ });
+      this.idbPromise.then(db => { try { db.close(); } catch { /* already closed */ } })
+        .catch(() => { /* never opened */ });
       this.idbPromise = null;
     }
   }

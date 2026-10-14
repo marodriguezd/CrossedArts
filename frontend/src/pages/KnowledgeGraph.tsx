@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { ConceptNode, ConceptEdge, GraphNodeType, GraphRelationType } from '../types/models.ts';
-// Se usan los builds `esnext` de vis-network/vis-data a propósito: los builds
-// `peer` incluyen un bundle de core-js cuyo `Set` interno no expone
-// `Symbol.iterator`, lo que rompe los campos privados transpilados de
-// vis-network (`[...this.#selection]`) y dejaba el grafo en blanco. El build
-// `esnext` usa campos privados nativos y no arrastra polyfills.
+// The `esnext` builds of vis-network/vis-data are used on purpose: the `peer`
+// builds bundle a core-js `Set` whose internal `Symbol.iterator` is missing,
+// breaking vis-network's transpiled private fields (`[...this.#selection]`) and
+// leaving the graph blank. The `esnext` build uses native private fields and
+// pulls in no polyfills.
 import { Network, type Node, type Edge, type Options } from 'vis-network/esnext';
 import { DataSet } from 'vis-data/esnext';
 import {
@@ -109,15 +109,15 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [nodeSearchQuery, setNodeSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  // Relaciones ocultas por el usuario (vacío = todas visibles).
+  // Relations hidden by the user (empty = all visible).
   const [hiddenRelations, setHiddenRelations] = useState<Set<string>>(new Set());
-  // Enfoque de vecindario: 0 = grafo completo, 1/2 = saltos alrededor del nodo.
+  // Neighborhood focus: 0 = full graph, 1/2 = hops around the node.
   const [focusDepth, setFocusDepth] = useState(0);
   const [theme, setTheme] = useState<ThemeMode>(() =>
     typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
   );
 
-  // El lienzo vis-network no lee variables CSS: se reconstruye al cambiar el tema.
+  // The vis-network canvas does not read CSS variables: it rebuilds on theme change.
   useEffect(() => {
     const observer = new MutationObserver(() => {
       setTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
@@ -130,19 +130,19 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     setIsLoading(true);
     setLoadError(null);
     try {
-      // El grafo es una vista perezosa: al abrirla puede coincidir con una
-      // inicialización de SQLite aún en curso (o con un fallo ya registrado).
-      // `ensureInitialized()` espera la promesa compartida en lugar de asumir que
-      // la base de datos existe, y recarga si otra pestaña escribió más tarde.
-      // Esto elimina la carrera que antes terminaba en "Database not initialized".
+      // The graph is a lazy view: opening it may coincide with an in-flight
+      // SQLite initialization (or an already recorded failure).
+      // `ensureInitialized()` awaits the shared promise instead of assuming the
+      // database exists, and reloads if another tab wrote later. This removes the
+      // race that previously ended in "Database not initialized".
       await dbBridge.ensureInitialized();
       const data = await dao.getKnowledgeGraph();
-      // Sanea conexiones huérfanas de forma tolerante (no bloquea la vista).
+      // Tolerantly prunes orphan connections (does not block the view).
       await dao.pruneDanglingConnections();
       setGraphData(data);
     } catch (err: any) {
-      // Solo se muestran clases de fallo conocidas, con su mensaje controlado en
-      // español. Nunca se pinta texto crudo de una excepción interna (Regla 5).
+      // Only known failure classes show, with their controlled Spanish message.
+      // Raw text from an internal exception is never rendered (Rule 5).
       const failure: DbInitFailure | undefined = err?.failure;
       setLoadError(
         failure?.message ||
@@ -163,8 +163,8 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     return map;
   }, [graphData.nodes]);
 
-  // Tipos de relación realmente presentes: la barra de filtros solo ofrece lo
-  // que existe, en lugar de una lista fija que puede quedar vacía.
+  // Relation types actually present: the filter bar only offers what exists,
+  // instead of a fixed list that may end up empty.
   const relationTypes = useMemo(() => availableRelationTypes(graphData.edges), [graphData.edges]);
 
   const activeRelations = useMemo<Set<string> | null>(() => {
@@ -185,22 +185,22 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     [graphData, activeTypes, activeRelations, focusDepth, selectedNodeId]
   );
 
-  // Conectividad sobre el grafo COMPLETO (no el filtrado): sirve de pista de
-  // exploración ("cuántos nodos siguen sin relación") y no cambia al filtrar.
+  // Connectivity over the COMPLETE graph (not the filtered one): an exploration
+  // hint ("how many nodes remain unlinked") that does not change while filtering.
   const connectivity = useMemo(
     () => computeConnectivityStats(graphData.nodes, graphData.edges),
     [graphData]
   );
 
-  // Separa "sin ninguna relación" de "aislado solo en esta vista": filtrar por
-  // tipo puede ocultar las aristas de un nodo y hacer que parezca desconectado.
+  // Separates "no relation at all" from "isolated only in this view": filtering
+  // by type can hide a node's edges and make it look disconnected.
   const isolation = useMemo(
     () => explainIsolation(graphData.nodes, graphData.edges, visibleGraph.nodes, visibleGraph.edges),
     [graphData, visibleGraph]
   );
 
-  // Analítica estructural sobre el grafo COMPLETO (propiedades topológicas
-  // reales; nunca inferencias sobre la persona).
+  // Structural analytics over the COMPLETE graph (real topological properties;
+  // never inferences about the person).
   const analytics = useMemo(
     () => computeGraphAnalytics(graphData.nodes, graphData.edges),
     [graphData]
@@ -208,9 +208,9 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
   const insights = useMemo(() => buildGraphInsights(analytics, effective), [analytics, effective]);
 
   /**
-   * Centra un nodo de la analítica. La analítica se calcula sobre el grafo
-   * completo, así que antes se restablecen los filtros para que el nodo exista
-   * en el lienzo; la selección se reaplica tras el siguiente render.
+   * Centers an analytics node. Analytics is computed over the complete graph, so
+   * filters reset first to ensure the node exists on the canvas; the selection
+   * reapplies after the next render.
    */
   const handleStatsNodeClick = (nodeId: string) => {
     setActiveTypes(new Set(FILTER_ORDER));
@@ -223,17 +223,17 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           networkRef.current.selectNodes([nodeId]);
           networkRef.current.focus(nodeId, { scale: 1.1, animation: false });
         } catch {
-          /* El nodo aún no está montado: la selección de estado ya quedó puesta. */
+          /* The node is not mounted yet: the state selection is already set. */
         }
       }
     }, 80);
   };
 
-  // Construye/actualiza la red vis-network sin re-inicializarla al filtrar.
+  // Builds/updates the vis-network graph without re-initializing it on filter.
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Cambio de tema: la red anterior usa colores del tema previo.
+    // Theme change: the previous graph uses the prior theme's colors.
     if (networkRef.current && themeRef.current !== theme) {
       networkRef.current.destroy();
       networkRef.current = null;
@@ -310,7 +310,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     };
   }, []);
 
-  // Escape cierra el diálogo de conexión
   useEffect(() => {
     if (!isConnectionDialogOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsConnectionDialogOpen(false); };
@@ -460,7 +459,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
 
   return (
     <div className="animate-fade-in space-y-5">
-      {/* Cabecera */}
       <div className="flex flex-col gap-3 border-b border-line pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="type-display text-ink">{tr('graph.title')}</h1>
@@ -494,10 +492,8 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
         </div>
       </div>
 
-      {/* Barra de filtros y buscador interactivo de nodos */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2">
-          {/* Filtros por tipo de nodo */}
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tr('graph.nodeFilters')}>
             <Chip
               active={activeTypes.size === FILTER_ORDER.length}
@@ -516,7 +512,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             })}
           </div>
 
-          {/* Filtros por tipo de relación: solo se ofrecen las que existen. */}
           {relationTypes.length > 1 && (
             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tr('graph.relFilters')}>
               <span className="type-micro text-faint">{tr('graph.rels')}</span>
@@ -536,7 +531,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           )}
         </div>
 
-        {/* Buscador de nodos con centrado animado */}
         <div className="relative w-full sm:w-72 shrink-0">
           <div className="relative">
             <input
@@ -554,7 +548,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
           </div>
 
-          {/* Menú de resultados de búsqueda */}
           {isSearchOpen && nodeSearchQuery.trim() && (
             <div className="absolute left-0 right-0 z-30 mt-1 max-h-60 overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-pop">
               {searchResults.length === 0 ? (
@@ -583,7 +576,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Lienzo del grafo */}
         <div className="relative h-[560px] w-full overflow-hidden rounded-xl border border-line bg-surface shadow-card lg:col-span-2">
           {isLoading ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted">
@@ -640,7 +632,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           </div>
         </div>
 
-        {/* Panel de detalle accesible */}
+        {/* Accessible detail panel */}
         <div className="max-h-[560px] space-y-3 overflow-y-auto rounded-xl border border-line bg-surface p-4 shadow-card" aria-live="polite">
           {selectedNode ? (
             <>
@@ -654,7 +646,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
                 </div>
               </div>
 
-              {/* Enfoque de vecindario: aísla el nodo y sus N saltos. */}
+              {/* Neighborhood focus: isolates the node and its N hops. */}
               <div
                 className="flex flex-wrap items-center gap-1.5"
                 role="group"
@@ -675,7 +667,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
                 <p className="text-body leading-relaxed text-muted">{selectedNode.description}</p>
               )}
 
-              {/* Metadatos legibles (sin internals crudos) */}
+              {/* Readable metadata (no raw internals) */}
               <dl className="grid grid-cols-2 gap-2 text-meta">
                 {selectedNode.meta?.category && (<><dt className="text-faint">{tr('graph.metaCat')}</dt><dd className="text-ink">{selectedNode.meta.category}</dd></>)}
                 {selectedNode.meta?.status && (<><dt className="text-faint">{tr('graph.metaStatus')}</dt><dd className="text-ink">{selectedNode.meta.status}</dd></>)}
@@ -751,7 +743,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
         </div>
       </div>
 
-      {/* --- Analítica estructural del grafo (propiedades topológicas reales) --- */}
+      {/* --- Structural graph analytics (real topological properties) --- */}
       {isStatsOpen && (
         <section
           id="graph-analytics-panel"
@@ -765,7 +757,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             </p>
           </div>
 
-          {/* Cifras clave */}
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <div className="rounded-lg border border-line bg-canvas px-3 py-2.5">
               <dt className="type-micro text-muted">{tr('graph.stNodes')}</dt>
@@ -789,7 +780,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             </div>
           </dl>
 
-          {/* Insights accionables */}
           <div className="mt-4">
             <h3 className="type-micro text-muted">{tr('graph.reading')}</h3>
             <ul className="mt-1.5 space-y-1.5">
@@ -803,7 +793,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-            {/* Más conectados */}
             <div>
               <h3 className="type-micro text-muted">{tr('graph.top')}</h3>
               {analytics.topConnected.length === 0 ? (
@@ -828,7 +817,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
               )}
             </div>
 
-            {/* Conectividad débil */}
             <div>
               <h3 className="type-micro text-muted">{tr('graph.weak')}</h3>
               {analytics.weakResources.length === 0 ? (
@@ -853,7 +841,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
               )}
             </div>
 
-            {/* Actividad reciente (solo si hay fechas reales) */}
+            {/* Recent activity (only with real dates) */}
             <div>
               <h3 className="type-micro text-muted">{tr('graph.recentK')}</h3>
               {!analytics.hasDateInfo ? (
@@ -885,7 +873,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
         </section>
       )}
 
-      {/* Confirmación accesible para eliminar relaciones (acción destructiva) */}
+      {/* Accessible confirmation to delete relations (destructive action) */}
       <ConfirmDialog
         isOpen={!!pendingDeleteEdge}
         title={describeDestructiveAction('delete-connection', pendingDeleteEdge?.label || '', effective).title}
@@ -899,7 +887,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
         }}
       />
 
-      {/* Diálogo de conexión manual */}
       {isConnectionDialogOpen && (
         <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
           <form

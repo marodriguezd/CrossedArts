@@ -10,12 +10,11 @@ import type { Book, Course, LearningGoal, PracticeWork } from '../types/models.t
 import type { LanguageCode } from '../i18n/languages.ts';
 
 /**
- * Deriva el progreso de cada meta en memoria.
+ * Derives each goal's progress in memory.
  *
- * Solo la meta de TIEMPO necesita una consulta (minutos registrados desde su
- * creación); el resto del progreso se calcula de forma pura a partir de los
- * datos que la aplicación ya tiene cargados. El resultado se memoriza para no
- * recalcular en cada render.
+ * Only the TIME goal needs a query (minutes logged since its creation); the
+ * rest of the progress is computed purely from data the app already holds.
+ * The result is memoized to avoid recomputing on every render.
  */
 export function useGoalProgress(
   goals: readonly LearningGoal[],
@@ -26,7 +25,7 @@ export function useGoalProgress(
 ): Map<string, GoalProgress> {
   const [studyMinutes, setStudyMinutes] = useState<Map<string, number>>(new Map());
 
-  // Identidad de las metas que dependen de una consulta: cambia → se recarga.
+  // Identity of the query-backed goals: when it changes, the effect refetches.
   const studyGoalKey = useMemo(
     () => goals.filter(goal => goal.kind === 'study_time').map(goal => `${goal.id}:${goal.created_at ?? ''}`).join('|'),
     [goals]
@@ -46,7 +45,7 @@ export function useGoalProgress(
         if (!cancelled) setStudyMinutes(new Map(pairs));
       })
       .catch(() => {
-        // Sin medida no se inventa: la meta queda no medible con su propio basis.
+        // No measure is never invented: the goal stays unmeasurable with its own basis.
         if (!cancelled) setStudyMinutes(new Map());
       });
     return () => {

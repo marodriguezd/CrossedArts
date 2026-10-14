@@ -15,9 +15,9 @@ interface PracticeQuestionProps {
 }
 
 /**
- * Tarjeta presentacional de pregunta de práctica (opción múltiple).
- * Reutilizada por la sesión de estudio unificada. Usa radios nativos para
- * obtener semántica de grupo accesible y navegación por teclado por defecto.
+ * Presentational multiple-choice practice question card. Reused by the unified
+ * study session. Uses native radios to get accessible group semantics and
+ * keyboard navigation for free.
  */
 export const PracticeQuestion: React.FC<PracticeQuestionProps> = ({
   question,

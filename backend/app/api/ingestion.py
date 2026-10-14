@@ -22,13 +22,12 @@ from backend.app.core.logging import get_logger
 
 logger = get_logger("api.ingestion")
 
-# Límites de subida y recursos
-# Límites aplican SOLO a endpoints de upload (donde se copian archivos al servidor).
-# El endpoint /import no necesita límites cuando usa symlink/reference (los archivos
-# permanecen en su ubicación original en disco).
-MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB por archivo multimedia
-MAX_TOTAL_IMPORT_SIZE = 10 * 1024 * 1024 * 1024  # 10 GB agregado por lote de importación
-MAX_COVER_FILE_SIZE = 20 * 1024 * 1024  # 20 MB por portada/imagen
+# Upload and resource limits. Limits apply ONLY to upload endpoints (where files
+# are copied to the server). The /import endpoint needs no limits when using
+# symlink/reference (files stay at their original on-disk location).
+MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB per media file
+MAX_TOTAL_IMPORT_SIZE = 10 * 1024 * 1024 * 1024  # 10 GB aggregate per import batch
+MAX_COVER_FILE_SIZE = 20 * 1024 * 1024  # 20 MB per cover/image
 ALLOWED_UPLOAD_EXTENSIONS = {
     ".mp4", ".webm", ".mov", ".mkv", ".avi", ".pdf", ".epub",
     ".mp3", ".wav", ".flac", ".ogg", ".m4a", ".txt",
@@ -44,9 +43,9 @@ router = APIRouter(prefix="/content", tags=["Content Management"])
 @router.post("/import", response_model=ImportResultResponse, status_code=status.HTTP_201_CREATED)
 def import_resource(payload: ImportResourceRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
-    Importa un recurso de aprendizaje (curso o libro) desde una carpeta local del sistema.
-    Soporta enlace simbólico, referencia directa o copia física.
-    Sin límites de tamaño en modo symlink/reference (los archivos permanecen en su ubicación original).
+    Import a learning resource (course or book) from a local system folder.
+    Supports symlink, direct reference, or physical copy. No size limits in
+    symlink/reference mode (files stay at their original location).
     """
     try:
         service = IngestionService(db)
@@ -59,9 +58,9 @@ def import_resource(payload: ImportResourceRequest, background_tasks: Background
 
 
 @router.post("/validate-directory", response_model=DirectoryValidationResponse)
-def validate_directory(path: str = Query(..., description="Ruta absoluta del directorio a validar"), db: Session = Depends(get_db)):
+def validate_directory(path: str = Query(..., description="Absolute path of the directory to validate"), db: Session = Depends(get_db)):
     """
-    Valida un directorio local y retorna un resumen de archivos multimedia encontrados.
+    Validate a local directory and return a media-file summary.
     """
     service = IngestionService(db)
     return service.validate_directory(path)
@@ -71,7 +70,7 @@ def validate_directory(path: str = Query(..., description="Ruta absoluta del dir
 async def import_from_upload(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    files: list[UploadFile] = File(..., description="Archivos del directorio a importar"),
+    files: list[UploadFile] = File(..., description="Directory files to import"),
     title: str = Form(...),
     resource_type: str = Form(...),
     category: str = Form("General"),
@@ -82,12 +81,12 @@ async def import_from_upload(
     cover_path: Optional[str] = Form(None),
 ):
     """
-    Importa un recurso desde archivos subidos por el usuario mediante el explorador nativo.
-    Los archivos se copian al servidor (modo 'copy' siempre — symlink/reference no aplican
-    aquí porque los archivos vienen del navegador, no de una ruta del servidor).
+    Import a resource from user-uploaded files via the native picker. Files are
+    always copied to the server ('copy' mode: symlink/reference cannot apply
+    here because files come from the browser, not a server path).
 
-    Aplica límites de tamaño (2GB/archivo, 10GB total) y validación de extensiones.
-    Limpia directorios temporales de forma determinista ante cualquier error.
+    Enforces size caps (2 GB/file, 10 GB total) and extension validation.
+    Cleans temp directories deterministically on any error.
     """
     upload_dir = settings.data_dir / "uploads" / "imports" / f"{uuid.uuid4().hex[:12]}"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -194,9 +193,9 @@ async def upload_cover(
     strategy: str = Form("copy"),  # "copy" or "symlink"
 ):
     """
-    Sube o asocia una imagen de portada para un recurso.
-    Si se proporciona `file`, se guarda el archivo subido en `static/covers/` con límite de 20 MB.
-    Si se proporciona `local_path`, se copia o enlaza (symlink) según `strategy`.
+    Upload or link a resource cover image. A given `file` is stored under
+    `static/covers/` (20 MB cap); a given `local_path` is copied or symlinked
+    per `strategy`.
     """
     static_dir = settings.covers_dir
     static_dir.mkdir(parents=True, exist_ok=True)
@@ -260,7 +259,7 @@ async def upload_cover(
         if not src_path.is_file():
             raise HTTPException(status_code=400, detail="La ruta del archivo original no es válida o el archivo no existe.")
 
-        # Validar extensión de imagen permitida
+        # Reject disallowed image extensions.
         if src_path.suffix.lower() not in ALLOWED_COVER_EXTENSIONS:
             raise HTTPException(status_code=400, detail="Solo se permiten archivos de imagen (.jpg, .jpeg, .png, .webp, .gif)")
 
@@ -296,8 +295,8 @@ async def upload_cover(
 @router.get("/cover-image/{filename}")
 def serve_cover_image(filename: str):
     """
-    Sirve un archivo de portada desde static/covers/ directamente, siguiendo
-    enlaces simbólicos que apunten fuera del directorio raíz de forma segura.
+    Serve a cover file from static/covers/ directly, safely following symlinks
+    that point outside the root directory.
     """
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Nombre de archivo de portada no válido")

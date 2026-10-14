@@ -41,7 +41,6 @@ def test_context_retrieval(db: Session):
 
 
 def test_learning_insights(db: Session):
-    # Crear un curso e iniciar sesión para simular actividad
     course = Course(id=uuid.uuid4(), title="Aprender Swift", category="Desarrollo Mobile", status=ResourceStatus.IN_PROGRESS)
     db.add(course)
     db.commit()
@@ -96,21 +95,18 @@ def test_ai_api_quiz_generation(client: TestClient, db: Session):
 def test_concept_mastery_and_gaps_insights(db: Session):
     from backend.app.services.note import NoteService
     
-    # 1. Crear concepto y nota para activar el parser
     book = Book(id=uuid.uuid4(), title="Fotografía Básica")
     db.add(book)
     db.commit()
     
     note = NoteService.create_note(db, book.id, "Estudiando la regla de los tercios en #composición.")
     
-    # 2. Generar insights
     insights = LearningInsightsService.generate_insights(db)
     
     assert "concept_mastery" in insights
     assert "knowledge_gaps" in insights
     assert "detailed_recommendations" in insights
     
-    # Debe clasificar como "never_reviewed" porque hay nota pero no repaso
     gaps = insights["knowledge_gaps"]
     assert len(gaps["never_reviewed"]) > 0
     assert gaps["never_reviewed"][0]["name"] == "composición"

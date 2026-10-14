@@ -16,7 +16,7 @@ router = APIRouter(prefix="/media", tags=["Media"])
 
 @router.get("/{media_id}")
 def get_media_info(media_id: uuid.UUID, db: Session = Depends(get_db)):
-    """Retorna los metadatos de un MediaAsset específico."""
+    """Return a specific MediaAsset's metadata."""
     asset = db.get(MediaAsset, media_id)
     if not asset:
         raise get_http_exception("MEDIA_NOT_FOUND", f"El archivo de medios {media_id} no existe.")
@@ -39,8 +39,8 @@ def stream_media(
     db: Session = Depends(get_db)
 ):
     """
-    Transmite el archivo de video local por streaming soportando peticiones de rango (HTTP Range Requests).
-    Esto es crucial para permitir el seeking y rebobinado rápido en navegadores.
+    Stream the local video file with range-request support (HTTP Range
+    Requests): required for fast seeking/rewind in browsers.
     """
     asset = db.get(MediaAsset, media_id)
     if not asset:
@@ -62,24 +62,24 @@ def stream_media(
 
 
 # ==========================================
-# SEGUIMIENTO DE PROGRESO DE MEDIOS (VIDEO)
+# MEDIA (VIDEO) PROGRESS TRACKING
 # ==========================================
 @router.post("/{media_id}/progress")
 def update_media_progress(
     media_id: uuid.UUID,
-    position: float,  # posición en segundos o número de página
-    duration: float,  # duración en segundos o páginas totales
+    position: float,  # position in seconds or page number
+    duration: float,  # duration in seconds or total pages
     db: Session = Depends(get_db)
 ):
     """
-    Actualiza la marca de reproducción de un video.
-    Si se ha visto más del 90% (umbral), marca la lección asociada automáticamente como completada.
+    Update a video's playback mark.
+    Past 90% watched, the linked lesson is auto-marked completed.
     """
     asset = db.get(MediaAsset, media_id)
     if not asset:
         raise get_http_exception("MEDIA_NOT_FOUND", f"El archivo de medios con ID {media_id} no existe.")
 
-    # Buscar o crear el progreso
+    # Find or create the progress row.
     stmt = select(MediaProgress).where(MediaProgress.media_asset_id == media_id)
     progress = db.scalars(stmt).first()
 
@@ -95,15 +95,15 @@ def update_media_progress(
         progress.last_position = position
         progress.duration = duration
 
-    # Regla del 90% para autocompletar la lección
+    # 90% rule for lesson auto-completion.
     completion_threshold = 0.90
     if duration > 0 and (position / duration) >= completion_threshold:
         progress.is_watched = True
-        # Si está asociado a una lección de un curso
+        # When linked to a course lesson.
         if asset.lesson_id:
             lesson = db.get(Lesson, asset.lesson_id)
             if lesson and not lesson.is_completed:
-                # Usar el ProgressService para sincronizar y recalcular el avance general
+                # Sync via ProgressService to recalculate overall progress.
                 ProgressService.toggle_lesson_completion(db, lesson.id, True)
 
     db.add(progress)
@@ -119,7 +119,7 @@ def update_media_progress(
 
 @router.get("/{media_id}/progress")
 def get_media_progress(media_id: uuid.UUID, db: Session = Depends(get_db)):
-    """Obtiene la marca de reanudación guardada de un MediaAsset."""
+    """Get a MediaAsset's saved resume mark."""
     stmt = select(MediaProgress).where(MediaProgress.media_asset_id == media_id)
     progress = db.scalars(stmt).first()
     if not progress:

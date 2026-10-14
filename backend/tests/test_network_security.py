@@ -1,9 +1,9 @@
 """
-P1-11 — Regresión: la API no debe volverse insegura solo por cambiar `host`.
+P1-11 - Regression: changing `host` alone must never make the API insecure.
 
-El backend no tiene autenticación. Por defecto solo escucha en loopback; enlazar
-una interfaz no local (p. ej. `0.0.0.0`) exige un opt-in explícito
-(`ALLOW_NETWORK_ACCESS=true`) y nunca debe ocurrir en silencio.
+The backend has no auth. It listens on loopback by default; binding a
+non-local interface (e.g. `0.0.0.0`) needs an explicit opt-in
+(`ALLOW_NETWORK_ACCESS=true`) and must never happen silently.
 """
 import pytest
 
@@ -23,14 +23,14 @@ def test_default_host_is_loopback_and_network_access_is_off():
 
 
 def test_default_cors_origins_never_use_wildcard():
-    """CORS no debe permitir todos los orígenes bajo ninguna configuración base."""
+    """CORS must never allow every origin under any base configuration."""
     settings = CrossedArtsSettings()
     assert "*" not in settings.cors_origin_list
     assert settings.cors_origin_list, "La lista de orígenes no puede quedar vacía"
 
 
 # ---------------------------------------------------------------------------
-# Detección de loopback
+# Loopback detection.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1", "  127.0.0.1  ", "LocalHost"])
@@ -50,7 +50,7 @@ def test_is_loopback_host_normalizes_whitespace_and_case():
 
 
 # ---------------------------------------------------------------------------
-# resolve_binding: función pura y determinista
+# resolve_binding: pure deterministic function.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])

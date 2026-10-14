@@ -1,19 +1,13 @@
 /**
- * Panel "Hoy / Enfoque": recomendaciones DETERMINISTAS sobre datos reales.
- *
- * Este módulo es PURO: no toca SQLite ni React. Recibe los datos ya cargados y
- * devuelve una lista priorizada y explicable de acciones. Reglas:
- *
- *  - Cada recomendación nace de un hecho verificable (tarjetas vencidas,
- *    trabajo en marcha, lección pendiente, meta con fecha…). Nunca se inventa
- *    una sugerencia sin dato que la respalde.
- *  - La prioridad es una constante explícita por tipo de regla y el desempate
- *    es determinista (id ascendente): la misma entrada produce siempre el
- *    mismo plan.
- *  - `reason` explica en español POR QUÉ aparece cada item: la UI lo muestra,
- *    de modo que el usuario puede auditar la recomendación.
- *  - Sin datos accionables la lista queda vacía y la UI muestra un estado
- *    vacío honesto (no se rellena con consejos genéricos).
+ * "Today / Focus" panel: DETERMINISTIC recommendations over real data. Pure
+ * module: no SQLite or React. It receives loaded data and returns a
+ * prioritized, explainable action list. Rules: every recommendation stems from
+ * a verifiable fact (due cards, ongoing work, pending lessons, dated goals) —
+ * suggestions without backing data are never invented. Priority is an explicit
+ * per-rule constant with deterministic tiebreaks (ascending id): same input
+ * always yields the same plan. `reason` explains WHY each item appears (shown
+ * by the UI) so users can audit it. Without actionable data the list stays
+ * empty and the UI shows an honest empty state (no generic-advice filler).
  */
 import type {
   Book,
@@ -46,8 +40,8 @@ export type FocusItemKind =
   | 'book';
 
 /**
- * Prioridades fijas por tipo de regla. Son constantes de diseño, no métricas:
- * ordenan acciones, nunca miden a la persona.
+ * Fixed priorities per rule type. Design constants, not metrics: they order
+ * actions, never rate the person.
  */
 export const FOCUS_PRIORITY = {
   reviews: 100,
@@ -60,7 +54,7 @@ export const FOCUS_PRIORITY = {
   start_course: 40
 } as const;
 
-/** Máximo de items por categoría para no inundar la vista. */
+/** Max items per category to avoid flooding the view. */
 const MAX_PRACTICE_ITEMS = 3;
 const MAX_GOAL_ITEMS = 3;
 
@@ -74,9 +68,9 @@ export interface FocusContinueTarget {
 
 export interface FocusInput {
   today: TodayStudySummary;
-  /** Día calendario local de referencia (YYYY-MM-DD) para clasificar fechas. */
+  /** Reference local calendar day (YYYY-MM-DD) for date classification. */
   localDay: string;
-  /** Minutos de estudio registrados hoy (opcional; desde la serie diaria). */
+  /** Study minutes logged today (optional; from the daily series). */
   minutesToday?: number;
   streakDays: number;
   pendingReviews: number;
@@ -85,7 +79,7 @@ export interface FocusInput {
   books: readonly Book[];
   practiceWork: readonly PracticeWork[];
   goals: readonly LearningGoal[];
-  /** Progreso ya derivado para cada meta (services/goals.ts). */
+  /** Already derived progress per goal (services/goals.ts). */
   goalProgress: ReadonlyMap<string, GoalProgress>;
   recentSessions: readonly LearningSession[];
 }
@@ -94,38 +88,38 @@ export interface FocusItem {
   id: string;
   kind: FocusItemKind;
   title: string;
-  /** Explicación honesta de por qué aparece (la muestra la interfaz). */
+  /** Honest account of why it appears (shown by the UI). */
   reason: string;
   actionLabel: string;
-  /** Orden descendente: mayor prioridad primero; empate por id. */
+  /** Descending order: highest priority first; id tiebreak. */
   priority: number;
-  /** Cifra destacada cuando aporta (p. ej. "12 pendientes"). */
+  /** Highlight figure when useful (e.g. pending counts). */
   badge?: string;
-  /** Destino de entidad (curso, libro, meta…) si aplica. */
+  /** Entity target (course, book, goal) when applicable. */
   destination?: ResourceDestination;
-  /** Pestaña de primer nivel si aplica (repaso). Exactamente una de las dos. */
+  /** Top-level tab when applicable (review). Exactly one of the two. */
   tab?: string;
 }
 
-/** Resumen honesto de "dónde estoy hoy" (sin puntuaciones inventadas). */
+/** Honest "where I stand today" summary (no invented scores). */
 export interface FocusSummary {
   streakDays: number;
   pendingReviews: number;
   minutesToday: number;
   reviewsToday: number;
   correctToday: number;
-  /** Meta activa más próxima a su fecha objetivo (o la primera activa). */
+  /** Active goal nearest its target date (or the first active one). */
   nextGoal: LearningGoal | null;
   nextGoalProgress: GoalProgress | null;
   nextGoalDeadline: ReturnType<typeof classifyGoalDeadline> | null;
 }
 
-/** Recurso estudiado recientemente, derivado de las sesiones reales. */
+/** Recently studied resource, derived from real sessions. */
 export interface RecentResourceEntry {
   resourceId?: string;
   lessonId?: string;
   label: string;
-  /** Último día local de estudio de este recurso (YYYY-MM-DD). */
+  /** Last local study day for this resource (YYYY-MM-DD). */
   lastDay: string | null;
   minutes: number;
 }
@@ -138,18 +132,16 @@ function sortPlan(items: FocusItem[]): FocusItem[] {
 }
 
 /**
- * Construye el plan de "Hoy". Determinista y explicable: mismos datos → mismo
- * plan, en el mismo orden.
- *
- * `lang` localiza todo el contenido visible; por defecto es español para
- * preservar el comportamiento histórico (los tests invocan sin idioma).
+ * Builds the "Today" plan. Deterministic and explainable: same data yields
+ * the same plan in the same order. `lang` localizes all visible content;
+ * Spanish by default to preserve historic behavior (tests omit the language).
  */
 export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): FocusItem[] {
   const items: FocusItem[] = [];
   const tr = (key: string, params?: Record<string, string | number | null | undefined>): string =>
     translateKey(lang, key, params);
 
-  // 1. Repaso espaciado vencido (la acción con retorno de estudio más claro).
+  // 1. Overdue spaced review (highest study-return action).
   if (input.pendingReviews > 0) {
     const plural = input.pendingReviews === 1 ? 'one' : 'other';
     items.push({
@@ -164,8 +156,8 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
     });
   }
 
-  // 2. Trabajo práctico en marcha (producir evidencia es la siguiente acción
-  //    más valiosa cuando ya hay algo empezado).
+  // 2. Ongoing practice work (producing evidence is the next most valuable
+  //    action once something started).
   const inProgress = input.practiceWork
     .filter((item) => item.status === 'IN_PROGRESS')
     .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '') || a.id.localeCompare(b.id));
@@ -188,7 +180,7 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
     });
   });
 
-  // 3. Continuar la última lección pendiente.
+  // 3. Resume the last pending lesson.
   if (input.continueTarget) {
     const target = input.continueTarget;
     items.push({
@@ -208,8 +200,8 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
     });
   }
 
-  // 4. Metas con fecha vencida o próxima a vencer (máximo 3, ordenadas por
-  //    fecha ascendente). El estado de fecha es información, no un castigo.
+  // 4. Goals overdue or due soon (max 3, ascending date). Date state is
+  //    information, not punishment.
   const activeGoals = input.goals.filter((goal) => goal.status === 'active');
   const byDeadline = (a: LearningGoal, b: LearningGoal) => {
     const dayA = normalizeGoalDate(a.target_date) ?? '9999-12-31';
@@ -258,7 +250,7 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
     });
   });
 
-  // Metas cuya medida ya alcanza el objetivo: toca decidir si se cierran.
+  // Goals already at target: time to decide on closing them.
   const ready = activeGoals
     .filter((goal) => (input.goalProgress.get(goal.id)?.reachedTarget ?? false) && !overdue.includes(goal) && !dueSoon.includes(goal))
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -275,7 +267,7 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
     });
   });
 
-  // 5. Libro en curso con páginas pendientes.
+  // 5. In-progress book with pages left.
   const readingBook = input.books
     .filter((book) => book.status !== 'COMPLETED')
     .filter((book) => !book.page_count || (book.current_page ?? 0) < book.page_count)
@@ -297,7 +289,7 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
     });
   }
 
-  // 6. Curso sin empezar con lecciones registradas (solo si no hay nada mejor).
+  // 6. Unstarted course with recorded lessons (only when nothing better exists).
   if (!input.continueTarget) {
     const untouched = input.courses
       .filter((course) => course.status !== 'COMPLETED')
@@ -320,7 +312,7 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
   return sortPlan(items);
 }
 
-/** Resumen de hoy + meta próxima. Sin métricas inventadas. */
+/** Today summary plus next goal. No invented metrics. */
 export function buildFocusSummary(input: FocusInput): FocusSummary {
   const activeGoals = input.goals
     .filter((goal) => goal.status === 'active')
@@ -346,8 +338,8 @@ export function buildFocusSummary(input: FocusInput): FocusSummary {
 }
 
 /**
- * Recursos estudiados recientemente, deduplicados por recurso (o lección si no
- * hay recurso) y ordenados de más reciente a más antiguo.
+ * Recently studied resources, deduped by resource (or lesson without one),
+ * newest first.
  */
 export function deriveRecentResources(
   sessions: readonly LearningSession[],

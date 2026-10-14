@@ -15,33 +15,32 @@ from backend.app.core.database import Base
 from backend.app.models import *
 
 # =============================================================================
-# AISLAMIENTO DE BASE DE DATOS EN PRUEBAS (A-1)
+# TEST DATABASE ISOLATION (A-1)
 # =============================================================================
-# Este archivo NO debe importar ni usar el engine real de la aplicación.
+# This file must NEVER import or use the app's real engine.
 #
-# El comportamiento anterior ejecutaba una creación de esquema sobre el engine
-# real de la aplicación, creando las tablas del modelo directamente en la base
-# de datos del usuario (~/.crossedarts/crossedarts.db) sin registrar ninguna
-# revisión de Alembic.
-# Consecuencia real: la base del usuario quedaba con todas las tablas mientras
-# Alembic creía que no se había aplicado ninguna migración, y el siguiente
-# `alembic upgrade head` fallaba con "table ... already exists".
+# The old behavior ran schema creation against the app's real engine, creating
+# the model tables directly in the user's database (~/.crossedarts/crossedarts.db)
+# without recording any Alembic revision.
+# Real consequence: the user database ended up with every table while Alembic
+# believed no migration had applied, and the next `alembic upgrade head` failed
+# with "table ... already exists".
 #
-# Reglas de este archivo:
-#   1. Cada prueba usa su propio engine SQLite en memoria (fixture `db`).
-#   2. Las tareas en segundo plano que hacen `from backend.app.core.database
-#      import SessionLocal` reciben una fábrica de sesiones ligada al engine de
-#      la prueba (fixture autouse `isolated_background_sessions`). El import se
-#      resuelve en tiempo de llamada, así que el parche es efectivo.
-#   3. La validación de migraciones de arranque se desactiva en pruebas para que
-#      ningún código de ciclo de vida inspeccione la base real por accidente.
-#   4. Nunca se borra ni se recrea la base real del usuario.
+# Rules in this file:
+#   1. Each test gets its own in-memory SQLite engine (`db` fixture).
+#   2. Background tasks doing `from backend.app.core.database import SessionLocal`
+#      receive a session factory bound to the test engine (autouse fixture
+#      `isolated_background_sessions`). The import resolves at call time, so
+#      the patch sticks.
+#   3. Boot migration validation is disabled in tests so no lifecycle code
+#      inspects the real database by accident.
+#   4. The user's real database is never wiped or recreated.
 # =============================================================================
 
 
 @pytest.fixture(name="db_engine")
 def db_engine_fixture():
-    """Engine SQLite en memoria, aislado por prueba, con pool compartido."""
+    """In-memory SQLite engine, isolated per test, with a shared pool."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -57,7 +56,7 @@ def db_engine_fixture():
 
 @pytest.fixture(name="db")
 def db_fixture(db_engine) -> Session:
-    """Sesión ligada al engine de la prueba (nunca a la base real)."""
+    """Session bound to the test engine (never the real database)."""
     SessionTest = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     session = SessionTest()
     try:
@@ -69,12 +68,12 @@ def db_fixture(db_engine) -> Session:
 @pytest.fixture(autouse=True)
 def isolated_background_sessions(monkeypatch, db_engine):
     """
-    Redirige `SessionLocal` al engine de la prueba.
+    Redirect `SessionLocal` to the test engine.
 
-    Los endpoints y scanners abren sesiones propias para trabajo en segundo
-    plano (`from backend.app.core.database import SessionLocal` dentro de la
-    función). Sin este parche esas sesiones usarían el engine real de la
-    aplicación y las pruebas escribirían en la base del usuario.
+    Endpoints and scanners open their own sessions for background work (a
+    function-local `from backend.app.core.database import SessionLocal`). Without
+    this patch those sessions would use the app's real engine and tests would
+    write to the user's database.
     """
     import backend.app.core.database as database_module
 
@@ -86,9 +85,9 @@ def isolated_background_sessions(monkeypatch, db_engine):
 @pytest.fixture(autouse=True)
 def skip_startup_migration_validation(monkeypatch):
     """
-    Evita que cualquier arranque de la app durante las pruebas inspeccione la
-    base de datos real. La validación de Alembic tiene su propia cobertura
-    dedicada con engines temporales (tests/test_migration_validation.py).
+    Keep any app boot during tests away from the real database. Alembic
+    validation has its own dedicated coverage on temp engines
+    (tests/test_migration_validation.py).
     """
     monkeypatch.setenv("SKIP_MIGRATION_VALIDATION", "1")
     yield

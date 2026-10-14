@@ -9,10 +9,10 @@ class ProgressService:
     @staticmethod
     def recalculate_course_progress(db: Session, course_id: uuid.UUID) -> float:
         """
-        Recalcula el progreso de un curso en función del estado de completado de sus lecciones.
-        Actualiza el estado del curso a COMPLETED si todas las lecciones están completadas.
+        Recalculate a course's progress from its lessons' completion state.
+        Sets the course to COMPLETED when every lesson is done.
         """
-        # Obtener todas las lecciones pertenecientes a los módulos del curso
+        # Fetch every lesson in the course's modules.
         stmt = (
             select(Lesson)
             .join(Lesson.module)
@@ -28,7 +28,7 @@ class ProgressService:
 
         progress_percentage = (completed_lessons / total_lessons) * 100.0
 
-        # Obtener el curso para actualizar su estado
+        # Fetch the course to update its status.
         course = db.get(Course, course_id)
         if course:
             if completed_lessons == total_lessons:
@@ -47,7 +47,7 @@ class ProgressService:
     @staticmethod
     def toggle_lesson_completion(db: Session, lesson_id: uuid.UUID, is_completed: bool) -> float:
         """
-        Cambia el estado de completado de una lección y recalcula el progreso del curso asociado.
+        Toggle a lesson's completion state and recalculate its course progress.
         """
         lesson = db.get(Lesson, lesson_id)
         if not lesson:
@@ -57,7 +57,7 @@ class ProgressService:
         db.add(lesson)
         db.flush()
 
-        # Encontrar el curso asociado a través del módulo
+        # Find the course via the module.
         course_id = lesson.module.course_id
 
         if is_completed:
@@ -69,8 +69,8 @@ class ProgressService:
     @staticmethod
     def update_book_progress(db: Session, book_id: uuid.UUID, percentage: float) -> Book:
         """
-        Actualiza manualmente el porcentaje de lectura de un libro.
-        Si alcanza el 100%, cambia automáticamente el estado a COMPLETED.
+        Manually update a book's reading percentage. Reaching 100% flips the
+        status to COMPLETED automatically.
         """
         if not (0.0 <= percentage <= 100.0):
             raise ValueError("El porcentaje de lectura debe estar entre 0.0 y 100.0")
@@ -79,7 +79,7 @@ class ProgressService:
         if not book:
             raise ValueError(f"Libro con ID {book_id} no encontrado.")
 
-        # Guardar porcentaje anterior para comprobar si pasa de no completado a completado
+        # Remember the previous value to detect the incomplete -> completed flip.
         old_completed = book.reading_percentage >= 100.0
         book.reading_percentage = percentage
 

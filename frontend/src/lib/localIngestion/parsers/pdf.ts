@@ -4,25 +4,25 @@ import { computeBinarySha256 } from '../fingerprint.ts';
 import { normalizeExtractedText } from '../textUtils.ts';
 
 /**
- * Extractor de texto PDF basado en pdf.js (Mozilla), ejecutado en local.
+ * PDF text extractor based on pdf.js (Mozilla), running locally.
  *
- * El scraper anterior leía el archivo en latin1 y buscaba literales `( ... ) Tj`
- * dentro del binario. Eso fallaba con los PDF reales por dos motivos:
+ * The previous scraper read the file as latin1 and looked for `( ... ) Tj`
+ * literals inside the binary. That failed on real PDFs for two reasons:
  *
- *  1. La mayoría de los streams están comprimidos con `/FlateDecode`; el regex
- *     nunca veía los operadores de texto.
- *  2. Los strings pueden venir en hexadecimal (`<...> Tj`), con `TJ` arrays,
- *     fuentes con `/Encoding` no estándar, ToUnicode CMaps, etc.
+ *  1. Most streams are compressed with `/FlateDecode`; the regex never saw the
+ *     text operators.
+ *  2. Strings may arrive in hexadecimal (`<...> Tj`), with `TJ` arrays, fonts
+ *     using non-standard `/Encoding`, ToUnicode CMaps, and so on.
  *
- * pdf.js resuelve todo eso (descompresión, CMaps, codificaciones, orden de
- * lectura por contenido) sin red y sin canvas: sólo se usa su capa de
- * extracción de texto. La extracción de texto no necesita renderizar glifos,
- * por lo que se desactiva el soporte de fuentes/offscreen canvas.
+ * pdf.js solves all of that (decompression, CMaps, encodings, content-based
+ * reading order) with no network and no canvas: only its text-extraction layer
+ * is used. Text extraction needs no glyph rendering, so font/offscreen-canvas
+ * support stays disabled.
  *
- * El PDF no se escribe nunca en disco: se entrega en memoria como `Uint8Array`.
+ * The PDF is never written to disk: it is handed over in memory as a `Uint8Array`.
  */
 
-/** Firma de cabecera PDF; puede estar desplazada hasta 1024 bytes si hay basura previa. */
+/** PDF header signature; it may sit up to 1024 bytes in when leading junk exists. */
 function findPdfMagic(bytes: Uint8Array): boolean {
   const limit = Math.min(bytes.length - 4, 1024);
   for (let offset = 0; offset <= limit; offset++) {
@@ -44,10 +44,10 @@ type PdfJsModule = typeof import('pdfjs-dist');
 let pdfjsModulePromise: Promise<PdfJsModule> | null = null;
 
 /**
- * Carga pdf.js en diferido y memoria. El build `legacy` es el único que
- * funciona igual en Node (tests) y navegador: el build moderno usa
- * `Promise.try`, ausente en runtimes algo antiguos, y su worker rompería el
- * runner de tests.
+ * Loads pdf.js lazily and memoized. The `legacy` build is the only one that
+ * behaves the same on Node (tests) and in the browser: the modern build uses
+ * `Promise.try`, absent on somewhat older runtimes, and its worker would break
+ * the test runner.
  */
 async function getPdfjs(): Promise<PdfJsModule> {
   if (!pdfjsModulePromise) {
@@ -57,9 +57,9 @@ async function getPdfjs(): Promise<PdfJsModule> {
 }
 
 /**
- * En el navegador pdf.js necesita un worker real; en Node usa el "fake worker"
- * (hilo principal) y no hay que configurar nada. El worker se resuelve desde el
- * bundle local (`?url`), nunca desde una CDN.
+ * In the browser pdf.js needs a real worker; on Node it uses the "fake worker"
+ * (main thread) and nothing needs configuring. The worker resolves from the
+ * local bundle (`?url`), never from a CDN.
  */
 async function ensureWorkerConfigured(pdfjs: PdfJsModule): Promise<void> {
   if (typeof window === 'undefined') return;
@@ -69,11 +69,11 @@ async function ensureWorkerConfigured(pdfjs: PdfJsModule): Promise<void> {
     const workerModule: { default: string } = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
     workerOptions.workerSrc = workerModule.default;
   } catch {
-    // Sin worker explícito pdf.js degrada a ejecución en el hilo principal.
+    // Without an explicit worker pdf.js degrades to main-thread execution.
   }
 }
 
-/** Traduce las excepciones de pdf.js a errores tipados con mensaje en español. */
+/** Maps pdf.js exceptions to typed errors carrying a user-facing message. */
 function mapPdfError(err: unknown, fileName: string): DocumentExtractionError {
   const name = (err as { name?: string })?.name ?? '';
   switch (name) {
@@ -98,9 +98,9 @@ function mapPdfError(err: unknown, fileName: string): DocumentExtractionError {
 }
 
 /**
- * Une los items de texto de una página respetando los saltos de línea que
- * pdf.js marca con `hasEOL`. pdf.js entrega los items en el orden del flujo de
- * contenido de la página (el orden de lectura habitual).
+ * Joins a page's text items honoring the line breaks pdf.js marks with
+ * `hasEOL`. pdf.js delivers items in page content-stream order (the usual
+ * reading order).
  */
 export function joinTextItems(items: ReadonlyArray<{ str?: string; hasEOL?: boolean }>): string {
   const parts: string[] = [];
@@ -112,7 +112,7 @@ export function joinTextItems(items: ReadonlyArray<{ str?: string; hasEOL?: bool
   return normalizeExtractedText(parts.join(''));
 }
 
-const MAX_BROWSER_PDF_BYTES = 100 * 1024 * 1024; // 100 MB límite de memoria en navegador
+const MAX_BROWSER_PDF_BYTES = 100 * 1024 * 1024; // 100 MB browser memory limit
 
 export async function parsePdfFile(
   file: { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> }
@@ -154,12 +154,12 @@ export async function parsePdfFile(
   try {
     loadingTask = pdfjs.getDocument({
       data: bytes,
-      // Ejecución local y determinista: sin recursos remotos ni canvas.
+      // Local, deterministic execution: no remote resources and no canvas.
       disableFontFace: true,
       useSystemFonts: false,
       useWorkerFetch: false,
       isOffscreenCanvasSupported: false,
-      // Silencia avisos de fuentes estándar ausentes (no afectan al texto).
+      // Silences warnings about missing standard fonts (they do not affect text).
       verbosity: 0
     });
     doc = await loadingTask.promise;
@@ -228,9 +228,9 @@ export async function parsePdfFile(
 }
 
 /**
- * Libera el loading task (y con él el worker y las estructuras del documento).
- * `destroy()` vive en el loading task, no en el proxy del documento; una
- * liberación fallida nunca debe enmascarar el resultado real de la extracción.
+ * Releases the loading task (and with it the worker and document structures).
+ * `destroy()` lives on the loading task, not on the document proxy; a failed
+ * release must never mask the real extraction result.
  */
 async function safeDestroy(loadingTask: any): Promise<void> {
   try {

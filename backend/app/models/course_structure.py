@@ -19,7 +19,6 @@ class Module(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    # Relaciones
     course: Mapped["Course"] = relationship("Course", back_populates="modules")
     lessons: Mapped[List["Lesson"]] = relationship(
         "Lesson",
@@ -49,10 +48,9 @@ class Lesson(Base):
     )
     order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    # Relaciones
     module: Mapped["Module"] = relationship("Module", back_populates="lessons")
-    # Sin `delete-orphan`: una nota es trabajo del usuario y puede ser autónoma.
-    # Al borrar la lección, `ON DELETE SET NULL` la desvincula y la conserva.
+    # No `delete-orphan`: a note is user work and can stand alone. Deleting the
+    # lesson unlinks it via `ON DELETE SET NULL` and preserves it.
     notes: Mapped[List["Note"]] = relationship(
         "Note",
         back_populates="lesson",
@@ -78,5 +76,4 @@ class Task(Base):
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    # Relaciones
     course: Mapped["Course"] = relationship("Course", back_populates="tasks")

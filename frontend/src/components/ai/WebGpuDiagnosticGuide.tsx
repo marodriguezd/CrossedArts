@@ -52,7 +52,7 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
   const detectedBrowser = detectBrowserFamily();
   const detectedOs = detectOsPlatform();
 
-  // Pestaña activa por defecto según el navegador detectado
+  // Default active tab based on the detected browser
   const defaultTab = detectedBrowser === 'firefox'
     ? 'firefox'
     : detectedBrowser === 'safari'
@@ -68,7 +68,7 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
       setReport(rep);
       onCapabilityChange?.(rep);
     } catch {
-      // Ignorar fallo de detección
+      // Ignore detection failure
     } finally {
       setIsRefreshing(false);
     }
@@ -90,7 +90,7 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
         setTimeout(() => setCopiedKey(null), 2200);
       }
     } catch {
-      // Ignorar fallo al copiar en entornos no seguros
+      // Ignore clipboard failure: `navigator.clipboard` is unavailable in insecure contexts
     }
   };
 
@@ -132,7 +132,6 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
       className={`rounded-2xl border border-line bg-surface p-4 shadow-sm md:p-5 ${className}`}
       data-testid="webgpu-diagnostic-guide"
     >
-      {/* Cabecera del diagnóstico */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-canvas text-accent">
@@ -178,7 +177,7 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
         </div>
       </div>
 
-      {/* Banner de estado en vivo */}
+      {/* Live capability status banner */}
       {isSupported ? (
         <div className="mt-4 rounded-xl border border-success/30 bg-success-soft p-3.5 text-meta text-success">
           <div className="flex items-start gap-2">
@@ -215,7 +214,6 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
         </div>
       )}
 
-      {/* Pestañas de instrucciones */}
       <div className="mt-5 border-t border-line pt-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-micro font-semibold uppercase tracking-wide text-faint">
@@ -504,7 +502,7 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
           </div>
         )}
 
-        {/* Panel Modo CPU (WASM) */}
+        {/* CPU (WASM) mode panel */}
         {activeTab === 'cpu_wasm' && (
           <div className="mt-3.5 space-y-3 rounded-xl border border-line bg-canvas p-4 text-meta" role="tabpanel">
             <div className="flex items-start gap-2.5">

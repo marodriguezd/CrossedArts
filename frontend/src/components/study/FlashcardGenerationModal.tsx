@@ -11,7 +11,7 @@ interface FlashcardGenerationModalProps {
   onCardsSaved: () => void;
   initialTopic?: string;
   resourceId?: string;
-  /** Ámbito de lección para priorizar su contenido al generar tarjetas. */
+  /** Lesson scope to prioritize its content when generating cards. */
   lessonId?: string;
 }
 
@@ -34,7 +34,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
   const [saveSuccessCount, setSaveSuccessCount] = useState<number | null>(null);
   const topicInputRef = useRef<HTMLInputElement>(null);
 
-  // Accesibilidad: Escape cierra el diálogo y el foco inicial va al primer campo.
+  // Accessibility: Escape closes the dialog and initial focus goes to the first field.
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -125,7 +125,6 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
         aria-labelledby="gen-cards-title"
         className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-line bg-raised shadow-pop"
       >
-        {/* Cabecera */}
         <div className="flex items-center justify-between border-b border-line bg-surface p-4">
           <div className="flex items-center gap-2">
             <div className="rounded-lg border border-accent/25 bg-accent-soft p-2 text-accent">
@@ -145,9 +144,8 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
           </button>
         </div>
 
-        {/* Cuerpo */}
         <div className="flex-1 space-y-5 overflow-y-auto p-5">
-          {/* Opciones del formulario */}
+          {/* Generation options */}
           <div className="space-y-4 rounded-xl border border-line bg-canvas p-4">
             <div>
               <label className="mb-1 block text-meta font-semibold text-muted" htmlFor="gen-topic">Tema o consulta guía</label>
@@ -216,7 +214,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </div>
           </div>
 
-          {/* Feedback / error */}
+          {/* Generation feedback / error */}
           {errorMsg && (
             <InlineStatus tone="warning">
               <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -226,7 +224,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </InlineStatus>
           )}
 
-          {/* Mensaje de éxito */}
+          {/* Success message */}
           {saveSuccessCount !== null && (
             <InlineStatus tone="success">
               <Check size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -236,7 +234,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </InlineStatus>
           )}
 
-          {/* Fuentes */}
+          {/* Grounding sources */}
           {sources.length > 0 && (
             <div className="space-y-1">
               <span className="type-micro">Fuentes de aprendizaje respaldadas:</span>
@@ -250,7 +248,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </div>
           )}
 
-          {/* Lista de previsualización */}
+          {/* Preview of the generated cards */}
           {previewCards.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -298,7 +296,6 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
           )}
         </div>
 
-        {/* Pie */}
         {previewCards.length > 0 && (
           <div className="flex items-center justify-between border-t border-line bg-surface p-4">
             <span className="text-meta text-muted">

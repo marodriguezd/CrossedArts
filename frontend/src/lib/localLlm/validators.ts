@@ -5,8 +5,8 @@ export interface StructuredValidationResult<T> {
 }
 
 /**
- * Valida y parsea respuestas JSON estructuradas de modelos locales,
- * asegurando tipado, rechazo de formatos malformados y comprobación de límites de dominio.
+ * Validates and parses structured JSON responses from local models, ensuring
+ * typing, rejection of malformed formats, and domain-bound checks.
  */
 export function validateStructuredJson<T>(
   rawText: string,
@@ -16,13 +16,13 @@ export function validateStructuredJson<T>(
     return { valid: false, error: 'La respuesta del modelo está vacía.' };
   }
 
-  // Extraer bloque JSON si viene delimitado por markdown ```json ... ```
+  // Extract the JSON block when it is delimited by markdown ```json ... ```
   let jsonString = rawText.trim();
   const jsonMatch = jsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (jsonMatch) {
     jsonString = jsonMatch[1].trim();
   } else {
-    // Si no tiene fences, intentar extraer el primer objeto o array
+    // Without fences, try to extract the first object or array
     const firstBrace = jsonString.indexOf('{');
     const firstBracket = jsonString.indexOf('[');
     let startIdx = -1;
@@ -60,10 +60,10 @@ export function validateStructuredJson<T>(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Barrera anti-alucinación                                                   */
+/* Anti-hallucination gate                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** Señales explícitas de que el modelo está faltando información real. */
+/** Explicit signals that the model is missing real information. */
 const UNCERTAINTY_SIGNALS = [
   'no contiene suficiente informaci',
   'no tengo suficiente informaci',
@@ -80,12 +80,12 @@ const UNCERTAINTY_SIGNALS = [
 ];
 
 /**
- * Patrones de AFIRMACIÓN DE FUENTE que un modelo puede inventar cuando no tiene
- * contexto: referencias a páginas, cursos, lecciones, capítulos, autores o URLs.
+ * SOURCE-CLAIM patterns a model may invent without context: references to pages,
+ * courses, lessons, chapters, authors, or URLs.
  *
- * Son afirmaciones de origen explícitas, no lenguaje general. "El curso usa
- * hooks" es una explicación normal; "según la página 42 del curso" es una cita
- * que, sin contexto, es inventada.
+ * These are explicit provenance claims, not general language. "The course uses
+ * hooks" is a normal explanation; "segun la pagina 42 del curso" is a citation
+ * that, without context, is fabricated.
  */
 const SOURCE_CLAIM_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\bseg[uú]n (el|la|los|las|este|esta) (curso|libro|material|documento|texto|manual|art[ií]culo)\b/i, label: 'referencia al material de origen' },
@@ -103,32 +103,31 @@ const SOURCE_CLAIM_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
 ];
 
 export interface AntiHallucinationInput {
-  /** Hay material recuperado y VISIBLE para el modelo. */
+  /** There is retrieved material VISIBLE to the model. */
   hasRetrievedContext: boolean;
   /**
-   * Alguna de las fuentes visibles se apoya en contenido real (no solo en
-   * metadatos). Con `false` la respuesta no puede presentarse como sólidamente
-   * fundamentada aunque cite material.
+   * Some visible source rests on real content (not metadata alone). With
+   * `false` the answer cannot pose as solidly grounded even when citing material.
    */
   hasSubstantiveContext?: boolean;
-  /** Títulos realmente visibles para el modelo (las citas que puede sostener). */
+  /** Titles actually visible to the model (the citations it can uphold). */
   availableSourceTitles?: string[];
 }
 
 export interface AntiHallucinationResult {
-  /** `false` cuando la respuesta afirmaría una fuente no disponible. */
+  /** `false` when the answer would claim an unavailable source. */
   passed: boolean;
-  /** Texto final permitido: el original, o una sustitución controlada y honesta. */
+  /** Final allowed text: the original, or a controlled honest replacement. */
   text: string;
-  /** Motivo determinista del rechazo (diagnóstico y pruebas). */
+  /** Deterministic rejection reason (diagnostics and tests). */
   reason?: string;
-  /** `true` cuando la respuesta NO puede presentarse como fundamentada. */
+  /** `true` when the answer CANNOT be presented as grounded. */
   weakGrounding: boolean;
 }
 
 /**
- * Mensaje controlado y honesto que sustituye a una respuesta que afirmaba
- * fuentes inexistentes. No inventa contenido ni cita nada.
+ * Controlled, honest message that replaces an answer claiming nonexistent
+ * sources. It invents no content and cites nothing.
  */
 export const NO_CONTEXT_REFUSAL_MESSAGE =
   'No he encontrado material de estudio en CrossedArts que sustente una respuesta con referencias concretas. ' +
@@ -147,12 +146,12 @@ function hasUncertaintySignal(text: string): boolean {
 }
 
 /**
- * AFIRMACIÓN DE FUENTE que no puede sostenerse con el material visible.
+ * SOURCE CLAIM that cannot be upheld by the visible material.
  *
- * Determinista y barata: normalización + patrones literales. No es un sistema de
- * censura semántica: solo se evalúan referencias de procedencia (página, curso,
- * lección, capítulo, autor, URL). Si la referencia coincide con un título
- * realmente visible, no se considera inventada.
+ * Deterministic and cheap: normalization + literal patterns. Not semantic
+ * censorship: only provenance references are evaluated (page, course, lesson,
+ * chapter, author, URL). When the reference matches a title actually visible,
+ * it is not treated as fabricated.
  */
 export function findUnsupportedSourceClaim(
   generatedText: string,
@@ -174,18 +173,18 @@ export function findUnsupportedSourceClaim(
 }
 
 /**
- * BARRERA FINAL de las respuestas conversacionales.
+ * FINAL gate for conversational answers.
  *
- * Reglas (deterministas, baratas, sin censura semántica):
+ * Rules (deterministic, cheap, no semantic censorship):
  *
- *  1. Sin contexto recuperado, una afirmación explícita de fuente que no exista en
- *     el material visible se RECHAZA y se sustituye por un mensaje honesto.
- *  2. Sin contexto, la incertidumbre HONESTA se conserva: una respuesta que dice
- *     "no hay suficiente información" es válida y útil.
- *  3. Con contexto débil (solo metadatos) la respuesta se marca como no
- *     fundamentada mediante un aviso explícito.
+ *  1. Without retrieved context, an explicit source claim absent from the
+ *     visible material is REJECTED and replaced with an honest message.
+ *  2. Without context, HONEST uncertainty is preserved: an answer saying
+ *     "there is not enough information" is valid and useful.
+ *  3. With weak context (metadata only) the answer is flagged as ungrounded
+ *     through an explicit notice.
  *
- * El lenguaje general y las explicaciones normales nunca se rechazan.
+ * General language and normal explanations are never rejected.
  */
 export function validateAntiHallucination(
   generatedText: string,
@@ -196,12 +195,12 @@ export function validateAntiHallucination(
   const text = generatedText || '';
 
   if (!hasRetrievedContext) {
-    // Regla 2 primero: la incertidumbre honesta nunca se bloquea.
+    // Rule 2 first: honest uncertainty is never blocked.
     if (hasUncertaintySignal(text)) {
       return { passed: true, text, weakGrounding: true };
     }
 
-    // Regla 1: afirmación de fuente sin material visible.
+    // Rule 1: source claim without visible material.
     const claim = findUnsupportedSourceClaim(text, availableSourceTitles);
     if (claim) {
       return {
@@ -215,8 +214,8 @@ export function validateAntiHallucination(
     return { passed: true, text, weakGrounding: true };
   }
 
-  // Hay contexto visible. Regla 3: si el contexto es débil (solo metadatos),
-  // la respuesta se marca como no fundamentada.
+  // Visible context exists. Rule 3: when context is weak (metadata only), the
+  // answer is flagged as ungrounded.
   if (!hasSubstantiveContext) {
     return {
       passed: true,

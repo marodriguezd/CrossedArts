@@ -77,12 +77,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   const [pendingConfirm, setPendingConfirm] = useState<{ action: 'delete-course' | 'delete-module' | 'delete-lesson'; targetId: string; label: string } | null>(null);
   const [nextLesson, setNextLesson] = useState<{ id: string; title: string; moduleTitle: string; allCompleted: boolean } | null>(null);
 
-  // Formularios ligeros de organización
+  // Lightweight organization forms
   const [newModuleTitle, setNewModuleTitle] = useState('');
   const [newLessonModuleId, setNewLessonModuleId] = useState(course.modules?.[0]?.id || '');
   const [newLessonTitle, setNewLessonTitle] = useState('');
 
-  // Búsqueda de lecciones dentro del curso
   const [lessonQuery, setLessonQuery] = useState('');
 
   const { filteredModules, totalMatchingLessons } = filterCourseLessons(course.modules, lessonQuery);
@@ -139,7 +138,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
     if (!newLessonModuleId && course.modules?.[0]?.id) setNewLessonModuleId(course.modules[0].id);
   }, [course.modules, newLessonModuleId]);
 
-  // Continuar curso: siguiente lección determinista (primera incompleta por orden)
+  // Continue course: deterministic next lesson (first incomplete by order)
   const loadNextLesson = useCallback(async () => {
     try {
       const next = await dao.getNextLessonForCourse(course.id);
@@ -228,9 +227,9 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
 
   const INPUT_CLS = 'rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
 
-  // "Montaña" con ámbito de curso: la MISMA vista que en el panel, pero con los
-  // módulos reales como hitos. Si el curso no tiene módulos con lecciones, se
-  // devuelve [] y la vista mantiene sus hitos genéricos en lugar de inventar etapas.
+  // Course-scoped "Mountain": the SAME view as the dashboard, but with the real
+  // modules as milestones. If the course has no modules with lessons, [] is
+  // returned and the view keeps its generic milestones instead of inventing stages.
   const courseStages = deriveStagesFromModules(course.modules || []);
   const coursePercentValue =
     course.total_lessons ? ((course.completed_lessons || 0) / course.total_lessons) * 100 : 0;
@@ -244,7 +243,6 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
         <ArrowLeft size={15} aria-hidden="true" /> Volver a la Biblioteca
       </button>
 
-      {/* Cabecera editorial del curso */}
       <header className="border-b border-line pb-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
@@ -272,7 +270,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
             />
           </div>
 
-          {/* Acciones de estudio reutilizando el flujo existente */}
+          {/* Study actions reusing the existing flow */}
           <div className="flex flex-wrap items-center gap-2 md:justify-end">
             <Button size="sm" variant="solid" onClick={() => onStudyResource?.(course.id, 'mixed')}>
               <Play size={13} aria-hidden="true" /> Estudiar
@@ -298,7 +296,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
         </div>
       </header>
 
-      {/* Continuar curso (determinista) */}
+      {/* Continue course (deterministic) */}
       {nextLesson && (
         <div className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent-soft/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -332,13 +330,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Plan de estudio (contexto: izquierda) */}
+        {/* Study plan (left context) */}
         <aside className="lg:col-span-3" aria-label="Plan de estudio">
           <div className="max-h-[760px] space-y-4 overflow-y-auto rounded-xl border border-line bg-surface p-4 shadow-card">
             <h2 className="type-micro">Plan de estudio</h2>
 
-            {/* Crear módulo */}
-            {/* Buscador de lecciones del curso */}
             <div className="space-y-1.5">
               <SearchInput
                 label="Buscar lecciones"
@@ -429,10 +425,10 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                   {mod.lessons?.map((les) => {
                     const isSelected = selectedLesson?.id === les.id;
                     return (
-                      // Fila de lección: contenedor NO interactivo con controles
-                      // independientes (seleccionar, completar, mover, eliminar).
-                      // Anidar controles interactivos es HTML inválido y rompe
-                      // foco, teclado y lectores de pantalla.
+                      // Lesson row: NON-interactive container with independent
+                      // controls (select, complete, move, delete). Nesting
+                      // interactive controls is invalid HTML and breaks focus,
+                      // keyboard, and screen readers.
                       <div
                         key={les.id}
                         aria-current={isSelected ? 'true' : undefined}
@@ -506,7 +502,6 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
               </div>
             )))}
 
-            {/* Crear lección */}
             {(course.modules || []).length > 0 && (
               <div className="space-y-2 border-t border-line pt-3">
                 <span className="type-micro flex items-center gap-1">
@@ -550,7 +545,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
           </div>
         </aside>
 
-        {/* Espacio de trabajo de la lección (centro) */}
+        {/* Lesson workspace (center) */}
         <div className="lg:col-span-9">
           {selectedLesson ? (
             <LessonWorkspace
@@ -578,7 +573,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
         </div>
       </div>
 
-      {/* Confirmación accesible de acciones destructivas (reemplaza el diálogo nativo) */}
+      {/* Accessible confirmation for destructive actions (replaces the native dialog) */}
       <ConfirmDialog
         isOpen={!!pendingConfirm}
         title={pendingConfirm ? describeDestructiveAction(pendingConfirm.action, pendingConfirm.label).title : ''}

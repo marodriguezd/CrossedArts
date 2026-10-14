@@ -2,7 +2,7 @@ export type StudyDifficulty = 'easy' | 'medium' | 'hard';
 
 export interface StudyGenerationOptions {
   resourceId?: string;
-  /** Ámbito de lección: prioriza el contenido de la lección en la recuperación local. */
+  /** Lesson scope: prioritizes the lesson's content in local retrieval. */
   lessonId?: string;
   resourceTitle?: string;
   topic?: string;

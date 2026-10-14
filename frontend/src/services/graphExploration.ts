@@ -1,38 +1,35 @@
 /**
- * Exploración del grafo de conocimiento: filtrado por tipo de nodo y de
- * relación, enfoque en el vecindario de un nodo y estadísticas de conectividad.
- *
- * Es lógica pura (sin React ni vis-network) para poder probarla con node:test y
- * mantener el componente de la página dedicado solo a la presentación.
+ * Knowledge-graph exploration: filter by node and relation type, focus on one
+ * node's neighborhood, plus connectivity stats. Pure logic (no React or
+ * vis-network) for node:test coverage, keeping the page component presentational.
  */
 import type { ConceptEdge, ConceptNode, GraphNodeType } from '../types/models.ts';
 import { translateKey } from '../i18n/dictionaries.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 
 export interface GraphFilterOptions {
-  /** Tipos de nodo visibles. */
+  /** Visible node types. */
   activeTypes: ReadonlySet<GraphNodeType>;
   /**
-   * Tipos de relación visibles. `null` significa "todas"; un conjunto VACÍO no
-   * muestra ninguna arista (el usuario ha ocultado todas).
+   * Visible relation types. `null` means "all"; an EMPTY set shows no edges
+   * (the user hid them all).
    */
   activeRelations: ReadonlySet<string> | null;
-  /** Nodo raíz del enfoque de vecindario; `null` desactiva el enfoque. */
+  /** Neighborhood-focus root node; `null` disables focus. */
   focusNodeId: string | null;
-  /** Profundidad máxima de vecindad (≥ 1). Se ignora sin `focusNodeId`. */
+  /** Max neighborhood depth (>= 1). Ignored without `focusNodeId`. */
   focusDepth: number;
 }
 
-/** Tipo de un nodo, con el valor por defecto histórico del grafo. */
+/** One node's type, with the graph's historic default. */
 export function nodeTypeOf(node: ConceptNode): GraphNodeType {
   return node.node_type || 'resource';
 }
 
 /**
- * IDs de los nodos alcanzables desde `rootId` en `depth` saltos o menos.
- *
- * `depth = 0` devuelve solo el nodo raíz. Si el raíz no existe en el grafo, el
- * conjunto es vacío (nunca se inventa un nodo).
+ * Ids reachable from `rootId` within `depth` hops. `depth = 0` returns only
+ * the root. When the root is absent from the graph the set is empty (nodes are
+ * never invented).
  */
 export function collectNeighborhood(
   edges: readonly ConceptEdge[],
@@ -66,7 +63,7 @@ export function collectNeighborhood(
   return reached;
 }
 
-/** Tipos de relación realmente presentes en las aristas, ordenados. */
+/** Relation types actually present on edges, sorted. */
 export function availableRelationTypes(edges: readonly ConceptEdge[]): string[] {
   const set = new Set<string>();
   for (const edge of edges) {
@@ -76,9 +73,8 @@ export function availableRelationTypes(edges: readonly ConceptEdge[]): string[] 
 }
 
 /**
- * Aplica en orden: filtro por tipo de nodo, filtro por tipo de relación y
- * enfoque de vecindario. El resultado siempre deja aristas cuyos dos extremos
- * están visibles.
+ * Applies in order: node-type filter, relation-type filter, neighborhood
+ * focus. The result only keeps edges with both ends visible.
  */
 export function applyGraphFilters(
   nodes: readonly ConceptNode[],
@@ -118,11 +114,11 @@ export interface ConnectivityStats {
   total: number;
   connected: number;
   isolated: number;
-  /** IDs de nodos sin ninguna conexión (candidatos a organizar). */
+  /** Ids of connectionless nodes (organize candidates). */
   isolatedIds: string[];
 }
 
-/** Cuántos nodos tienen al menos una arista y cuántos están aislados. */
+/** How many nodes have at least one edge vs. stand isolated. */
 export function computeConnectivityStats(
   nodes: readonly ConceptNode[],
   edges: readonly ConceptEdge[]
@@ -147,7 +143,7 @@ export function computeConnectivityStats(
   };
 }
 
-/** Grado (nº de aristas incidentes) de cada nodo, contando cada extremo una vez. */
+/** Per-node degree (incident edge count), counting each end once. */
 export function computeDegrees(
   nodes: readonly ConceptNode[],
   edges: readonly ConceptEdge[]
@@ -162,16 +158,15 @@ export function computeDegrees(
 }
 
 /**
- * Distingue dos cosas que la interfaz NUNCA debe confundir:
+ * Tells apart two things the UI must NEVER conflate:
  *
- *  - `isolatedGlobally`: nodos sin ninguna relación en el grafo completo.
- *  - `apparentlyIsolated`: nodos que aparecen sin relaciones SOLO en la vista
- *    actual porque un filtro o el enfoque de vecindario oculta sus aristas.
+ *  - `isolatedGlobally`: nodes with no relation in the full graph.
+ *  - `apparentlyIsolated`: nodes that look relationless ONLY in the current
+ *    view because a filter or neighborhood focus hides their edges.
  *
- * Sin esta distinción, filtrar por tipo hacía que un nodo pareciera desconectado
- * cuando en realidad estaba enlazado, y las estadísticas de conectividad mentían.
- * El cálculo de conectividad global sigue siendo honesto: se mide sobre el grafo
- * completo, no sobre la vista.
+ * Without this split, type filtering made linked nodes look disconnected and
+ * connectivity stats lied. Global connectivity stays honest: measured on the
+ * full graph, not the view.
  */
 export interface IsolationExplanation {
   isolatedGlobally: number;
@@ -208,10 +203,10 @@ export function explainIsolation(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Analítica estructural del grafo                                             */
+/* Structural graph analytics                                                  */
 /* -------------------------------------------------------------------------- */
 
-/** Entrada de ranking por número de conexiones. */
+/** Ranking entry by connection count. */
 export interface GraphDegreeEntry {
   id: string;
   name: string;
@@ -220,10 +215,10 @@ export interface GraphDegreeEntry {
 }
 
 export interface GraphComponentStats {
-  /** Nº de grupos desconectados entre sí (un nodo aislado es su propio grupo). */
+  /** Count of mutually disconnected groups (an isolated node is its own group). */
   count: number;
   largestSize: number;
-  /** Tamaños de mayor a menor, para dimensionar sin adivinar. */
+  /** Sizes largest-first, for sizing without guessing. */
   sizes: number[];
 }
 
@@ -231,7 +226,7 @@ export interface GraphRecentEntry {
   id: string;
   name: string;
   type: GraphNodeType;
-  /** Fecha de creación o actualización conocida (YYYY-MM-DD o ISO). */
+  /** Known creation or update date (YYYY-MM-DD or ISO). */
   date: string;
 }
 
@@ -241,20 +236,20 @@ export interface GraphAnalytics {
   connectedNodes: number;
   isolatedNodes: number;
   isolatedIds: string[];
-  /** Recuento de nodos por tipo (tipos presentes solamente). */
+  /** Per-type node counts (present types only). */
   typeCounts: Partial<Record<GraphNodeType, number>>;
-  /** Los nodos con MÁS CONEXIONES (etiqueta literal; nunca "los más importantes"). */
+  /** Highest-DEGREE nodes (literal label; never "most important"). */
   topConnected: GraphDegreeEntry[];
-  /** Umbral usado para considerar "grado inusualmente alto". */
+  /** Threshold for "unusually high degree". */
   highDegreeThreshold: number;
-  /** Nodos cuyo grado supera el umbral estadístico. */
+  /** Nodes above the statistical degree threshold. */
   highDegree: GraphDegreeEntry[];
-  /** Recursos, cursos y libros con 0 o 1 conexión: material poco integrado. */
+  /** Resources, courses, and books with 0-1 connections: weakly linked material. */
   weakResources: GraphDegreeEntry[];
   components: GraphComponentStats;
-  /** Elementos con fecha conocida, ordenados del más reciente al más antiguo. */
+  /** Dated items, newest first. */
   recent: GraphRecentEntry[];
-  /** false cuando ningún nodo expone fechas: no se inventa actividad reciente. */
+  /** False when no node exposes dates: no recent activity is invented. */
   hasDateInfo: boolean;
 }
 
@@ -267,7 +262,7 @@ function degreeEntry(node: ConceptNode, degree: number): GraphDegreeEntry {
   return { id: node.id, name: node.name, type: nodeTypeOf(node), degree };
 }
 
-/** Tamaño de los grupos conexos (unión no dirigida) entre los nodos dados. */
+/** Connected-group sizes (undirected union) over the given nodes. */
 export function computeComponentSizes(
   nodes: readonly ConceptNode[],
   edges: readonly ConceptEdge[]
@@ -303,9 +298,9 @@ export function computeComponentSizes(
 }
 
 /**
- * Analítica ESTRUCTURAL del grafo: propiedades topológicas reales (grado,
- * conectividad, componentes, fechas). Nunca infiere dominio, inteligencia ni
- * importancia: `topConnected` es literalmente "los que más conexiones tienen".
+ * STRUCTURAL graph analytics: real topological properties (degree,
+ * connectivity, components, dates). Never infers domain, intelligence, or
+ * importance: `topConnected` literally means "highest connection counts".
  */
 export function computeGraphAnalytics(
   nodes: readonly ConceptNode[],
@@ -332,8 +327,8 @@ export function computeGraphAnalytics(
 
   const topConnected = entries.filter(entry => entry.degree > 0).slice(0, DEGREE_ENTRY_LIMIT);
 
-  // Umbral de grado inusual: media + 2 desviaciones típicas, con suelo en 4
-  // para no etiquetar como "inusual" un grafo minúsculo.
+  // Unusual-degree threshold: mean + 2 stddevs, floored at 4 so tiny graphs
+  // are never labeled "unusual".
   const degrees = nodes.map(node => degree.get(node.id) ?? 0);
   const mean = degrees.length > 0 ? degrees.reduce((sum, value) => sum + value, 0) / degrees.length : 0;
   const variance = degrees.length > 0
@@ -383,8 +378,8 @@ export function computeGraphAnalytics(
 }
 
 /**
- * Frases ACCIONABLES y honestas sobre la analítica estructural. Cada frase es
- * un hecho verificable del grafo; ninguna convierte conexiones en importancia.
+ * ACTIONABLE honest sentences about structural analytics. Each is a verifiable
+ * graph fact; none turns connections into importance.
  */
 export function buildGraphInsights(analytics: GraphAnalytics, lang: LanguageCode = 'es'): string[] {
   if (analytics.totalNodes === 0) {

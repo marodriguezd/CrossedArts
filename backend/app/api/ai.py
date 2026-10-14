@@ -21,7 +21,7 @@ from backend.app.services.ai_validation import (
 
 router = APIRouter(prefix="/ai", tags=["Learning AI"])
 
-# Pydantic Schemas
+# Request/response schemas.
 class TutorQuestionRequest(BaseModel):
     resource_id: uuid.UUID
     question: str
@@ -37,7 +37,7 @@ class NotesOperationRequest(BaseModel):
 @router.post("/tutor")
 async def ask_tutor(payload: TutorQuestionRequest, db: Session = Depends(get_db)):
     """
-    Realiza una consulta al tutor inteligente, extrayendo primero contexto local relevante (RAG).
+    Ask the smart tutor, first retrieving relevant local context (RAG).
     """
     context = ContextRetrievalService.get_context_for_resource(
         db,
@@ -56,10 +56,10 @@ async def ask_tutor(payload: TutorQuestionRequest, db: Session = Depends(get_db)
 @router.post("/quiz")
 async def generate_quiz(payload: QuizGenerationRequest, db: Session = Depends(get_db)):
     """
-    Genera un quiz de preguntas de opción múltiple y cortas a partir del contenido del recurso.
-    El quiz generado es almacenado de forma persistente.
+    Generate a multiple-choice/short-answer quiz from the resource content.
+    The generated quiz is stored persistently.
     """
-    # Intentar obtener fragmentos de texto del recurso para alimentar el generador
+    # Fetch resource text chunks to feed the generator.
     from sqlalchemy import select
     stmt = (
         select(ContentIndex.content)
@@ -69,7 +69,7 @@ async def generate_quiz(payload: QuizGenerationRequest, db: Session = Depends(ge
     )
     text_chunks = db.scalars(stmt).all()
 
-    # Fallback si no hay texto de ContentIndex, buscar notas
+    # Fall back to notes when ContentIndex has no text.
     if not text_chunks:
         stmt_notes = select(Note.content).where(Note.resource_id == payload.resource_id)
         text_chunks = db.scalars(stmt_notes).all()
@@ -78,10 +78,9 @@ async def generate_quiz(payload: QuizGenerationRequest, db: Session = Depends(ge
 
     quiz_json_str = await LLMService.generate_response("generate_quiz", context=context)
 
-    # Validación estructural estricta: JSON válido NO es suficiente. Material
-    # malformado, vacío o con tipos de pregunta inválidos devuelve un error
-    # controlado; nunca se persiste ni se fabrica contenido genérico disfrazado
-    # de generación exitosa.
+    # Strict structural validation: valid JSON is NOT enough. Malformed, empty,
+    # or wrong-question-type material returns a controlled error; nothing is
+    # persisted and no generic content is fabricated as a successful generation.
     try:
         questions = validate_quiz_questions(json.loads(strip_code_fences(quiz_json_str)))
     except (json.JSONDecodeError, StudyMaterialValidationError) as exc:
@@ -90,7 +89,7 @@ async def generate_quiz(payload: QuizGenerationRequest, db: Session = Depends(ge
             detail=f"El material generado por el modelo no superó la validación: {exc}"
         )
 
-    # Guardar en BD
+    # Persist the quiz.
     quiz = Quiz(
         id=uuid.uuid4(),
         resource_id=payload.resource_id,
@@ -111,7 +110,7 @@ async def generate_quiz(payload: QuizGenerationRequest, db: Session = Depends(ge
 @router.get("/quizzes/{resource_id}")
 def list_resource_quizzes(resource_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Lista todos los cuestionarios generados previamente para un recurso.
+    List all previously generated quizzes for a resource.
     """
     from sqlalchemy import select
     stmt = select(Quiz).where(Quiz.resource_id == resource_id).order_by(Quiz.created_at.desc())
@@ -130,7 +129,7 @@ def list_resource_quizzes(resource_id: uuid.UUID, db: Session = Depends(get_db))
 @router.post("/notes/summarize")
 async def summarize_notes(payload: NotesOperationRequest, db: Session = Depends(get_db)):
     """
-    Agrupa y resume una selección de notas en un informe estructurado Markdown.
+    Group and summarize selected notes into a structured Markdown report.
     """
     from sqlalchemy import select
     stmt = select(Note.content).where(Note.id.in_(payload.note_ids))
@@ -147,7 +146,7 @@ async def summarize_notes(payload: NotesOperationRequest, db: Session = Depends(
 @router.post("/notes/flashcards")
 async def generate_flashcards(payload: NotesOperationRequest, db: Session = Depends(get_db)):
     """
-    Genera tarjetas flashcards a partir del contenido de notas seleccionadas.
+    Generate flashcards from selected note contents.
     """
     from sqlalchemy import select
     stmt = select(Note.content).where(Note.id.in_(payload.note_ids))
@@ -159,8 +158,8 @@ async def generate_flashcards(payload: NotesOperationRequest, db: Session = Depe
     context = "\n---\n".join(contents)
     flashcard_json_str = await LLMService.generate_response("generate_flashcards", context=context)
 
-    # Misma validación estricta que el quiz: sin fallback fabricado. Un fallo de
-    # generación o de validación se comunica como tal (HTTP 502).
+    # Same strict validation as the quiz: no fabricated fallback. A generation
+    # or validation failure is reported as such (HTTP 502).
     try:
         flashcards = validate_flashcards(json.loads(strip_code_fences(flashcard_json_str)))
     except (json.JSONDecodeError, StudyMaterialValidationError) as exc:
@@ -175,6 +174,6 @@ async def generate_flashcards(payload: NotesOperationRequest, db: Session = Depe
 @router.get("/insights")
 def get_study_insights(db: Session = Depends(get_db)):
     """
-    Informe analítico con recomendaciones, patrones de estudio y recursos olvidados.
+    Analytics report with recommendations, study patterns, and forgotten resources.
     """
     return LearningInsightsService.generate_insights(db)

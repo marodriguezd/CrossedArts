@@ -21,18 +21,16 @@ class SemanticSearchResultResponse(BaseModel):
 
 @router.get("/search", response_model=List[SemanticSearchResultResponse])
 def semantic_search(
-    q: str = Query(..., min_length=1, description="Texto de consulta semántica"),
-    resource_type: Optional[str] = Query(None, description="Filtrar por tipo (course, book)"),
-    limit: int = Query(20, ge=1, le=100, description="Máximo de resultados devueltos"),
-    offset: int = Query(0, ge=0, description="Resultados a omitir del ranking"),
+    q: str = Query(..., min_length=1, description="Semantic query text"),
+    resource_type: Optional[str] = Query(None, description="Filter by type (course, book)"),
+    limit: int = Query(20, ge=1, le=100, description="Max results returned"),
+    offset: int = Query(0, ge=0, description="Ranking results to skip"),
     db: Session = Depends(get_db)
 ):
     """
-    Realiza una búsqueda semántica de conceptos sobre la biblioteca de CrossedArts.
-
-    La paginación (`limit`/`offset`) se aplica sobre el ranking de similitud: el
-    top-k se mantiene acotado en memoria y nunca se materializa la colección
-    completa de embeddings.
+    Semantic concept search over the CrossedArts library. Pagination
+    (`limit`/`offset`) applies over the similarity ranking: top-k stays bounded
+    in memory and the full embedding collection is never materialized.
     """
     return SemanticSearchService.search(
         db, query=q, limit=limit, offset=offset, resource_type=resource_type
@@ -44,9 +42,9 @@ def trigger_reindex(background_tasks: BackgroundTasks):
     Genera embeddings en lote para todo el contenido no indexado en la base de datos en segundo plano.
     """
     def run_reindex():
-        # `SessionLocal` se importa dentro de la función: las pruebas parchean
-        # `backend.app.core.database.SessionLocal` para que el trabajo en
-        # segundo plano use SIEMPRE la base de datos de prueba.
+        # `SessionLocal` is imported inside the function: tests patch
+        # `backend.app.core.database.SessionLocal` so background work ALWAYS
+        # uses the test database.
         from backend.app.core.database import SessionLocal as session_factory
         db = session_factory()
         try:

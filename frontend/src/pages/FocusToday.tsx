@@ -38,9 +38,9 @@ interface FocusTodayProps {
   practiceWork: PracticeWork[];
   goals: LearningGoal[];
   recentSessions: LearningSession[];
-  /** Navega a una pestaña de primer nivel (repaso, biblioteca, metas…). */
+  /** Navigates to a top-level tab (review, library, goals). */
   onNavigate: (tab: string) => void;
-  /** Abre un destino de entidad reutilizando la navegación existente. */
+  /** Opens an entity destination by reusing the existing navigation. */
   onOpenDestination: (destination: ResourceDestination) => void;
 }
 
@@ -66,11 +66,11 @@ function formatLocalDate(day: string): string {
 }
 
 /**
- * Vista "Hoy": responde a «¿qué hago ahora?» con datos reales.
+ * "Today" view: answers "what do I do now?" with real data.
  *
- * Las recomendaciones salen de `buildFocusPlan` (puro y determinista). Esta
- * vista solo carga los datos necesarios, los ordena y ofrece la acción; nunca
- * inventa sugerencias ni métricas.
+ * Recommendations come from `buildFocusPlan` (pure and deterministic). This view
+ * only loads the needed data, sorts it, and offers the action; it never invents
+ * suggestions or metrics.
  */
 export const FocusToday: React.FC<FocusTodayProps> = ({
   kpis,
@@ -96,7 +96,7 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
   const [continueTarget, setContinueTarget] = useState<ContinueTarget | null>(null);
   const [minutesToday, setMinutesToday] = useState(0);
 
-  // Continuación: primer curso incompleto con su próxima lección real.
+  // Resume target: first incomplete course with its real next lesson.
   useEffect(() => {
     let cancelled = false;
     const target =
@@ -128,7 +128,7 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
     };
   }, [courses]);
 
-  // Minutos de HOY desde la serie diaria ya agregada (sin nueva consulta).
+  // Today's minutes come from the already aggregated daily series: no extra query.
   useEffect(() => {
     let cancelled = false;
     dao
@@ -211,7 +211,7 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
         <p className="type-secondary mt-1 capitalize">{t('focus.subtitle', { date: formatLocalDate(localDay) })}</p>
       </header>
 
-      {/* Resumen del día: solo hechos medidos. */}
+      {/* Day summary: measured facts only. */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Panel className="p-4">
           <p className="type-micro">{t('focus.todayStudy')}</p>
@@ -249,7 +249,7 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
         </Panel>
       </div>
 
-      {/* Plan de acción: orden priorizado y explicable. */}
+      {/* Action plan: prioritized, explainable order. */}
       <Panel className="p-5 sm:p-6">
         <div className="mb-4 flex items-center gap-2 border-b border-line pb-3">
           <ListTodo size={16} className="text-accent" aria-hidden="true" />
@@ -312,7 +312,7 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
         )}
       </Panel>
 
-      {/* Recursos estudiados recientemente: atajos a lo que ya estabas haciendo. */}
+      {/* Recently studied resources: shortcuts back to what was already in progress. */}
       <Panel className="p-5 sm:p-6">
         <div className="mb-3 flex items-center gap-2 border-b border-line pb-3">
           <History size={16} className="text-accent" aria-hidden="true" />
@@ -348,7 +348,6 @@ export const FocusToday: React.FC<FocusTodayProps> = ({
         )}
       </Panel>
 
-      {/* Acceso rápido a las otras piezas de planificación. */}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => onNavigate('goals')}>
           {t('focus.viewGoals')} <ArrowRight size={14} aria-hidden="true" />

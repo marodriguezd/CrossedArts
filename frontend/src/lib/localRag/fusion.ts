@@ -1,13 +1,13 @@
 import type { RetrievedDocument } from './types.ts';
 
 /**
- * Fusión de resultados de recuperación.
+ * Retrieval-result fusion.
  *
- * Este módulo contiene la ÚNICA implementación de fusión usada por la
- * recuperación de producción (`fuseRankedCandidates`). Se ofrece además
- * `fuseResults`, una API de conveniencia para llamantes que ya tienen listas de
- * documentos clasificados y solo necesitan combinarlas; no participa en el
- * pipeline de producción (ver `tests/rag_fusion_parity.test.ts`).
+ * This module holds the ONLY fusion implementation used by production support
+ * (`fuseRankedCandidates`). It also offers `fuseResults`, a convenience API for
+ * callers that already have ranked document lists and only need to combine
+ * them; it takes no part in the production pipeline (see
+ * `tests/rag_fusion_parity.test.ts`).
  */
 
 export interface FusionOptions {
@@ -18,10 +18,10 @@ export interface FusionOptions {
 }
 
 /**
- * Reciprocal Rank Fusion (RRF) combinada con puntuación ponderada.
- * RRF(d) = sum( 1 / (k + rank_i) ) donde k = 60 estándar.
+ * Reciprocal Rank Fusion (RRF) combined with weighted scoring.
+ * RRF(d) = sum( 1 / (k + rank_i) ) where k = 60 by standard.
  *
- * Función pura y determinista: sin rangos nulos no hay señal.
+ * Pure, deterministic function: with null ranks there is no signal.
  */
 export function computeRrfScore(rankLexical: number | null, rankSemantic: number | null, k: number = 60): number {
   let score = 0;
@@ -35,14 +35,14 @@ export function computeRrfScore(rankLexical: number | null, rankSemantic: number
 }
 
 /**
- * Normaliza un valor a un rango [0, 1] dado un valor máximo.
+ * Normalizes a value to the [0, 1] range given a maximum value.
  */
 export function normalizeScore(val: number, maxVal: number): number {
   if (maxVal <= 0) return 0;
   return Math.min(Math.max(val / maxVal, 0), 1);
 }
 
-/** Coincidencia semántica aceptada: id de fragmento, similitud y su entrada de caché. */
+/** Accepted semantic match: chunk id, similarity, and its cache entry. */
 export interface RankedSemanticMatch {
   chunkId: string;
   score: number;
@@ -60,8 +60,8 @@ export interface FusedCandidate extends RetrievedDocument {
   chunkKey: string;
 }
 
-/** Pesos por defecto de la fusión de producción. RRF domina; las señales de
- *  calidad solo desempatan. */
+/** Default production-fusion weights. RRF dominates; quality signals only
+ *  break ties. */
 export const DEFAULT_FUSION_WEIGHTS = {
   lexical: 0.25,
   semantic: 0.25,
@@ -69,19 +69,18 @@ export const DEFAULT_FUSION_WEIGHTS = {
 } as const;
 
 /**
- * FUSIÓN DE PRODUCCIÓN.
+ * PRODUCTION FUSION.
  *
- * Combina los candidatos léxicos y semánticos por clave de fragmento:
+ * Combines lexical and semantic candidates by chunk key:
  *
- *  score = 0.25 * scoreLéxicoNormalizado
- *        + 0.25 * similitudSemántica
- *        + 0.50 * RRF normalizado
+ *  score = 0.25 * normalizedLexicalScore
+ *        + 0.25 * semanticSimilarity
+ *        + 0.50 * normalized RRF
  *
- * Se conserva además una señal normalizada de similitud para desempatar por
- * calidad entre candidatos con la misma posición de fusión. El RRF aporta la
- * evidencia de rango (un documento encontrado por ambos canales sube); las
- * señales crudas solo afinan. El orden de iteración y el desempate por clave son
- * deterministas.
+ * A normalized similarity signal is also kept to break quality ties between
+ * candidates sharing a fusion position. RRF supplies the rank evidence (a
+ * document found by both channels rises); raw signals only refine. Iteration
+ * order and key tiebreaks are deterministic.
  */
 export function fuseRankedCandidates(input: {
   lexicalCandidates: Map<string, RetrievedDocument>;
@@ -121,10 +120,10 @@ export function fuseRankedCandidates(input: {
           snippet: semantic!.entry.text.slice(0, 200),
           score: semScore,
           retrievalMode: 'semantic',
-          // Un acierto semántico es, por definición, una coincidencia de contenido.
+          // A semantic hit is, by definition, a content match.
           substantive: true,
-          // Procedencia mínima que el chunk SÍ conserva: el artefacto de origen.
-          // La ruta completa solo existe si la recuperación léxica la aportó.
+          // Minimal provenance the chunk DOES keep: the origin artifact. The
+          // full path only exists when lexical retrieval supplied it.
           ...(semantic!.entry.sourceType === 'lesson' ? { lessonId: semantic!.entry.sourceId } : {}),
           ...(semantic!.entry.sourceType === 'course' || semantic!.entry.sourceType === 'book'
             ? { resourceId: semantic!.entry.sourceId, path: [semantic!.entry.title] }
@@ -156,12 +155,12 @@ export function fuseRankedCandidates(input: {
 }
 
 /**
- * Fusiona listas de documentos ya clasificados por canal mediante ponderación
- * calibrada o RRF puro. El desempate es determinista (puntuación y luego id).
+ * Fuses already per-channel ranked document lists via calibrated weighting or
+ * pure RRF. Tiebreaks are deterministic (score, then id).
  *
- * API de conveniencia: NO es el camino de producción. Existe para reutilización
- * externa; su equivalencia de RANKING con `fuseRankedCandidates` está verificada
- * en `tests/rag_fusion_parity.test.ts`.
+ * Convenience API: NOT the production path. It exists for external reuse; its
+ * RANKING equivalence with `fuseRankedCandidates` is verified in
+ * `tests/rag_fusion_parity.test.ts`.
  */
 export function fuseResults(
   lexicalDocs: RetrievedDocument[],
@@ -197,7 +196,7 @@ export function fuseResults(
     return results.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
   }
 
-  // Ponderación estándar calibrada
+  // Calibrated standard weighting
   const lexWeight = options.lexicalWeight ?? 0.45;
   const semWeight = options.semanticWeight ?? 0.55;
 
@@ -212,7 +211,7 @@ export function fuseResults(
   for (const doc of semanticDocs) {
     const existing = fusedMap.get(doc.id);
     if (existing) {
-      // Documento encontrado por ambos métodos: combinar puntuación y marcar como híbrido
+      // Document found by both methods: combine scores and mark as hybrid
       existing.score += doc.score * semWeight;
       existing.retrievalMode = 'hybrid';
       existing.substantive = existing.substantive || doc.substantive;

@@ -43,8 +43,8 @@ Prueba de transcripción VTT de dos dígitos para las horas.
     assert extractor.can_handle("text/vtt", vtt_path)
     extractor.extract(db, asset.id, vtt_path)
 
-    # Validar. La fuente VTT no declara idioma: no se etiqueta falsamente como
-    # español, se registra como indeterminado ('und').
+    # VTT source declares no language: never falsely labeled Spanish, recorded as
+    # undetermined ('und').
     transcript = db.scalars(select(Transcript).where(Transcript.media_asset_id == asset.id)).first()
     assert transcript is not None
     assert transcript.language == "und"

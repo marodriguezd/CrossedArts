@@ -21,7 +21,7 @@ class LessonType(str, enum.Enum):
     PROJECT = "PROJECT"
 
 class TimestampMixin:
-    """Mixin para inyectar automáticamente marcas de tiempo de auditoría."""
+    """Mixin auto-injecting audit timestamps."""
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=func.now(),

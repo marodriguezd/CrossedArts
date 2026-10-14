@@ -68,7 +68,7 @@ class KnowledgeService:
         weight: float = 1.0,
         commit: bool = True
     ) -> KnowledgeConnection:
-        """Crea una conexión o arista semántica en el grafo si no existe una idéntica."""
+        """Create a graph connection/semantic edge unless an identical one exists."""
         stmt = select(KnowledgeConnection).where(
             and_(
                 KnowledgeConnection.source_id == source_id,
@@ -116,7 +116,7 @@ class KnowledgeService:
             rel_id = conn.target_id if is_source else conn.source_id
             rel_type = conn.target_type if is_source else conn.source_type
 
-            # Resolver nombre/título de la entidad relacionada
+            # Resolve the related entity's name/title.
             name = "Desconocido"
             if rel_type == "concept":
                 concept = db.get(Concept, rel_id)
@@ -146,27 +146,25 @@ class KnowledgeService:
     @staticmethod
     def parse_note_relations(db: Session, note_id: uuid.UUID, commit: bool = True) -> None:
         """
-        Parsea el contenido de una nota para extraer:
-        - Referencias de wiki-links: [[Destino]]
-        - Hashtags/Conceptos: #concepto
-        - Asocia automáticamente la nota a su Recurso y Lección correspondientes
-          (ambos opcionales: una nota autónoma no inventa anclas).
+        Parse a note's content to extract:
+        - Wiki-link references: [[Target]]
+        - Hashtags/Concepts: #concepto
+        - Auto-link the note to its Resource and Lesson (both optional: a
+          standalone note invents no anchors).
 
-        Contrato transaccional: la regeneración completa es atómica. Con
-        `commit=False` (uso interno desde NoteService, que confirma una sola vez)
-        NO se confirma nada aquí: solo `flush`. Con `commit=True` se confirma
-        exactamente una vez, al terminar. Un fallo a mitad del parseo nunca
-        deja un conjunto de aristas parcialmente regenerado.
+        Transactional contract: full regeneration is atomic. With `commit=False`
+        (internal use from NoteService, which commits once) nothing commits here:
+        only `flush`. With `commit=True` it commits exactly once, at the end. A
+        mid-parse failure never leaves a half-regenerated edge set.
         """
         note = db.get(Note, note_id)
         if not note:
             return
 
-        # 1. Eliminar conexiones existentes de esta nota para regenerarlas (idempotencia).
-        #    Todo el parseo es UNA única transacción: se hace `flush` (para obtener
-        #    los ids de los conceptos creados) y se confirma UNA sola vez al final,
-        #    o la deja.enteramente sin cambios si algo falla. Así una regeneración
-        #    nunca deja un conjunto de aristas a medias.
+        # 1. Drop this note's existing connections before regenerating (idempotency).
+        # Parsing runs as ONE transaction: `flush` (to get created concept ids)
+        # with a SINGLE commit at the end, or no change at all on failure, so a
+        # regeneration never leaves a half-built edge set.
         db.query(KnowledgeConnection).filter(
             and_(
                 KnowledgeConnection.source_id == note_id,
@@ -175,9 +173,9 @@ class KnowledgeService:
         ).delete(synchronize_session=False)
         db.flush()
 
-        # 2. Conectar automáticamente con el Recurso (Course/Book) si la nota
-        #    tiene uno. Una nota AUTÓNOMA no inventa un recurso de relleno: queda
-        #    sin arista de contención y sigue siendo una nota válida.
+        # 2. Auto-link the Resource (Course/Book) when the note has one. A
+        # STANDALONE note invents no placeholder resource: it keeps no
+        # containment edge and stays valid.
         if note.resource_id is not None:
             KnowledgeService.create_connection(
                 db,
@@ -190,7 +188,7 @@ class KnowledgeService:
                 commit=False
             )
 
-        # 3. Conectar automáticamente con la Lección si existe
+        # 3. Auto-link the Lesson when present.
         if note.lesson_id:
             KnowledgeService.create_connection(
                 db,
@@ -255,8 +253,7 @@ class KnowledgeService:
                 commit=False
             )
 
-        # 6. Un único punto de confirmación: el conjunto completo de aristas pasa
-        #    de una vez, o no pasa nada.
+        # 6. Single commit point: the full edge set lands at once, or not at all.
         if commit:
             db.commit()
         else:
@@ -264,11 +261,8 @@ class KnowledgeService:
 
     @staticmethod
     def get_knowledge_graph(db: Session) -> Dict[str, List[Dict[str, Any]]]:
-        """Retorna todos los nodos y enlaces para el renderizado del grafo de conocimiento."""
-        # Nodos
+        """Return every node and link for knowledge-graph rendering."""
         nodes = []
-
-        # Conceptos
         concepts = db.scalars(select(Concept)).all()
         for c in concepts:
             nodes.append({
@@ -278,10 +272,8 @@ class KnowledgeService:
                 "val": 15
             })
 
-        # Notas
         notes = db.scalars(select(Note)).all()
         for n in notes:
-            # Obtener título/resumen de la nota
             summary = n.content[:30] + "..." if len(n.content) > 30 else n.content
             nodes.append({
                 "id": str(n.id),
@@ -290,7 +282,6 @@ class KnowledgeService:
                 "val": 10
             })
 
-        # Recursos
         resources = db.scalars(select(LearningResource)).all()
         for r in resources:
             nodes.append({

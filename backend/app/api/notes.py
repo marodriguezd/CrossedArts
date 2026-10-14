@@ -24,7 +24,7 @@ def list_all_notes(db: Session = Depends(get_db)):
 @router.get("/resources/{resource_id}/notes", response_model=List[NoteResponse])
 def list_notes_by_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Retorna la lista de notas asociadas a un recurso de aprendizaje específico.
+    Return the notes linked to a specific learning resource.
     """
     return NoteService.list_notes_by_resource(db, resource_id)
 
@@ -32,10 +32,9 @@ def list_notes_by_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)
 @router.post("/notes", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
 def create_note(payload: CreateNoteRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
-    Crea una nueva anotación Markdown.
-
-    El recurso es opcional: una nota AUTÓNOMA es válida (mismo contrato que el
-    frontend SQLite WASM). Si se indica lección, su vínculo se conserva.
+    Create a new Markdown note. The resource is optional: a STANDALONE note is
+    valid (same contract as the SQLite WASM frontend). A given lesson keeps its
+    link.
     """
     try:
         note = NoteService.create_note(

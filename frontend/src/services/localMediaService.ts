@@ -1,7 +1,7 @@
 /**
- * localMediaService.ts
- * Servicio en memoria para descubrimiento, coincidencia y reproducción de medios locales
- * utilizando la File System Access API del navegador sin persistir URLs temporales ni handles en SQLite.
+ * In-memory service for discovering, matching, and playing local media through
+ * the browser File System Access API. Temporary URLs and handles are never
+ * persisted to SQLite (AGENTS.md invariant 5).
  */
 
 export interface DiscoveredMediaFile {
@@ -36,8 +36,9 @@ export const SUPPORTED_MEDIA_EXTENSIONS = new Set([
 ]);
 
 /**
- * Normaliza nombres de archivo eliminando extensiones, caracteres especiales y separadores.
- * Por ejemplo: "01. Introducción al Virtual DOM y Fiber" -> "01 introduccion al virtual dom y fiber"
+ * Normalizes file names by dropping extensions, special characters, and
+ * separators.
+ * For example: "01. Introducción al Virtual DOM y Fiber" -> "01 introduccion al virtual dom y fiber"
  * "01-virtual-dom-fiber.mp4" -> "01 virtual dom fiber"
  */
 export function normalizeMediaStem(name: string): string {
@@ -53,7 +54,7 @@ export function normalizeMediaStem(name: string): string {
 
   return baseName
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // Eliminar tildes/acentos
+    .replace(/[\u0300-\u036f]/g, '') // Strip tildes/accents
     .toLowerCase()
     .replace(/[-_.]+/g, ' ')
     .replace(/[^\w\s]/g, '')
@@ -61,9 +62,6 @@ export function normalizeMediaStem(name: string): string {
     .replace(/\s+/g, ' ');
 }
 
-/**
- * Comprueba si la extensión del archivo es compatible con reproducción en el navegador.
- */
 export function isSupportedMedia(fileName: string): boolean {
   const dotIndex = fileName.lastIndexOf('.');
   if (dotIndex === -1) return false;
@@ -74,17 +72,19 @@ export function isSupportedMedia(fileName: string): boolean {
 export type MatchTier = 'EXACT_PATH' | 'EXACT_NAME' | 'STEM_MATCH' | 'TITLE_FALLBACK';
 
 /**
- * Emparejamiento determinista entre archivos descubiertos y lecciones por niveles de fuerza.
- * Niveles jerárquicos:
- * 1. EXACT_PATH: Coincidencia exacta de ruta relativa normalizada (máxima fuerza).
- * 2. EXACT_NAME: Coincidencia exacta de nombre de archivo con extensión.
- * 3. STEM_MATCH: Coincidencia de tallo normalizado derivado del nombre de archivo.
- * 4. TITLE_FALLBACK: Coincidencia de tallo normalizado derivado del título de la lección (mínima fuerza).
+ * Deterministic matching between discovered files and lessons by strength tiers.
+ * Hierarchical tiers:
+ * 1. EXACT_PATH: exact match on the normalized relative path (strongest).
+ * 2. EXACT_NAME: exact match on the file name including extension.
+ * 3. STEM_MATCH: match on the normalized stem derived from the file name.
+ * 4. TITLE_FALLBACK: match on the normalized stem derived from the lesson title (weakest).
  *
- * Reglas de desempate y ambigüedad:
- * - Un nivel superior siempre prevalece sobre niveles inferiores.
- * - Si existen múltiples candidatos dentro del mismo nivel más fuerte, se declara ambigüedad y no se asigna.
- * - No se admiten falsos positivos cuando la normalización produce nombres vacíos o no relacionados.
+ * Tiebreak and ambiguity rules:
+ * - A higher tier always prevails over lower tiers.
+ * - Multiple candidates within the same strongest tier declare ambiguity and
+ *   no assignment happens.
+ * - No false positives are admitted when normalization yields empty or
+ *   unrelated names.
  */
 export function matchFilesToLessons(
   files: DiscoveredMediaFile[],
@@ -99,7 +99,7 @@ export function matchFilesToLessons(
   const ambiguousLessons: string[] = [];
   const assignedFilePaths = new Set<string>();
 
-  // Índices para búsqueda determinista
+  // Indexes for deterministic lookup
   const filesByRelativePath = new Map<string, DiscoveredMediaFile>();
   const filesByExactName = new Map<string, DiscoveredMediaFile[]>();
   const filesByStem = new Map<string, DiscoveredMediaFile[]>();
@@ -129,42 +129,42 @@ export function matchFilesToLessons(
       const filenameFromUrl = cleanUrl.split('/').pop() || cleanUrl;
       const urlStem = normalizeMediaStem(filenameFromUrl);
 
-      // Nivel 1: EXACT_PATH
+      // Tier 1: EXACT_PATH
       if (filesByRelativePath.has(cleanUrl)) {
         bestCandidates = [filesByRelativePath.get(cleanUrl)!];
         bestTier = 'EXACT_PATH';
       }
 
-      // Nivel 2: EXACT_NAME (si no hubo coincidencia de ruta exacta)
+      // Tier 2: EXACT_NAME (when no exact path match occurred)
       if (!bestTier && filesByExactName.has(filenameFromUrl)) {
         bestCandidates = filesByExactName.get(filenameFromUrl)!;
         bestTier = 'EXACT_NAME';
       }
 
-      // Nivel 3: STEM_MATCH de media_url
+      // Tier 3: STEM_MATCH from media_url
       if (!bestTier && urlStem && filesByStem.has(urlStem)) {
         bestCandidates = filesByStem.get(urlStem)!;
         bestTier = 'STEM_MATCH';
       }
     }
 
-    // Nivel 4: TITLE_FALLBACK (solo si no hubo candidato previo y el título tiene tallo significativo)
+    // Tier 4: TITLE_FALLBACK (only without a prior candidate and when the title has a meaningful stem)
     if (!bestTier && lesson.title) {
       const titleStem = normalizeMediaStem(lesson.title);
-      // Evitar falsos positivos si el tallo resultante es demasiado corto (<3 caracteres)
+      // Avoid false positives when the resulting stem is too short (<3 chars)
       if (titleStem && titleStem.length >= 3 && filesByStem.has(titleStem)) {
         bestCandidates = filesByStem.get(titleStem)!;
         bestTier = 'TITLE_FALLBACK';
       }
     }
 
-    // Evaluación final del conjunto de mejores candidatos
+    // Final evaluation of the best-candidate set
     if (bestCandidates.length === 1) {
       const matched = bestCandidates[0];
       matchedMap.set(lesson.id, matched);
       assignedFilePaths.add(matched.relativePath);
     } else if (bestCandidates.length > 1) {
-      // Ambigüedad en el mismo nivel: no adivinar
+      // Ambiguity within one tier: never guess
       ambiguousLessons.push(lesson.title || lesson.id);
     }
   }
@@ -183,7 +183,7 @@ class LocalMediaService {
   private activeDirectoryHandle: FileSystemDirectoryHandle | null = null;
   private discoveredFiles: DiscoveredMediaFile[] = [];
   private lessonFileMap = new Map<string, DiscoveredMediaFile>();
-  private individualFileMap = new Map<string, File>(); // lessonId -> File (asociación individual)
+  private individualFileMap = new Map<string, File>(); // lessonId -> File (individual association)
   private activeObjectUrls = new Map<string, string>(); // lessonId -> objectUrl
   private lastReport: MediaScanReport | null = null;
 
@@ -208,8 +208,9 @@ class LocalMediaService {
   }
 
   /**
-   * Asocia un archivo individual seleccionado por el usuario a una lección específica.
-   * Valida la extensión, no persiste en SQLite y actualiza el mapa de reproducción en memoria.
+   * Associates a user-selected individual file with one specific lesson. It
+   * validates the extension, persists nothing to SQLite, and updates the
+   * in-memory playback map.
    */
   public associateIndividualFile(lessonId: string, file: File): { success: boolean; error?: string } {
     if (!isSupportedMedia(file.name)) {
@@ -220,10 +221,10 @@ class LocalMediaService {
       };
     }
 
-    // Revocar URL previa de la lección si existiera
+    // Revoke the lesson's previous URL when present
     this.revokePlaybackUrl(lessonId);
 
-    // Guardar referencia en memoria
+    // Store the reference in memory
     this.individualFileMap.set(lessonId, file);
     return { success: true };
   }
@@ -238,8 +239,8 @@ class LocalMediaService {
   }
 
   /**
-   * Abre el selector nativo de directorio, escanea recursivamente los archivos multimedia
-   * y los empareja contra las lecciones proporcionadas.
+   * Opens the native directory picker, recursively scans media files, and
+   * matches them against the provided lessons.
    */
   public async pickAndScanDirectory(lessons: MatchCandidate[]): Promise<MediaScanReport> {
     if (!this.isSupported()) {
@@ -250,7 +251,7 @@ class LocalMediaService {
     const dirHandle: FileSystemDirectoryHandle = await window.showDirectoryPicker();
     this.activeDirectoryHandle = dirHandle;
 
-    // Liberar URLs de objeto activas de sesiones previas
+    // Release object URLs still active from previous sessions
     this.revokeAllObjectUrls();
 
     this.discoveredFiles = [];
@@ -276,7 +277,7 @@ class LocalMediaService {
   }
 
   /**
-   * Re-empareja los archivos en memoria ya descubiertos con una nueva lista de lecciones.
+   * Re-matches already discovered in-memory files against a new lesson list.
    */
   public remapLessons(lessons: MatchCandidate[]): MediaScanReport | null {
     if (!this.activeDirectoryHandle || this.discoveredFiles.length === 0) return null;
@@ -299,14 +300,15 @@ class LocalMediaService {
   }
 
   /**
-   * Genera o retorna una URL efímera de reproducción (URL.createObjectURL) para la lección.
+   * Returns a cached `blob:` URL, creating one on first use. Callers must
+   * release it on lesson change or view exit (AGENTS.md invariant 5).
    */
   public async getPlaybackUrl(lessonId: string): Promise<string | null> {
     if (this.activeObjectUrls.has(lessonId)) {
       return this.activeObjectUrls.get(lessonId)!;
     }
 
-    // 1. Prioridad: archivo asociado individualmente para esta sesión
+    // 1. Priority: file associated individually for this session
     if (this.individualFileMap.has(lessonId)) {
       const file = this.individualFileMap.get(lessonId)!;
       try {
@@ -319,7 +321,7 @@ class LocalMediaService {
       }
     }
 
-    // 2. Archivo emparejado por escaneo de carpeta
+    // 2. File matched by folder scan
     const fileEntry = this.lessonFileMap.get(lessonId);
     if (!fileEntry) return null;
 
@@ -335,7 +337,7 @@ class LocalMediaService {
   }
 
   /**
-   * Revoca una URL de objeto específica cuando el usuario cambia de lección o desmonta.
+   * Revokes one specific object URL when the user switches lessons or unmounts.
    */
   public revokePlaybackUrl(lessonId: string): void {
     const url = this.activeObjectUrls.get(lessonId);
@@ -350,7 +352,7 @@ class LocalMediaService {
   }
 
   /**
-   * Revoca todas las URLs de objeto efímeras activas.
+   * Revokes every active ephemeral object URL.
    */
   public revokeAllObjectUrls(): void {
     for (const [lessonId, url] of this.activeObjectUrls.entries()) {
@@ -364,7 +366,7 @@ class LocalMediaService {
   }
 
   /**
-   * Escaneo recursivo asíncrono de carpetas.
+   * Asynchronous recursive folder scan.
    */
   private async scanDirectoryRecursive(
     dirHandle: FileSystemDirectoryHandle,
@@ -382,7 +384,7 @@ class LocalMediaService {
           });
         }
       } else if (entry.kind === 'directory') {
-        // Evitar directorios ocultos o metadatos del SO
+        // Skip hidden directories and OS metadata
         if (!entry.name.startsWith('.')) {
           await this.scanDirectoryRecursive(entry as FileSystemDirectoryHandle, entryPath);
         }

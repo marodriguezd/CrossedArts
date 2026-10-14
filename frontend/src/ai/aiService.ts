@@ -19,17 +19,17 @@ export interface AISettings {
   ollamaUrl: string;
   ollamaModel: string;
   /**
-   * Clave de OpenAI. Se mantiene SOLO EN MEMORIA por defecto (ver
-   * `saveSettings`): no se escribe en `localStorage` salvo que el usuario lo
-   * active explícitamente con `persistApiKey`.
+   * OpenAI key. Kept IN MEMORY ONLY by default (see `saveSettings`): never
+   * written to `localStorage` unless the user explicitly enables it via
+   * `persistApiKey`.
    */
   apiKey: string;
   apiModel: string;
   localModelId: string;
   localAiEnabled: boolean;
   /**
-   * Opt-in explícito para guardar la clave de OpenAI en `localStorage`.
-   * Por defecto es `false`. Ver la nota de seguridad de `saveSettings`.
+   * Explicit opt-in to persist the OpenAI key in `localStorage`.
+   * Defaults to `false`. See the `saveSettings` security note.
    */
   persistApiKey?: boolean;
 }
@@ -41,35 +41,34 @@ export interface AssistantResponse {
   isLocalOnDevice: boolean;
   retrievalMode?: 'hybrid' | 'lexical' | 'semantic';
   /**
-   * Citas estructuradas de las fuentes REALMENTE recuperadas para esta
-   * respuesta. Lista vacía (no ausente) cuando la respuesta no se apoyó en
-   * material recuperado: la UI lo distingue de "sin información".
+   * Structured citations for the sources ACTUALLY retrieved for this answer.
+   * Empty list (not absent) when the answer used no retrieved material: the
+   * UI tells it apart from "no information".
    */
   citations?: RagSourceCitation[];
-  /** Modelo o mecanismo concreto que generó la respuesta. */
+  /** Concrete model or mechanism that produced the answer. */
   modelUsed?: string;
   /**
-   * Falso cuando el contexto recuperado se apoya solo en coincidencias débiles
-   * de título/metadatos: la respuesta no debe presentarse como sólidamente
-   * fundamentada aunque haya citas.
+   * False when retrieved context rests only on weak title/metadata matches:
+   * the answer must not pose as solidly grounded even with citations.
    */
   hasSubstantiveContext?: boolean;
   /**
-   * `true` cuando la barrera final anti-alucinación sustituyó la respuesta por un
-   * mensaje controlado. La UI puede mostrarlo como aviso en lugar de respuesta.
+   * `true` when the final anti-hallucination gate replaced the answer with a
+   * controlled message. The UI may render it as a warning instead of an answer.
    */
   groundedAnswerRejected?: boolean;
 }
 
 /**
- * Opciones de generación que evitan recuperaciones innecesarias o no deseadas.
+ * Generation options that avoid unneeded or unwanted retrievals.
  */
 export interface AskTutorOptions {
   /**
-   * Contexto YA recuperado por el llamador. Cuando se aporta, la generación usa
-   * exactamente esas fuentes y sus citas: NO se vuelve a recuperar, de modo que
-   * el ranking no puede cambiar entre la primera y la segunda búsqueda y las
-   * citas corresponden con precisión al contexto suministrado al modelo.
+   * Caller-ALREADY-retrieved context. When provided, generation uses exactly
+   * those sources and citations: NO second retrieval runs, so ranking cannot
+   * shift between first and second search and citations match the model-supplied
+   * context precisely.
    */
   prebuiltContext?: {
     documents: RetrievedDocument[];
@@ -79,14 +78,14 @@ export interface AskTutorOptions {
     diversifiedCandidates?: number;
   };
   /**
-   * Desactiva por completo la recuperación RAG. Se usa cuando la fuente
-   * autoritativa es el propio texto del llamador (p. ej. resumir un texto) y una
-   * búsqueda global contaminaría la respuesta con material ajeno.
+   * Disables RAG retrieval entirely. Used when the authoritative source is the
+   * caller's own text (e.g. summarizing a passage) and a global search would
+   * pollute the answer with foreign material.
    */
   disableRetrieval?: boolean;
 }
 
-/** Descripción honesta del modelo que produjo una respuesta de un proveedor. */
+/** Honest description of the model behind a provider answer. */
 function describeModelForProvider(provider: AIProvider): string {
   const settings = aiService.getSettings();
   switch (provider) {
@@ -102,17 +101,18 @@ function describeModelForProvider(provider: AIProvider): string {
   }
 }
 
-/** Construye un ámbito de recuperación solo cuando hay al menos un ancla válida. */
+/** Builds a retrieval scope only when at least one valid anchor exists. */
 function buildRetrievalScope(resourceId?: string, lessonId?: string): RetrievalScope | undefined {
   if (!resourceId && !lessonId) return undefined;
   return { resourceId, lessonId };
 }
 
 /**
- * Aplica la barrera final de fundamentación a una respuesta conversacional.
+ * Applies the final grounding gate to a conversational answer.
  *
- * Determinista y sin dependencies: el mismo texto con el mismo contexto produce
- * siempre el mismo veredicto. Devuelve una respuesta nueva; no muta la entrada.
+ * Deterministic and dependency-free: the same text with the same context
+ * always yields the same verdict. Returns a new answer and never mutates the
+ * input.
  */
 function applyResponseGroundingGate(
   response: AssistantResponse,
@@ -134,8 +134,8 @@ function applyResponseGroundingGate(
   return {
     ...response,
     answer: verdict.text,
-    // Una respuesta sustituida no sostiene las citas que el modelo pudo haber
-    // inventado: se vacían para que la UI no las presente como respaldo.
+    // A replaced answer cannot keep citations the model may have invented:
+    // cleared so the UI never presents them as evidence.
     sources: verdict.passed ? response.sources : [],
     citations: verdict.passed ? response.citations : [],
     groundedAnswerRejected: !verdict.passed
@@ -154,16 +154,15 @@ const DEFAULT_SETTINGS: AISettings = {
 };
 
 /**
- * Clave de OpenAI en memoria (nunca por defecto en almacenamiento).
+ * In-memory OpenAI key (never stored by default).
  *
- * Una aplicación puramente de cliente no tiene almacenamiento seguro de
- * secretos: cualquier script que se ejecute en el origen puede leer tanto
- * `localStorage` como la memoria. No se finge que cifrar en el cliente lo haga
- * seguro frente a XSS; por eso la opción por defecto es no persistir la clave.
+ * A pure client-side app has no secure secret storage: any script running on
+ * the origin can read both `localStorage` and memory. Client-side encryption
+ * is not presented as XSS-safe; hence the default never persists the key.
  */
 let inMemoryApiKey = '';
 
-/** Ajustes completos tal como los usa el resto del servicio (clave incluida). */
+/** Full settings as the rest of the service uses them (key included). */
 let inMemorySettings: AISettings | null = null;
 
 const STORAGE_KEY = 'crossedarts_ai_settings';
@@ -184,7 +183,7 @@ export const aiService = {
       }
       const saved = localStorage.getItem(STORAGE_KEY);
       const persisted = saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : { ...DEFAULT_SETTINGS };
-      // La clave solo se recupera del almacenamiento si el usuario lo aceptó.
+      // The key is only restored from storage after explicit user opt-in.
       const key = persisted.persistApiKey ? (persisted.apiKey || '') : inMemoryApiKey;
       return { ...persisted, apiKey: key };
     } catch {
@@ -193,20 +192,20 @@ export const aiService = {
   },
 
   /**
-   * Guarda la configuración de IA.
+   * Saves the AI settings.
    *
-   * La clave de OpenAI se conserva en memoria salvo que `persistApiKey` sea
-   * `true`. Cuando es `true` se escribe en `localStorage` sin cifrar: es una
-   * decisión informada del usuario y la interfaz lo advierte de forma explícita,
-   * porque el almacenamiento del navegador NO es un almacén seguro de secretos.
+   * The OpenAI key stays in memory unless `persistApiKey` is `true`. When
+   * `true` it is written to `localStorage` unencrypted: an informed user
+   * decision the UI warns about explicitly, because browser storage is NOT a
+   * secure secret store.
    *
-   * Si el proveedor deja de ser `openai`, la clave se descarta: no queda
-   * zombi lista para usarse por accidente.
+   * When the provider stops being `openai`, the key is dropped: no zombie key
+   * lingers for accidental reuse.
    */
   saveSettings(settings: AISettings) {
     const persist = settings.persistApiKey === true;
     const providerIsOpenAI = settings.provider === 'openai';
-    // La clave solo sobrevive si el proveedor sigue siendo OpenAI.
+    // The key only survives while the provider stays OpenAI.
     inMemoryApiKey = providerIsOpenAI && settings.apiKey ? settings.apiKey : '';
 
     if (typeof localStorage === 'undefined') {
@@ -217,7 +216,7 @@ export const aiService = {
       return;
     }
 
-    // Nunca se escribe la clave en el payload persistido salvo opt-in explícito.
+    // The key is never written to the persisted payload without explicit opt-in.
     const payload: AISettings = {
       ...settings,
       apiKey: persist ? (providerIsOpenAI ? settings.apiKey || '' : '') : '',
@@ -230,7 +229,7 @@ export const aiService = {
     }
   },
 
-  /** Descarta la clave de OpenAI de la memoria y del almacenamiento. */
+  /** Drops the OpenAI key from memory and storage. */
   clearApiKey(): void {
     inMemoryApiKey = '';
     if (typeof localStorage !== 'undefined') {
@@ -241,15 +240,15 @@ export const aiService = {
           localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...parsed, apiKey: '', persistApiKey: false }));
         }
       } catch {
-        /* almacenamiento no disponible: la clave en memoria ya está borrada */
+        /* storage unavailable: the in-memory key is already cleared */
       }
     }
   },
 
   /**
-   * Responde a una consulta pedagógica usando RAG local + proveedor configurado.
-   * Si el proveedor es 'local', garantiza que la inferencia se ejecute 100% en el dispositivo con WebLLM
-   * sin llamadas a APIs externas.
+   * Answers a tutoring query with local RAG plus the configured provider.
+   * With the 'local' provider, inference runs 100% on-device via WebLLM with
+   * no external API calls.
    */
   async askTutor(
     messages: AIChatMessage[],
@@ -261,15 +260,15 @@ export const aiService = {
     const response = await this.askTutorCore(messages, contextInfo, onChunk, scope, options);
     return {
       ...response,
-      // Toda respuesta final expone SUS citas (vacías si no hubo contexto
-      // recuperado) y el modelo que la generó: la UI distingue fuente
-      // recuperada, respuesta generada y proveedor sin ambigüedad.
+      // Every final answer exposes ITS citations (empty when nothing was
+      // retrieved) plus the model that produced it: the UI cleanly separates
+      // retrieved source, generated answer, and provider.
       citations: response.citations ?? [],
       modelUsed: response.modelUsed ?? describeModelForProvider(response.providerUsed)
     };
   },
 
-  /** Implementación interna de `askTutor` (envuelta para enriquecer la respuesta). */
+  /** Internal `askTutor` implementation (wrapped to enrich the answer). */
   async askTutorCore(
     messages: AIChatMessage[],
     contextInfo: string = '',
@@ -280,14 +279,13 @@ export const aiService = {
     const settings = this.getSettings();
     const lastUserQuery = messages[messages.length - 1]?.content || '';
 
-    // 1. Recuperación RAG local (UNA sola vez por respuesta).
+    // 1. Local RAG retrieval (ONCE per answer).
     //
-    // Si el llamador ya recuperó el contexto (`prebuiltContext`), se usa
-    // EXACTAMENTE ese material y sus citas: no hay una segunda recuperación que
-    // pudiera reordenar fuentes ni romper la correspondencia cita-contexto.
-    // `disableRetrieval` (p. ej. resumir un texto aportado) evita por completo la
-    // recuperación global. La recuperación semántica solo se prepara para el
-    // proveedor local.
+    // When the caller already retrieved context (`prebuiltContext`), that exact
+    // material and its citations are used: no second retrieval can reorder
+    // sources or break citation-context alignment. `disableRetrieval` (e.g.
+    // summarizing caller-supplied text) skips global retrieval entirely.
+    // Semantic retrieval is only primed for the local provider.
     let retrieval: { retrievalMode: 'hybrid' | 'lexical' | 'semantic'; hasSubstantiveContext: boolean };
     let documents: RetrievedDocument[];
     if (options?.prebuiltContext) {
@@ -326,14 +324,13 @@ export const aiService = {
       onChunk
     });
 
-    // BARRERA FINAL anti-alucinación: se aplica a TODA respuesta conversacional,
-    // sea cual sea el proveedor, y es determinista. Sin material visible no se
-    // puede afirmar una fuente que no existe; con material débil la respuesta
-    // queda marcada como no fundamentada. Las respuestas honestas que declaran
-    // su propia incertidumbre se conservan intactas.
+    // FINAL anti-hallucination gate: applies to EVERY conversational answer,
+    // whatever the provider, and is deterministic. Without visible material no
+    // source can be claimed; with weak material the answer is flagged as
+    // ungrounded. Honest answers declaring their own uncertainty pass through.
     return applyResponseGroundingGate(response, {
-      // Hay contexto visible si el modelo recibió material recuperado (RAG) o el
-      // texto autoritativo que aportó el propio llamante (p. ej. resumir).
+      // Visible context exists when the model received retrieved (RAG) material
+      // or caller-supplied authoritative text (e.g. summarizing).
       hasContext: rag.hasContext || Boolean(options?.disableRetrieval && contextInfo.trim().length > 0),
       hasSubstantiveContext,
       sourceTitles: rag.sourceTitles
@@ -341,10 +338,10 @@ export const aiService = {
   },
 
   /**
-   * Explica un concepto utilizando contexto recuperado localmente.
+   * Explains a concept with locally retrieved context.
    *
-   * Recupera UNA vez y pasa ese mismo contexto a la generación: así no hay una
-   * segunda búsqueda que pudiera cambiar el ranking ni las citas.
+   * Retrieves ONCE and forwards that same context to generation: no second
+   * search can shift ranking or citations.
    */
   async explainConcept(conceptName: string): Promise<string> {
     const retrieval = await retrieveLocalContext(conceptName, 2);
@@ -364,14 +361,14 @@ export const aiService = {
   },
 
   /**
-   * Acción pedagógica aterrizada: Explicar un recurso o documento específico utilizando
-   * exclusivamente contexto recuperado de CrossedArts con citación verificable.
+   * Grounded tutoring action: explain one specific resource or document using
+   * only retrieved CrossedArts context with verifiable citations.
    */
   async explainResource(resourceTitle: string, resourceDescription?: string, scope?: RetrievalScope): Promise<AssistantResponse> {
     const query = `${resourceTitle} ${resourceDescription || ''}`.trim();
     const retrieval = await retrieveLocalContext(query, 3, scope);
 
-    // Si no hay contexto local suficiente, responder honestamente sin inventar
+    // Without enough local context, answer honestly without inventing
     if (!retrieval.hasContext || retrieval.documents.length === 0) {
       return {
         answer: `⚠️ El contexto local de CrossedArts no contiene suficiente información sobre "${resourceTitle}" para generar una explicación fundamentada sin inventar detalles.`,
@@ -386,8 +383,8 @@ export const aiService = {
     const rag = buildRagContext(retrieval.documents);
     const { system, user } = buildExplainPrompt(resourceTitle, rag.formattedContextText);
 
-    // Se reutiliza EXACTAMENTE el contexto ya recuperado: la generación no
-    // vuelve a buscar, por lo que el ranking y las citas no pueden divergir.
+    // The ALREADY-retrieved context is reused exactly: generation never
+    // re-searches, so ranking and citations cannot diverge.
     return this.askTutor([
       { role: 'system', content: system },
       { role: 'user', content: user }
@@ -401,11 +398,11 @@ export const aiService = {
   },
 
   /**
-   * Resume un texto de estudio.
+   * Summarizes study text.
    *
-   * El texto aportado es la fuente AUTORITATIVA: no se realiza recuperación
-   * global, porque buscar en la biblioteca sobre el texto del usuario
-   * contamina el resumen con material ajeno no solicitado.
+   * The supplied text is the AUTHORITATIVE source: no global retrieval runs,
+   * because library search over user text would pollute the summary with
+   * unsolicited foreign material.
    */
   async summarizeText(text: string): Promise<string> {
     const { system, user } = buildSummarizePrompt(text);
@@ -417,7 +414,7 @@ export const aiService = {
   },
 
   /**
-   * Genera tarjetas de memoria (flashcards) fundamentadas en el contenido recuperado de CrossedArts.
+   * Generates flashcards grounded in retrieved CrossedArts content.
    */
   async generateFlashcards(
     options: import('../lib/studyGeneration/types.ts').StudyGenerationOptions
@@ -472,14 +469,14 @@ export const aiService = {
         { role: 'user', content: user }
       ]);
     } else if (settings.provider === 'demo') {
-      // Plantillas deterministas basadas en los documentos recuperados para testing offline y demo
+      // Deterministic templates from retrieved documents for offline testing and demo
       const demoCards = retrieval.documents.slice(0, count).map((doc, idx) => ({
         front: `¿Qué aspecto clave define a "${doc.title}"?`,
         back: doc.snippet.length > 80 ? doc.snippet.slice(0, 80) + '...' : doc.snippet
       }));
       rawOutput = JSON.stringify({ cards: demoCards });
     } else {
-      // Para ollama / openai, reutilizar askTutor internamente sin disparar una segunda recuperación RAG
+      // For Ollama / OpenAI, reuse askTutor internally without firing a second RAG retrieval
       const res = await this.askTutor(
         [
           { role: 'system', content: system },
@@ -533,7 +530,7 @@ export const aiService = {
   },
 
   /**
-   * Genera preguntas de práctica tipo test (opción múltiple) fundamentadas en el contenido recuperado.
+   * Generates multiple-choice practice questions grounded in retrieved content.
    */
   async generatePracticeQuestions(
     options: import('../lib/studyGeneration/types.ts').StudyGenerationOptions
@@ -588,7 +585,7 @@ export const aiService = {
         { role: 'user', content: user }
       ]);
     } else if (settings.provider === 'demo') {
-      // Generación determinista para modo demo y tests offline
+      // Deterministic generation for demo mode and offline tests
       const demoQuestions = retrieval.documents.slice(0, count).map((doc, idx) => ({
         question: `Respecto a "${doc.title}", ¿cuál de las siguientes afirmaciones se deriva directamente del texto?`,
         options: [

@@ -41,7 +41,7 @@ interface GoalsViewProps {
   books: import('../types/models.ts').Book[];
   practiceWork: import('../types/models.ts').PracticeWork[];
   onRefresh: () => Promise<void>;
-  /** Meta seleccionada al navegar desde la paleta, el foco o el grafo. */
+  /** Goal selected when arriving from the palette, focus, or graph. */
   initialGoalId?: string | null;
 }
 
@@ -82,7 +82,7 @@ const EMPTY_DRAFT: GoalDraftState = {
   target_date: ''
 };
 
-/** Etiqueta honesta de la medida de una meta (nunca concatena unidades). */
+/** Honest measure label for a goal (never concatenates units). */
 function progressLine(progress: GoalProgress, lang: LanguageCode = 'es'): string {
   if (!progress.measurable) return progress.basis;
   const current = progress.current ?? 0;
@@ -96,12 +96,12 @@ function progressLine(progress: GoalProgress, lang: LanguageCode = 'es'): string
 }
 
 /**
- * Vista de Metas: planificación personal ligada a datos reales.
+ * Goals view: personal planning tied to real data.
  *
- * Distinción que sostiene toda la pantalla (y sus tests):
- *  - PROGRESO MEDIDO: derivado en cada lectura (barra + basis explícito).
- *  - OBJETIVO / FECHA: definido por el usuario (chip independiente).
- *  - ESTADO: activa o completada, decidida por el usuario (nunca automático).
+ * The distinction underpinning the whole screen (and its tests):
+ *  - MEASURED PROGRESS: derived on every read (bar + explicit basis).
+ *  - TARGET / DATE: user-defined (separate chip).
+ *  - STATE: active or completed, decided by the user (never automatic).
  */
 export const GoalsView: React.FC<GoalsViewProps> = ({
   goals,
@@ -135,7 +135,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
     [goals, progressByGoal, localDay]
   );
 
-  // Al navegar desde otra vista, la meta elegida queda visible y marcada.
+  // Arriving from another view: the chosen goal stays visible and marked.
   useEffect(() => {
     if (!initialGoalId) return;
     selectedRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
@@ -282,7 +282,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
         </Button>
       </header>
 
-      {/* Resumen de estados: hechos, no puntuaciones. */}
+      {/* Status summary: facts, not scores. */}
       <div className="flex flex-wrap gap-2" aria-label={t('goals.page.summaryLabel')}>
         <Badge tone="accent">{t('goals.page.active', { n: summary.active, s: summary.active === 1 ? '' : 's' })}</Badge>
         <Badge tone={summary.overdue > 0 ? 'warning' : 'neutral'}>{t('goals.page.overdue', { n: summary.overdue, s: summary.overdue === 1 ? '' : 's' })}</Badge>
@@ -437,7 +437,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                       <p className="type-meta mt-1.5 break-words text-muted">{goal.description}</p>
                     )}
 
-                    {/* PROGRESO MEDIDO: separado del objetivo y del estado. */}
+                    {/* MEASURED PROGRESS: kept separate from target and state. */}
                     <div className="mt-3 space-y-1.5">
                       {progress.measurable ? (
                         <>
@@ -469,7 +469,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                           </span>
                         </p>
                       )}
-                      {/* BASE de medición: dice QUÉ se mide, para que nada sea opaco. */}
+                      {/* Measurement BASIS: states WHAT is measured, so nothing stays opaque. */}
                       {progress.measurable && (
                         <p className="text-micro text-faint">{progress.basis}</p>
                       )}
@@ -607,7 +607,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
   );
 };
 
-/** Progreso neutro para metas aún no calculadas (no inventa porcentaje). */
+/** Neutral progress for not-yet-computed goals (never invents a percent). */
 function fallbackProgress(lang: LanguageCode = 'es'): GoalProgress {
   return {
     measurable: false,

@@ -3,38 +3,38 @@
 @tailwind utilities;
 
 /* =============================================================================
-   CrossedArts — Sistema de diseño semántico
+   CrossedArts — Semantic design system
    -----------------------------------------------------------------------------
-   Todos los colores viven aquí como variables CSS (tripletas RGB para poder
-   usar modificadores de opacidad de Tailwind). El tema claro/crema es el
-   predeterminado; el tema oscuro/carbón se define de forma explícita (nunca
-   como una inversión del claro). Los componentes usan únicamente los tokens
-   semánticos: canvas, surface, raised, line, ink, muted, faint, accent...
+   Every color lives here as a CSS variable (RGB triplets so Tailwind opacity
+   modifiers work). The light/cream theme is the default; the dark/charcoal theme
+   is defined explicitly, never as an inversion of the light one. Components use
+   only the semantic tokens: canvas, surface, raised, line, ink, muted, faint,
+   accent...
    ============================================================================= */
 
 :root {
   color-scheme: light;
 
-  /* --- Superficies (claro: off-white arquitectónico contemporáneo) --- */
-  --c-canvas: 246 247 249;      /* fondo de página, gris suave puro y limpio */
-  --c-surface: 255 255 255;     /* superficie de contenido (tarjetas, módulos) */
-  --c-raised: 255 255 255;      /* superficie elevada (diálogos, menús flotantes) */
-  --c-line: 226 230 238;        /* separadores sutiles de 1px */
-  --c-line-strong: 203 209 220; /* bordes estructurados y foco */
+  /* --- Surfaces (light: contemporary architectural off-white) --- */
+  --c-canvas: 246 247 249;      /* page background, clean pure soft grey */
+  --c-surface: 255 255 255;     /* content surface (cards, modules) */
+  --c-raised: 255 255 255;      /* raised surface (dialogs, floating menus) */
+  --c-line: 226 230 238;        /* subtle 1px separators */
+  --c-line-strong: 203 209 220; /* structural borders and focus */
 
-  /* --- Tinta ---
-   * Valores ajustados para cumplir WCAG 2.1 AA (≥4.5:1) y AAA (≥7:1) sobre las tres
-   * superficies claras (canvas/surface/raised). Ver `frontend/tests/theme_contrast.test.ts`. */
-  --c-ink: 24 28 36;            /* texto principal, carbón arquitectónico profundo */
-  --c-muted: 85 93 108;         /* texto secundario gris pizarra */
-  --c-faint: 105 114 130;       /* metadatos y micro-etiquetas */
+  /* --- Ink ---
+   * Values tuned to meet WCAG 2.1 AA (>=4.5:1) and AAA (>=7:1) over the three
+   * light surfaces (canvas/surface/raised). See `frontend/tests/theme_contrast.test.ts`. */
+  --c-ink: 24 28 36;            /* primary text, deep architectural charcoal */
+  --c-muted: 85 93 108;         /* secondary slate-grey text */
+  --c-faint: 105 114 130;       /* metadata and micro-labels */
 
-  /* --- Acento (Índigo Eléctrico / Iris de precisión editorial) --- */
-  --c-accent: 67 56 202;        /* #4338CA: índigo profundo con ≥4.5:1 como texto y enlace */
-  --c-accent-soft: 238 242 255; /* #EEF2FF: superficie tenue para chips y selecciones */
-  --c-on-accent: 255 255 255;   /* blanco puro sobre botón de acento sólido */
+  /* --- Accent (Electric Indigo / editorial-precision Iris) --- */
+  --c-accent: 67 56 202;        /* #4338CA: deep indigo with >=4.5:1 as text and link */
+  --c-accent-soft: 238 242 255; /* #EEF2FF: faint surface for chips and selections */
+  --c-on-accent: 255 255 255;   /* pure white on a solid accent button */
 
-  /* --- Semánticos (uso funcional, alta nitidez) --- */
+  /* --- Semantics (functional use, high sharpness) --- */
   --c-success: 22 101 52;
   --c-success-soft: 235 247 238;
   --c-warning: 146 64 14;
@@ -45,52 +45,52 @@
   --c-info-soft: 239 246 255;
   --c-focus: 67 56 202;
 
-  /* --- Sombras (arquitectónicas, nítidas y suaves) --- */
+  /* --- Shadows (architectural, sharp and soft) --- */
   --shadow-card: 0 1px 3px 0 rgb(24 28 36 / 0.04), 0 1px 2px -1px rgb(24 28 36 / 0.04);
   --shadow-pop: 0 12px 32px -12px rgb(24 28 36 / 0.18);
   --shadow-header: 0 1px 0 0 rgb(24 28 36 / 0.06);
 
-  /* --- Tipografía --- */
+  /* --- Typography --- */
   --font-ui: system-ui, -apple-system, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-editorial: system-ui, -apple-system, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
-  /* --- Radio (escala armónica) --- */
+  /* --- Radius (harmonic scale) --- */
   --r-sm: 0.375rem;
   --r-md: 0.5rem;
   --r-lg: 0.75rem;
   --r-xl: 1rem;
 
-  /* --- Movimiento (háptico y preciso) --- */
+  /* --- Motion (haptic and precise) --- */
   --motion-fast: 140ms;
   --motion-base: 220ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* --- Medida de lectura (editorial) --- */
+  /* --- Reading measure (editorial) --- */
   --measure: 68ch;
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
 
-  /* --- Superficies (oscuro: carbón arquitectónico profundo, nunca negro puro) --- */
+  /* --- Surfaces (dark: deep architectural charcoal, never pure black) --- */
   --c-canvas: 18 20 24;
   --c-surface: 26 29 36;
   --c-raised: 36 40 50;
   --c-line: 48 54 67;
   --c-line-strong: 68 76 94;
 
-  /* --- Tinta (cálida, contraste suave) --- */
+  /* --- Ink (warm, soft contrast) --- */
   --c-ink: 241 243 249;
   --c-muted: 175 182 198;
   --c-faint: 150 158 175;
 
-  /* --- Acento en oscuro --- */
-  --c-accent: 147 151 255;      /* iris eléctrico luminoso para texto y bordes */
-  --c-accent-soft: 33 36 67;    /* superficie sutil para chips */
-  --c-on-accent: 18 20 24;      /* texto oscuro sobre el relleno de acento brillante */
+  /* --- Accent in dark mode --- */
+  --c-accent: 147 151 255;      /* luminous electric iris for text and borders */
+  --c-accent-soft: 33 36 67;    /* subtle surface for chips */
+  --c-on-accent: 18 20 24;      /* dark text over the bright accent fill */
 
-  /* --- Semánticos (baja saturación, sin deslumbramiento) --- */
+  /* --- Semantics (low saturation, no glare) --- */
   --c-success: 134 239 172;
   --c-success-soft: 20 45 30;
   --c-warning: 252 211 77;
@@ -101,7 +101,7 @@
   --c-info-soft: 25 38 55;
   --c-focus: 147 151 255;
 
-  /* --- Sombras en oscuro: dominancia de bordes --- */
+  /* --- Shadows in dark mode: border dominance --- */
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.35);
   --shadow-pop: 0 16px 40px -16px rgb(0 0 0 / 0.7);
   --shadow-header: 0 1px 0 0 rgb(0 0 0 / 0.4);
@@ -118,7 +118,7 @@
     color: rgb(var(--c-ink));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Sin desbordamiento horizontal en ningún dispositivo. */
+    /* No horizontal overflow on any device. */
     overflow-x: hidden;
   }
 
@@ -127,14 +127,14 @@
     color: rgb(var(--c-ink));
   }
 
-  /* Indicador de foco visible y consistente para navegación por teclado. */
+  /* Visible, consistent focus indicator for keyboard navigation. */
   :focus-visible {
     outline: 2px solid rgb(var(--c-focus));
     outline-offset: 2px;
     border-radius: var(--r-sm);
   }
 
-  /* Barras de scroll discretas y coherentes con el tema. */
+  /* Discreet scrollbars consistent with the theme. */
   * {
     scrollbar-width: thin;
     scrollbar-color: rgb(var(--c-line-strong)) transparent;
@@ -153,7 +153,7 @@
     background: transparent;
   }
 
-  /* Cabecera de documento: títulos editoriales cuando se piden. */
+  /* Document headings: editorial titles when requested. */
   h1, h2, h3 {
     font-family: var(--font-editorial);
     color: rgb(var(--c-ink));
@@ -162,7 +162,7 @@
 }
 
 @layer components {
-  /* Jerarquía tipográfica compartida: niveles semánticos reutilizables. */
+  /* Shared type hierarchy: reusable semantic levels. */
   .type-display {
     font-family: var(--font-editorial);
     font-size: 1.875rem;
@@ -217,16 +217,16 @@
   }
 
   /*
-   * Tipografía de lectura larga (contenido de lección, cuerpo de nota).
-   * Una sola definición para medida, ritmo y tamaño: el texto es el objeto
-   * principal del producto, no un bloque decorativo dentro de una tarjeta.
+   * Long-form reading typography (lesson content, note body).
+   * One single definition for measure, rhythm, and size: text is the product's
+   * main object, not a decorative block inside a card.
    */
   .type-prose {
     font-family: var(--font-ui);
     font-size: 1rem;
     line-height: 1.75;
     color: rgb(var(--c-ink));
-    /* Medida cómoda para lectura sostenida. */
+    /* Comfortable measure for sustained reading. */
     max-width: var(--measure, 68ch);
   }
 }
@@ -249,7 +249,7 @@
   animation: slideLeft var(--motion-base) var(--ease-out) forwards;
 }
 
-/* Respeto por la preferencia de movimiento reducido del sistema. */
+/* Respect for the system's reduced-motion preference. */
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-left {

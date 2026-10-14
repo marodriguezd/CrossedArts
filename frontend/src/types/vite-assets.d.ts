@@ -1,9 +1,9 @@
 /**
- * Tipado mínimo para los imports con query de Vite (`?url`), usados para
- * resolver artefactos de worker a una URL local construida por el bundler.
+ * Minimal typing for Vite query imports (`?url`), used to resolve worker
+ * artifacts to a local URL built by the bundler.
  *
- * No se referencia `vite/client` completo a propósito: sólo se necesita esta
- * regla y así el chequeo de tipos no depende del entorno de Vite.
+ * The full `vite/client` is deliberately NOT referenced: only this rule is
+ * needed, so type checking does not depend on the Vite environment.
  */
 declare module '*?url' {
   const src: string;

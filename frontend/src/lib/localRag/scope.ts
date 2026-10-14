@@ -2,12 +2,12 @@ import { dao } from '../../db/dao.ts';
 import type { RetrievalScope } from './types.ts';
 
 /**
- * Resuelve el conjunto de IDs que pertenecen al ámbito solicitado.
+ * Resolves the set of ids that belong to the requested scope.
  *
- * Lección -> la propia lección, su curso y sus nodos conectados.
- * Recurso -> el recurso y sus nodos conectados (módulos, lecciones, notas).
- * La conexión explícita del grafo permite contexto relacionado DENTRO del
- * perímetro declarado por el usuario; nunca material arbitrario externo.
+ * Lesson -> the lesson itself, its course, and its connected nodes.
+ * Resource -> the resource and its connected nodes (modules, lessons, notes).
+ * Graph edges allow related context WITHIN the user-declared perimeter; never
+ * arbitrary external material.
  */
 export async function resolveScopeIds(scope: RetrievalScope): Promise<Set<string>> {
   const anchor = scope.lessonId || scope.resourceId;
@@ -21,20 +21,19 @@ export async function resolveScopeIds(scope: RetrievalScope): Promise<Set<string
     scopeIds.add(scope.lessonId);
   }
 
-  // Resolver conexiones en el grafo de conocimiento
   try {
     for (const relatedId of await dao.getRelatedNodeIds(anchor)) {
       scopeIds.add(relatedId);
     }
   } catch {
-    /* Si el grafo no está disponible, el ámbito se reduce a los anclas. */
+    /* If the graph is unavailable, the scope shrinks to the anchors. */
   }
 
   return scopeIds;
 }
 
 /**
- * Evalúa si un fragmento o documento pertenece al conjunto de IDs del ámbito.
+ * Checks whether a fragment or document belongs to the scope's id set.
  */
 export function isWithinScope(
   candidate: { sourceId: string; resourceId?: string; lessonId?: string },

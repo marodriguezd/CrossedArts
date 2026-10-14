@@ -16,19 +16,19 @@ from backend.app.models.base import ResourceStatus, CourseDifficulty
 
 logger = get_logger("services.scanner")
 
-# Extensiones reconocidas por el scanner.
+# Extensions recognized by the scanner.
 VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".mkv", ".avi"]
 BOOK_EXTENSIONS = [".pdf", ".epub"]
 
-# Profundidad de recorrido por defecto y máxima (evita crawls sin límite).
+# Default and maximum walk depth (prevents unbounded crawls).
 DEFAULT_MAX_DEPTH = 3
 MAX_SCAN_DEPTH = 8
-# Profundidad con la que un scanner busca archivos dentro de su carpeta de recurso.
+# Depth used to look for files inside a resource folder.
 RESOURCE_FILE_DEPTH = 3
 
-# Pistas de carpetas organizadoras históricas (compatibilidad). Se usan como
-# respaldo SOLO cuando no hay metadata, nunca como única señal: la detección
-# principal es contenido directo (vídeos / pdf / epub) o metadata explícita.
+# Legacy organizer-folder hints (compatibility). Used as a fallback ONLY when no
+# metadata exists, never as the sole signal: primary detection is direct content
+# (videos / pdf / epub) or explicit metadata.
 COURSE_FOLDER_HINTS = {"courses", "cursos"}
 BOOK_FOLDER_HINTS = {"books", "libros"}
 
@@ -37,9 +37,9 @@ def iter_files_bounded(
     path: Path, extensions: List[str], max_depth: int
 ) -> Iterator[Path]:
     """
-    Recorre `path` de forma acotada y ordenada, devolviendo archivos con las
-    extensiones indicadas. `max_depth` limita los niveles de subcarpetas para
-    que el escaneo nunca se convierta en un crawl sin límite.
+    Walk `path` in a bounded, sorted way, yielding files with the given
+    extensions. `max_depth` caps subfolder levels so scanning never becomes an
+    unbounded crawl.
     """
     path = Path(path)
     if not path.is_dir():
@@ -47,7 +47,7 @@ def iter_files_bounded(
     root_depth = len(path.parts)
     for root_dir, dirnames, filenames in os.walk(path):
         current_depth = len(Path(root_dir).parts) - root_depth
-        # No descender más allá del límite y no seguir enlaces simbólicos.
+        # Stay within the depth limit and never follow symlinks.
         dirnames[:] = sorted(
             d for d in dirnames if not (Path(root_dir) / d).is_symlink()
         )
@@ -73,7 +73,7 @@ class BaseScanner(ABC):
 
     @abstractmethod
     def can_handle(self, path: Path, metadata: Optional[Dict[str, Any]]) -> bool:
-        """Determina si este scanner puede procesar el directorio dado."""
+        """Whether this scanner can handle the given directory."""
         pass
 
     @abstractmethod
@@ -109,7 +109,7 @@ class BaseScanner(ABC):
 
     @staticmethod
     def _has_parent_hint(path: Path, hints: set) -> bool:
-        """¿Alguna carpeta contenedora tiene un nombre organizador histórico?"""
+        """Does any parent folder carry a legacy organizer name?"""
         return any(part.lower() in hints for part in path.parts[:-1])
 
 
@@ -118,19 +118,19 @@ class CourseScanner(BaseScanner):
         super().__init__("course")
 
     def can_handle(self, path: Path, metadata: Optional[Dict[str, Any]]) -> bool:
-        # 1. Metadata explícita: máxima prioridad.
+        # 1. Explicit metadata wins.
         if metadata and metadata.get("resource_type") == "course":
             return True
         if metadata and metadata.get("resource_type") not in (None, "course"):
             return False
         if not path.is_dir():
             return False
-        # 2. Contenido directo: una carpeta con vídeos es un curso.
+        # 2. Direct content: a folder with videos is a course.
         if any(p.suffix.lower() in VIDEO_EXTENSIONS for p in path.iterdir() if p.is_file()):
             return True
-        # 3. Compatibilidad: carpeta bajo un contenedor histórico (Courses/…).
-        #    No clasifica la carpeta contenedora en sí (sus archivos directos
-        #    ya se habrían detectado en el paso 2).
+        # 3. Compatibility: folder under a legacy container (Courses/...). The
+        # container itself is never classified (its direct files would already
+        # have matched in step 2).
         if self._has_parent_hint(path, COURSE_FOLDER_HINTS):
             return True
         return False
@@ -138,20 +138,20 @@ class CourseScanner(BaseScanner):
     def scan(self, db: Session, path: Path, metadata: Optional[Dict[str, Any]], background_tasks: Optional[Any] = None) -> tuple[bool, bool]:
         source_path = str(path.resolve())
 
-        # Buscar recurso existente por source_path
+        # Look up the existing resource by source_path.
         stmt = select(Course).where(Course.source_path == source_path)
         course = db.scalars(stmt).first()
 
         created = False
         updated = False
 
-        # Datos por defecto (Heurística)
+        # Heuristic defaults.
         title = path.name
         description = None
         category = "General"
         difficulty = CourseDifficulty.BEGINNER
 
-        # Sobrescribir con metadata si existe
+        # Override with metadata when present.
         if metadata:
             title = metadata.get("title", title)
             description = metadata.get("description", description)
@@ -187,9 +187,9 @@ class CourseScanner(BaseScanner):
         db.commit()
 
         # ==========================================
-        # INDEXACIÓN DE VÍDEOS (MEDIA ASSETS) DEL CURSO
+        # COURSE VIDEO (MEDIA ASSET) INDEXING
         # ==========================================
-        # Recorrido acotado: nunca se camina el sistema de archivos sin límite.
+        # Bounded walk: the filesystem is never traversed without a limit.
         video_files = list(iter_files_bounded(path, VIDEO_EXTENSIONS, RESOURCE_FILE_DEPTH))
 
         # Cache all existing media assets for this course to avoid N+1 queries in loops
@@ -198,15 +198,15 @@ class CourseScanner(BaseScanner):
         ).all()
         existing_assets_by_path = {a.file_path: a for a in existing_assets_list}
 
-        # Primero, asegurar que tenemos lecciones para asociar.
-        # Si el curso no tiene módulos/lecciones en la base de datos, creamos una estructura heurística básica
+        # Make sure lessons exist to attach to. When the course has no
+        # modules/lessons in the database, create a basic heuristic structure.
         from backend.app.models.course_structure import Module, Lesson
 
         stmt_modules = select(Module).where(Module.course_id == course.id)
         existing_modules = db.scalars(stmt_modules).all()
 
         if not existing_modules and path.is_dir():
-            # Crear un módulo por defecto
+            # Default module.
             default_mod = Module(id=uuid.uuid4(), course_id=course.id, title="Contenido Principal", order_index=1)
             db.add(default_mod)
             db.commit()
@@ -223,7 +223,7 @@ class CourseScanner(BaseScanner):
                 db.add(lesson)
                 db.flush()
 
-                # Crear MediaAsset
+                # Link the file as a MediaAsset.
                 asset = MediaAsset(
                     id=uuid.uuid4(),
                     resource_id=course.id,
@@ -239,7 +239,7 @@ class CourseScanner(BaseScanner):
                 self._schedule_extraction(db, asset.id, background_tasks)
 
         else:
-            # Si ya existen módulos y lecciones en BD, precargamos las lecciones UNA sola vez (evita N+1 en el bucle)
+            # Lessons already exist: preload them ONCE (avoids N+1 in the loop).
             stmt_les = (
                 select(Lesson)
                 .join(Lesson.module)
@@ -247,17 +247,17 @@ class CourseScanner(BaseScanner):
             )
             course_lessons = db.scalars(stmt_les).all()
 
-            # Mapeamos los archivos físicos a las lecciones existentes
+            # Map physical files onto existing lessons.
             for file_path in video_files:
-                # Evitar duplicados por ruta resuelta.
+                # Skip duplicates by resolved path.
                 existing_asset = existing_assets_by_path.get(str(file_path.resolve()))
                 if existing_asset:
                     if not existing_asset.extracted_metadata:
                         self._schedule_extraction(db, existing_asset.id, background_tasks)
                     continue
 
-                # Emparejar con lección: por número inicial del nombre (orden) o
-                # por título de lección normalizado (mapa explícito de archivo).
+                # Match a lesson by the filename's leading number (order) or by
+                # normalized lesson title (explicit file map).
                 lesson_match = self._match_lesson(course_lessons, file_path)
 
                 asset = MediaAsset(
@@ -290,11 +290,11 @@ class CourseScanner(BaseScanner):
 
     def _match_lesson(self, lessons: list, file_path: Path):
         """
-        Empareja un archivo de vídeo con una lección de la lista precargada del curso.
+        Match a video file to a lesson from the course's preloaded list.
 
-        Estrategia (sin inventar relaciones):
-        1. Número inicial del archivo -> `order_index` de una lección.
-        2. Título del archivo normalizado -> título de lección normalizado.
+        Strategy (never invent relations):
+        1. File's leading number -> a lesson's `order_index`.
+        2. Normalized file title -> normalized lesson title.
         """
         import re
 
@@ -314,11 +314,11 @@ class CourseScanner(BaseScanner):
 
     @staticmethod
     def _schedule_extraction(db: Session, asset_id, background_tasks: Optional[Any]) -> None:
-        """Programa (o ejecuta) la extracción de contenido de un asset."""
+        """Schedule (or run) content extraction for an asset."""
         if background_tasks is not None:
             def run_background_extraction(asset_id=asset_id):
-                # `SessionLocal` se importa en tiempo de llamada: las pruebas
-                # parchean la fábrica para usar su propia base.
+                # `SessionLocal` is imported at call time: tests patch the
+                # factory to use their own database.
                 from backend.app.core.database import SessionLocal
                 from backend.app.services.extractor import ContentIntelligenceManager
                 db_local = SessionLocal()
@@ -338,37 +338,37 @@ class BookScanner(BaseScanner):
         super().__init__("book")
 
     def can_handle(self, path: Path, metadata: Optional[Dict[str, Any]]) -> bool:
-        # 1. Metadata explícita: máxima prioridad.
+        # 1. Explicit metadata wins.
         if metadata and metadata.get("resource_type") == "book":
             return True
         if metadata and metadata.get("resource_type") not in (None, "book"):
             return False
         if not path.is_dir():
             return False
-        # 2. Contenido directo: una carpeta con PDF/EPUB es un libro, esté
-        #    donde esté (ya no depende de llamarse Books/).
+        # 2. Direct content: a folder with PDF/EPUB is a book, wherever it
+        # lives (no longer tied to a Books/ name).
         return any(p.suffix.lower() in BOOK_EXTENSIONS for p in path.iterdir() if p.is_file())
 
     def scan(self, db: Session, path: Path, metadata: Optional[Dict[str, Any]], background_tasks: Optional[Any] = None) -> tuple[bool, bool]:
         source_path = str(path.resolve())
 
-        # Buscar recurso existente por source_path
+        # Look up the existing resource by source_path.
         stmt = select(Book).where(Book.source_path == source_path)
         book = db.scalars(stmt).first()
 
         created = False
         updated = False
 
-        # Datos por defecto (Heurística)
+        # Heuristic defaults.
         title = path.name
         description = None
         category = "General"
         author = "Desconocido"
 
-        # Buscar archivos de libros físicos (profundidad acotada).
+        # Find physical book files (bounded depth).
         book_files = list(iter_files_bounded(path, BOOK_EXTENSIONS, RESOURCE_FILE_DEPTH))
 
-        # Si la carpeta tiene metadata
+        # Apply folder metadata when present.
         if metadata:
             title = metadata.get("title", title)
             description = metadata.get("description", description)
@@ -410,7 +410,7 @@ class BookScanner(BaseScanner):
         existing_assets_by_path = {a.file_path: a for a in existing_assets_list}
 
         # ==========================================
-        # INDEXACIÓN DE ARCHIVOS DE LIBROS (MEDIA ASSETS)
+        # BOOK FILE (MEDIA ASSET) INDEXING
         # ==========================================
         for p in book_files:
             # Evitar duplicados por ruta resuelta.
@@ -458,17 +458,15 @@ class ScannerManager:
         max_depth: int = DEFAULT_MAX_DEPTH,
     ) -> ScanResult:
         """
-        Escanea el directorio raíz y delega la detección a los scanners.
+        Scan the root directory, delegating detection to the scanners.
 
-        - La profundidad de recursión es configurable y acotada
-          (`max_depth`, por defecto 3, máximo 8): nunca se hace un crawl
-          ilimitado del sistema de archivos.
-        - La clasificación prioriza metadata explícita; sin metadata, se
-          detecta por contenido (vídeos / pdf / epub) directamente en la
-          carpeta. Las carpetas organizadoras históricas no se procesan como
-          recurso, pero sí se recorren.
-        - Al procesar una carpeta como recurso no se desciende más dentro de
-          ella: sus archivos pertenecen a ese recurso.
+        - Recursion depth is configurable and bounded (`max_depth`, default 3,
+          max 8): the filesystem is never crawled without a limit.
+        - Classification prefers explicit metadata; without it, content wins
+          (videos / pdf / epub found directly in the folder). Legacy organizer
+          folders are traversed but never treated as resources.
+        - A folder claimed as a resource is not descended into further: its
+          files belong to that resource.
         """
         result = ScanResult()
         root = Path(library_path)
@@ -498,7 +496,7 @@ class ScannerManager:
         result: ScanResult,
         background_tasks: Optional[Any] = None,
     ) -> None:
-        """Recorre `path`; si un scanner lo reclama, no desciende más."""
+        """Walk `path`; once a scanner claims it, stop descending."""
         handled = self._process_directory(path, result, background_tasks)
         if handled:
             return
@@ -519,13 +517,12 @@ class ScannerManager:
             self._walk_directory(child, depth + 1, max_depth, result, background_tasks)
 
     def _process_directory(self, path: Path, result: ScanResult, background_tasks: Optional[Any] = None) -> bool:
-        """Intenta procesar un directorio con los scanners disponibles.
+        """Try the available scanners on a directory.
 
-        Devuelve True si algún scanner lo ha reclamado como recurso.
+        Returns True when a scanner claims it as a resource.
         """
         try:
-            # 1. Cargar metadatos
-            # Buscamos de forma genérica metadata.json/metadata.yaml usando el primer scanner para cargarlo
+            # 1. Load metadata (metadata.json/metadata.yaml via the first scanner).
             metadata = self.scanners[0].load_metadata(path)
         except Exception as e:
             result.warnings.append(str(e))

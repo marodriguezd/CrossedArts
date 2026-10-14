@@ -8,13 +8,11 @@ from backend.app.models.resource import Course, Book
 from backend.app.services.scanner import ScannerManager
 
 def test_course_with_metadata_json(db: Session, tmp_path: Path):
-    # 1. Crear directorio del curso
     courses_dir = tmp_path / "Courses"
     courses_dir.mkdir()
     course_dir = courses_dir / "Photography 101"
     course_dir.mkdir()
 
-    # 2. Escribir metadata.json
     metadata = {
         "resource_type": "course",
         "title": "Fotografía Profesional",
@@ -25,7 +23,6 @@ def test_course_with_metadata_json(db: Session, tmp_path: Path):
     with open(course_dir / "metadata.json", "w", encoding="utf-8") as f:
         json.dump(metadata, f)
 
-    # 3. Escanear
     manager = ScannerManager(db)
     result = manager.scan_directory(str(tmp_path))
 
@@ -33,7 +30,6 @@ def test_course_with_metadata_json(db: Session, tmp_path: Path):
     assert result.created == 1
     assert len(result.errors) == 0
 
-    # Verificar inserción
     stmt = select(Course).where(Course.title == "Fotografía Profesional")
     course = db.scalars(stmt).first()
     assert course is not None
@@ -47,7 +43,6 @@ def test_course_with_metadata_yaml(db: Session, tmp_path: Path):
     course_dir = courses_dir / "Python Course"
     course_dir.mkdir()
 
-    # Escribir metadata.yaml
     metadata = {
         "resource_type": "course",
         "title": "Aprende Python",
@@ -80,7 +75,6 @@ def test_course_without_metadata_fallback(db: Session, tmp_path: Path):
     assert result.discovered == 1
     assert result.created == 1
 
-    # Debe tomar el nombre del directorio como título
     stmt = select(Course).where(Course.title == "Illustration Fundamentals")
     course = db.scalars(stmt).first()
     assert course is not None
@@ -93,7 +87,6 @@ def test_book_with_metadata_and_files(db: Session, tmp_path: Path):
     book_dir = books_dir / "Atomic Habits Book"
     book_dir.mkdir()
 
-    # Crear archivo ficticio .epub
     (book_dir / "habits.epub").write_text("dummy")
 
     metadata = {
@@ -123,7 +116,6 @@ def test_book_without_metadata_heuristic(db: Session, tmp_path: Path):
     book_dir = books_dir / "Deep Work Novel"
     book_dir.mkdir()
 
-    # Escribir un .pdf para activar la heurística
     (book_dir / "deep_work.pdf").write_text("dummy")
 
     manager = ScannerManager(db)
@@ -184,14 +176,12 @@ def test_invalid_metadata_handling(db: Session, tmp_path: Path):
     course_dir = courses_dir / "Photography Broken"
     course_dir.mkdir()
 
-    # Escribir json inválido
     with open(course_dir / "metadata.json", "w", encoding="utf-8") as f:
         f.write("{invalid json:}")
 
     manager = ScannerManager(db)
     result = manager.scan_directory(str(tmp_path))
 
-    # Debe reportar una advertencia y aplicar el fallback heurístico al no poder parsear metadatos
     assert result.discovered == 1
     assert len(result.warnings) == 1
     assert "Error parseando metadata.json" in result.warnings[0]
