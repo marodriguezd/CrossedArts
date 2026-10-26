@@ -2,16 +2,74 @@ import type {
   SupportedFileType,
   ParsedDocument,
   IngestionOptions,
-  IngestionResult
+  IngestionResult,
+  IngestionSource
 } from './types.ts';
 import { parseTextFile } from './parsers/text.ts';
 import { parseMarkdownFile } from './parsers/markdown.ts';
 import { parsePdfFile } from './parsers/pdf.ts';
 import { parseEpubFile } from './parsers/epub.ts';
-import { computeFileFingerprint } from './fingerprint.ts';
+import { resolveSourceFingerprint } from './fingerprint.ts';
 import { dao } from '../../db/dao.ts';
 import { dbBridge } from '../../db/sqliteBridge.ts';
-import { localEmbeddingEngine } from '../localEmbeddings/engine.ts';
+
+export interface IngestionDeps {
+  /**
+   * Requests ONE semantic pass. Injected so a whole batch coalesces into a
+   * single canonical reindex instead of one full-library pass per file.
+   */
+  requestIndexing: () => void;
+}
+
+type FileLike = File | IngestionSource;
+
+/**
+ * Normalizes any accepted input into one memoizing source.
+ *
+ * The wrap is what makes "read once, hash once" possible: the service, the
+ * duplicate check and the parser all go through the same object.
+ */
+function toSource(file: FileLike): IngestionSource {
+  const candidate = file as IngestionSource & { text?: () => Promise<string> };
+  return {
+    name: file.name,
+    size: file.size,
+    text: typeof candidate.text === 'function' ? () => candidate.text!() : undefined,
+    arrayBuffer: () => file.arrayBuffer(),
+    bufferedBytes: candidate.bufferedBytes,
+    cachedFingerprint: candidate.cachedFingerprint
+  };
+}
+
+/**
+ * Copies the memo back onto the caller's source, so a second attempt at the same
+ * object (a retry, a re-import) does not read or hash the bytes again.
+ */
+function adoptMemo(from: IngestionSource, to: FileLike): void {
+  if (from === (to as unknown as IngestionSource)) return;
+  try {
+    const target = to as IngestionSource;
+    if (from.bufferedBytes) target.bufferedBytes = from.bufferedBytes;
+    if (from.cachedFingerprint) target.cachedFingerprint = from.cachedFingerprint;
+  } catch {
+    /* frozen source: the memo stays local, correctness is unaffected */
+  }
+}
+
+async function requestCanonicalIndexing(): Promise<void> {
+  try {
+    const { localAiRuntime } = await import('../../services/localAiRuntime.ts');
+    localAiRuntime.scheduleIndexing('local');
+  } catch (err) {
+    // Importing content must never depend on the embedding engine: the content
+    // is already saved and lexical retrieval keeps working meanwhile.
+    console.warn('Indexación semántica diferida:', err);
+  }
+}
+
+const DEFAULT_DEPS: IngestionDeps = {
+  requestIndexing: () => { void requestCanonicalIndexing(); }
+};
 
 export function getFileExtension(filename: string): string {
   const parts = filename.split('.');
@@ -28,6 +86,12 @@ export function detectFileType(filename: string): SupportedFileType | null {
 }
 
 export class LocalIngestionService {
+  private readonly deps: IngestionDeps;
+
+  constructor(deps: IngestionDeps = DEFAULT_DEPS) {
+    this.deps = deps;
+  }
+
   /**
    * Detects whether a document was already imported by comparing its SHA-256
    * fingerprint (stored on `learning_resource.source_path`, or in note tags).
@@ -65,23 +129,23 @@ export class LocalIngestionService {
   /**
    * Parses one supported file in memory.
    */
-  async parseFile(
-    file: File | { name: string; size: number; text?: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }
-  ): Promise<ParsedDocument> {
+  async parseFile(file: FileLike): Promise<ParsedDocument> {
     const fileType = detectFileType(file.name);
     if (!fileType) {
       throw new Error(`Tipo de archivo no soportado para "${file.name}". Formatos admitidos: .txt, .md, .pdf, .epub`);
     }
 
+    const source = toSource(file);
+
     switch (fileType) {
       case 'txt':
-        return parseTextFile(file as any);
+        return parseTextFile(source as IngestionSource & { text: () => Promise<string> });
       case 'md':
-        return parseMarkdownFile(file as any);
+        return parseMarkdownFile(source as IngestionSource & { text: () => Promise<string> });
       case 'pdf':
-        return parsePdfFile(file as any);
+        return parsePdfFile(source);
       case 'epub':
-        return parseEpubFile(file as any);
+        return parseEpubFile(source);
     }
   }
 
@@ -89,10 +153,7 @@ export class LocalIngestionService {
    * Ingests and stores a file in CrossedArts' local SQLite, optionally
    * indexing it when the embeddings engine is running.
    */
-  async ingestFile(
-    file: File | { name: string; size: number; text?: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> },
-    options: IngestionOptions = {}
-  ): Promise<IngestionResult> {
+  async ingestFile(file: FileLike, options: IngestionOptions = {}): Promise<IngestionResult> {
     if (options.signal?.aborted) {
       throw new Error('La importación fue cancelada por el usuario.');
     }
@@ -118,7 +179,11 @@ export class LocalIngestionService {
       message: `Calculando huella SHA-256 de ${file.name}...`
     });
 
-    const fingerprint = await computeFileFingerprint(file);
+    // One source for the whole pipeline: bytes and digest are computed here and
+    // reused by the parser, instead of reading and hashing the file twice.
+    const source = toSource(file);
+    const fingerprint = await resolveSourceFingerprint(source);
+    adoptMemo(source, file);
 
     // Duplicate detection
     const existingResourceId = await this.findExistingResourceByFingerprint(fingerprint);
@@ -147,7 +212,7 @@ export class LocalIngestionService {
       message: `Extrayendo texto y metadatos de ${file.name}...`
     });
 
-    const parsed = await this.parseFile(file);
+    const parsed = await this.parseFile(source);
 
     if (options.signal?.aborted) {
       throw new Error('La importación fue cancelada.');
@@ -175,16 +240,11 @@ export class LocalIngestionService {
       destination: options.destination
     });
 
-    // 4. Incremental background semantic indexing only when explicitly requested or the engine is already running
-    if (options.enableSemanticIndexing && localEmbeddingEngine.getStatus() === 'ready') {
-      try {
-        const { createSemanticChunksFromResourcesAsync } = await import('../localEmbeddings/chunking.ts');
-        const allRes = await dao.getAllLearningResources();
-        const chunks = await createSemanticChunksFromResourcesAsync(allRes);
-        await localEmbeddingEngine.indexChunks(chunks);
-      } catch (err) {
-        console.warn('Indexación semántica en segundo plano diferida:', err);
-      }
+    // 4. Schedule ONE canonical semantic pass. It used to rebuild and re-embed
+    //    the WHOLE library after every single file: importing N documents meant
+    //    N full passes. Indexing never blocks the import and never fails it.
+    if (options.enableSemanticIndexing) {
+      this.deps.requestIndexing();
     }
 
     options.onProgress?.({
@@ -211,10 +271,7 @@ export class LocalIngestionService {
    * Ingests a batch of files sequentially, yielding the browser thread
    * between files so the UI stays responsive.
    */
-  async ingestBatch(
-    files: Array<File | { name: string; size: number; text?: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }>,
-    options: IngestionOptions = {}
-  ): Promise<IngestionResult[]> {
+  async ingestBatch(files: FileLike[], options: IngestionOptions = {}): Promise<IngestionResult[]> {
     const results: IngestionResult[] = [];
     const totalFiles = files.length;
 
@@ -235,6 +292,9 @@ export class LocalIngestionService {
       try {
         const res = await this.ingestFile(file, {
           ...options,
+          // Indexing is requested once, after the batch: per-file scheduling
+          // multiplied a full-library pass by the number of files.
+          enableSemanticIndexing: false,
           onProgress: (p) => {
             options.onProgress?.({
               ...p,
@@ -257,6 +317,10 @@ export class LocalIngestionService {
 
       // Yield to the event loop between large files
       await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    if (options.enableSemanticIndexing && results.some((r) => r.success && !r.isDuplicate)) {
+      this.deps.requestIndexing();
     }
 
     return results;

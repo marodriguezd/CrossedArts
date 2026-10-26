@@ -1,6 +1,6 @@
-import type { ParsedDocument, DocumentSection } from '../types.ts';
+import type { ParsedDocument, DocumentSection, IngestionSource } from '../types.ts';
 import { DocumentExtractionError } from '../types.ts';
-import { computeBinarySha256 } from '../fingerprint.ts';
+import { readSourceBytes, resolveSourceFingerprint } from '../fingerprint.ts';
 import { normalizeExtractedText } from '../textUtils.ts';
 
 /**
@@ -115,7 +115,7 @@ export function joinTextItems(items: ReadonlyArray<{ str?: string; hasEOL?: bool
 const MAX_BROWSER_PDF_BYTES = 100 * 1024 * 1024; // 100 MB browser memory limit
 
 export async function parsePdfFile(
-  file: { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> }
+  file: IngestionSource
 ): Promise<ParsedDocument> {
   if (file.size > MAX_BROWSER_PDF_BYTES) {
     throw new DocumentExtractionError(
@@ -124,8 +124,8 @@ export async function parsePdfFile(
     );
   }
 
-  const buffer = await file.arrayBuffer();
-  const fingerprint = await computeBinarySha256(buffer);
+  const buffer = await readSourceBytes(file);
+  const fingerprint = await resolveSourceFingerprint(file);
   const bytes = new Uint8Array(buffer);
 
   if (bytes.byteLength === 0) {

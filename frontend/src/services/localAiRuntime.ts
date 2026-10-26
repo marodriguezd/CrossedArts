@@ -4,6 +4,7 @@ import { detectWebGPUCapability, type WebGPUCapabilityReport } from '../lib/loca
 import { selectBestLocalModelForTask, type AIModelTask } from '../lib/localLlm/selection.ts';
 import { getLocalModelById, LOCAL_MODELS_REGISTRY, type LocalModelDefinition } from '../lib/localLlm/registry.ts';
 import { DEFAULT_EMBEDDING_MODEL_ID } from '../lib/localEmbeddings/registry.ts';
+import { getStoredEmbeddingModelId } from './embeddingModelPreference.ts';
 import { dao } from '../db/dao.ts';
 import type { SemanticChunk } from '../lib/localEmbeddings/chunking.ts';
 import { buildSemanticCorpus } from '../lib/localEmbeddings/corpus.ts';
@@ -101,8 +102,11 @@ export interface LocalAiRuntimeDeps {
   isBrowser: () => boolean;
   storage: LocalAiStorage;
   loadResources: () => Promise<any>;
-  buildChunks: (resources: any) => Promise<SemanticChunk[]>;
+  /** Chunks are built FOR a concrete model: ids/budgets may depend on it. */
+  buildChunks: (resources: any, modelId: string) => Promise<SemanticChunk[]>;
   getModelDefinition: (id: string) => LocalModelDefinition | undefined;
+  /** Model the person selected in settings (defaults to the registry default). */
+  getSelectedEmbeddingModelId?: () => string;
 }
 
 export const LOCAL_AI_CONSENT_KEY = 'crossedarts_local_ai_consent';
@@ -516,6 +520,22 @@ export class LocalAiRuntime {
     return this.inFlightSemantic;
   }
 
+  /**
+   * Model the indexing pass must bind to.
+   *
+   * A model already loaded in the engine wins: its vectors are cached under that
+   * identity, so switching identity mid-session would silently invalidate them.
+   * Otherwise the model the person selected (persisted) is used, and only with
+   * no preference at all does the registry default apply.
+   */
+  private resolveActiveEmbeddingModelId(): string {
+    return (
+      this.deps.embeddingEngine.getLoadedModelId() ||
+      this.deps.getSelectedEmbeddingModelId?.() ||
+      DEFAULT_EMBEDDING_MODEL_ID
+    );
+  }
+
   private async prepareSemantic(): Promise<SemanticStatus> {
     // In browserless environments (e.g. tests) nothing is downloaded.
     if (!this.deps.isBrowser()) {
@@ -538,8 +558,13 @@ export class LocalAiRuntime {
         passCount++;
         this.deps.embeddingEngine.clearDirty?.();
 
+        // The model is resolved ONCE per pass and binds every step below:
+        // an already loaded engine keeps its identity (vectors are cached under
+        // it), and a cold engine uses the model the person selected.
+        const activeModelId = this.resolveActiveEmbeddingModelId();
+
         const resources = await this.deps.loadResources();
-        const chunks = await this.deps.buildChunks(resources);
+        const chunks = await this.deps.buildChunks(resources, activeModelId);
         const total = chunks.length;
         finalTotal = total;
 
@@ -548,15 +573,18 @@ export class LocalAiRuntime {
           return this.setSemanticStatus({ stage: 'ready', progress: 100, indexed: 0, total: 0, message: 'Búsqueda semántica lista' });
         }
 
-        if (this.deps.embeddingEngine.getStatus() !== 'ready') {
-          await this.deps.embeddingEngine.loadModel(DEFAULT_EMBEDDING_MODEL_ID);
+        if (
+          this.deps.embeddingEngine.getStatus() !== 'ready' ||
+          this.deps.embeddingEngine.getLoadedModelId() !== activeModelId
+        ) {
+          await this.deps.embeddingEngine.loadModel(activeModelId);
         }
 
-        // Proactive purge: prior model/pipeline entries are no longer served
-        // yet occupied space forever. Best-effort: on failure, indexing
-        // continues.
+        // Proactive purge of OTHER models/pipelines: their vectors are no longer
+        // served yet occupied space forever. The ACTIVE model is never purged,
+        // so an existing cache survives the pass instead of being rebuilt.
         try {
-          await this.deps.embeddingEngine.pruneStaleCache?.(DEFAULT_EMBEDDING_MODEL_ID);
+          await this.deps.embeddingEngine.pruneStaleCache?.(activeModelId);
         } catch { /* a purge must never block indexing */ }
 
         this.setSemanticStatus({ stage: 'indexing', progress: 0, message: 'Preparando búsqueda…' });
@@ -618,6 +646,7 @@ export const localAiRuntime = new LocalAiRuntime({
   storage: createDefaultStorage(),
   loadResources: () => dao.getAllLearningResources(),
   // Canonical boundary: domain entities -> KnowledgeDocument -> chunks.
-  buildChunks: async (resources) => (await buildSemanticCorpus(resources, DEFAULT_EMBEDDING_MODEL_ID)).chunks,
-  getModelDefinition: (id) => getLocalModelById(id)
+  buildChunks: async (resources, modelId) => (await buildSemanticCorpus(resources, modelId)).chunks,
+  getModelDefinition: (id) => getLocalModelById(id),
+  getSelectedEmbeddingModelId: () => getStoredEmbeddingModelId()
 });

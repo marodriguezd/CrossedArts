@@ -1,17 +1,17 @@
-import type { ParsedDocument, DocumentSection } from '../types.ts';
+import type { ParsedDocument, DocumentSection, IngestionSource } from '../types.ts';
 import { sanitizePlainText } from './text.ts';
-import { computeBinarySha256 } from '../fingerprint.ts';
+import { resolveSourceFingerprint } from '../fingerprint.ts';
 
 /**
  * Parses a Markdown (.md) file, extracting headings (# and ##) as chapter
  * names and organizing structural sections.
  */
 export async function parseMarkdownFile(
-  file: { name: string; size: number; text: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }
+  file: IngestionSource & { text: () => Promise<string> }
 ): Promise<ParsedDocument> {
   const rawTextContent = await file.text();
   const clean = sanitizePlainText(rawTextContent);
-  const fingerprint = await computeBinarySha256(await file.arrayBuffer());
+  const fingerprint = await resolveSourceFingerprint(file);
 
   if (!clean.length) {
     throw new Error(`El documento Markdown "${file.name}" está vacío o contiene sólo caracteres no válidos.`);

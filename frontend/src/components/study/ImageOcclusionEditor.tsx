@@ -167,7 +167,9 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
     setErrorMsg(null);
 
     try {
-      // Persist the bitmap as a media asset
+      // The bitmap is stored ONCE, as a media asset. `extra_data` only keeps the
+      // id: embedding the data URL there too duplicated every image inside the
+      // SQLite file (and inside every JSON backup).
       const mediaId = await dao.saveMediaAsset({
         mime_type: imageDataUrl.startsWith('data:image/svg') ? 'image/svg+xml' : 'image/png',
         data: imageDataUrl
@@ -175,7 +177,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
 
       const occlusionData: ImageOcclusionData = {
         imageId: mediaId,
-        imageUrl: imageDataUrl,
         mode,
         masks
       };
@@ -225,7 +226,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="occlusion-editor-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-xs"
     >
       <div className="relative flex flex-col w-full max-w-5xl max-h-[90vh] rounded-2xl border border-[var(--c-border)] bg-[var(--c-canvas)] text-[var(--c-ink)] shadow-2xl overflow-hidden">
         
@@ -255,7 +256,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
 
         {/* Validation error banner */}
         {errorMsg && (
-          <div className="mx-6 mt-4 p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
+          <div className="mx-6 mt-4 p-3 rounded-lg border border-error/30 bg-error-soft text-meta text-error flex items-center gap-2" role="alert">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
@@ -329,7 +330,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                       setMasks([]);
                       setSelectedMaskId(null);
                     }}
-                    className="text-red-500 hover:underline cursor-pointer"
+                    className="text-error hover:underline cursor-pointer"
                   >
                     Cambiar imagen
                   </button>
@@ -432,7 +433,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                   <button
                     type="button"
                     onClick={() => setMasks([])}
-                    className="text-[11px] text-red-500 hover:underline cursor-pointer"
+                    className="text-micro text-error hover:underline cursor-pointer"
                   >
                     Borrar todas
                   </button>
@@ -472,7 +473,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                           e.stopPropagation();
                           handleDeleteMask(mask.id);
                         }}
-                        className="p-1 rounded text-[var(--c-ink-faint)] hover:text-red-500 cursor-pointer"
+                        className="p-1 rounded text-faint hover:text-error cursor-pointer"
                         aria-label={`Eliminar máscara ${idx + 1}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />

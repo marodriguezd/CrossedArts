@@ -1,8 +1,8 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { parseDocument } from 'htmlparser2';
-import type { ParsedDocument, DocumentSection } from '../types.ts';
+import type { ParsedDocument, DocumentSection, IngestionSource } from '../types.ts';
 import { DocumentExtractionError } from '../types.ts';
-import { computeBinarySha256 } from '../fingerprint.ts';
+import { readSourceBytes, resolveSourceFingerprint } from '../fingerprint.ts';
 import { normalizeExtractedText } from '../textUtils.ts';
 
 /**
@@ -201,7 +201,7 @@ export function unzipWithLimits(bytes: Uint8Array, fileName: string): UnzipResul
 const MAX_BROWSER_EPUB_BYTES = 100 * 1024 * 1024; // 100 MB browser limit
 
 export async function parseEpubFile(
-  file: { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> }
+  file: IngestionSource
 ): Promise<ParsedDocument> {
   if (file.size > MAX_BROWSER_EPUB_BYTES) {
     throw new DocumentExtractionError(
@@ -210,9 +210,9 @@ export async function parseEpubFile(
     );
   }
 
-  const buffer = await file.arrayBuffer();
+  const buffer = await readSourceBytes(file);
   const bytes = new Uint8Array(buffer);
-  const fingerprint = await computeBinarySha256(buffer);
+  const fingerprint = await resolveSourceFingerprint(file);
 
   if (bytes.byteLength === 0) {
     throw new DocumentExtractionError('empty', `El archivo "${file.name}" está vacío.`);

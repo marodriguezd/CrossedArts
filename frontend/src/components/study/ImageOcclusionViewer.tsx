@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ImageOcclusionData, OcclusionMask } from '../../types/models.ts';
 import { cn } from '../ui/index.tsx';
 import { Eye, EyeOff } from 'lucide-react';
+import { dao } from '../../db/dao.ts';
 
 interface ImageOcclusionViewerProps {
   data: ImageOcclusionData;
@@ -20,16 +21,45 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
   onSelectMask,
   className
 }) => {
-  const { imageUrl, mode, masks } = data;
+  const { imageUrl, imageId, mode, masks } = data;
   const safeMasks = Array.isArray(masks) ? masks : [];
+
+  // Cards created from now on store only `imageId`; the bitmap lives once in
+  // `media_asset`. Older cards still carry `imageUrl` and render without a read.
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(imageUrl ?? null);
+
+  useEffect(() => {
+    if (imageUrl) {
+      setResolvedUrl(imageUrl);
+      return;
+    }
+    if (!imageId) {
+      setResolvedUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+    dao
+      .getMediaAsset(imageId)
+      .then(asset => {
+        if (!cancelled) setResolvedUrl(asset?.data ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedUrl(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl, imageId]);
 
   return (
     <div className={cn('relative flex flex-col items-center w-full select-none', className)}>
       {/* Relative container for image and masks */}
       <div className="relative inline-block max-w-full overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-canvas-subtle)] shadow-sm">
-        {imageUrl ? (
+        {resolvedUrl ? (
           <img
-            src={imageUrl}
+            src={resolvedUrl}
             alt="Lámina de estudio con oclusión"
             className="block max-h-[60vh] max-w-full object-contain pointer-events-none"
           />

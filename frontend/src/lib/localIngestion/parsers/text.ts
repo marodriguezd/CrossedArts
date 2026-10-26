@@ -1,5 +1,5 @@
-import type { ParsedDocument, DocumentSection } from '../types.ts';
-import { computeBinarySha256 } from '../fingerprint.ts';
+import type { ParsedDocument, DocumentSection, IngestionSource } from '../types.ts';
+import { resolveSourceFingerprint } from '../fingerprint.ts';
 
 /**
  * Cleans and normalizes plain text by removing null control characters while
@@ -19,11 +19,12 @@ export function sanitizePlainText(input: string): string {
  * once it exceeds a given length.
  */
 export async function parseTextFile(
-  file: { name: string; size: number; text: () => Promise<string>; arrayBuffer: () => Promise<ArrayBuffer> }
+  file: IngestionSource & { text: () => Promise<string> }
 ): Promise<ParsedDocument> {
   const rawTextContent = await file.text();
   const clean = sanitizePlainText(rawTextContent);
-  const fingerprint = await computeBinarySha256(await file.arrayBuffer());
+  // Bytes and digest are shared with the service: read once, hashed once.
+  const fingerprint = await resolveSourceFingerprint(file);
 
   if (!clean.length) {
     throw new Error(`El archivo de texto "${file.name}" está vacío o contiene sólo caracteres no válidos.`);

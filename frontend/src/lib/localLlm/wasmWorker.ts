@@ -1,13 +1,18 @@
 import { pipeline, env, TextStreamer } from '@huggingface/transformers';
+import { configureOnnxRuntimeWasm, resolveOrtRuntimeBase } from '../localEmbeddings/ortRuntime.ts';
 
 // ONNX WASM environment inside the inference Worker: models resolve from the
-// Hub and cache in the browser, and the thread count stays bounded by the
-// device's hardware concurrency so the main thread is not starved.
+// Hub and cache in the browser, and the runtime itself is served from this same
+// origin. The worker has no `document`, so the artifact base either comes from
+// the client (`load` payload) or defaults to the origin root.
 env.allowLocalModels = false;
 env.useBrowserCache = true;
-if (env.backends?.onnx?.wasm) {
-  env.backends.onnx.wasm.numThreads = Math.min(4, typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 2) : 2);
-}
+const configureRuntime = (wasmPaths?: string) => {
+  configureOnnxRuntimeWasm(env, {
+    wasmPaths: wasmPaths || resolveOrtRuntimeBase(typeof self !== 'undefined' ? self.location?.href : undefined)
+  });
+};
+configureRuntime();
 
 let generator: any = null;
 let loadedModelId: string | null = null;
@@ -17,7 +22,10 @@ self.onmessage = async (e: MessageEvent) => {
 
   try {
     if (type === 'load') {
-      const { modelId } = payload;
+      const { modelId, wasmPaths } = payload;
+      // Re-applied per load: the first `load` carries the page's base URI, so
+      // the artifacts resolve under a project subdirectory too.
+      if (wasmPaths) configureRuntime(wasmPaths);
       if (generator && loadedModelId === modelId) {
         self.postMessage({ id, type: 'load-success' });
         return;

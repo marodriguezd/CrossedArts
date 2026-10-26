@@ -115,9 +115,48 @@ export async function computeBinarySha256(data: ArrayBuffer | Uint8Array): Promi
   return sha256BinaryPure(bytes);
 }
 
+/** Minimal shape shared by a `File` and an in-memory ingestion source. */
+export interface ReadableSource {
+  arrayBuffer: () => Promise<ArrayBuffer>;
+  bufferedBytes?: ArrayBuffer;
+  cachedFingerprint?: string;
+}
+
+/**
+ * Reads a source's bytes at most once.
+ *
+ * The service, the duplicate check and the parser all need the same bytes;
+ * re-reading a 100 MB PDF for each step was pure waste. The buffer is memoized
+ * on the source object, which may be a `File` (extensible) or a wrapper.
+ */
+export async function readSourceBytes(source: ReadableSource): Promise<ArrayBuffer> {
+  if (source.bufferedBytes) return source.bufferedBytes;
+  const buffer = await source.arrayBuffer();
+  try {
+    source.bufferedBytes = buffer;
+  } catch {
+    /* frozen source: correctness is unaffected, only the memo is lost */
+  }
+  return buffer;
+}
+
+/**
+ * Resolves a source's SHA-256 at most once: a fingerprint computed by the caller
+ * is reused instead of hashing the same bytes twice.
+ */
+export async function resolveSourceFingerprint(source: ReadableSource): Promise<string> {
+  if (typeof source.cachedFingerprint === 'string' && source.cachedFingerprint) return source.cachedFingerprint;
+  const hash = await computeBinarySha256(await readSourceBytes(source));
+  try {
+    source.cachedFingerprint = hash;
+  } catch {
+    /* frozen source: the hash is still returned */
+  }
+  return hash;
+}
+
 export async function computeFileFingerprint(
   file: File | { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> }
 ): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  return computeBinarySha256(buffer);
+  return resolveSourceFingerprint(file);
 }

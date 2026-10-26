@@ -6,6 +6,7 @@ import {
 } from './chunking.ts';
 import { semanticContentManifest } from './contentManifest.ts';
 import { DEFAULT_EMBEDDING_MODEL_ID } from './registry.ts';
+import { dbBridge } from '../../db/sqliteBridge.ts';
 
 /**
  * Semantic-corpus construction.
@@ -63,6 +64,21 @@ export async function buildSemanticCorpus(
 }
 
 /**
+ * Memoized `chunkId -> contentHash` map, keyed by data revision + model.
+ *
+ * Rebuilding the whole corpus on EVERY semantic query (documents, chunking and
+ * manifest resolution) was the dominant cost of retrieval. The map is derived
+ * data, so it is invalidated whenever the database changes: `getDataRevision()`
+ * advances on every persist, reload and import.
+ */
+let chunkHashMapCache: { key: string; map: Map<string, string> } | null = null;
+
+/** Drops the memoized map (explicit invalidation for tests and callers). */
+export function invalidateCurrentChunkHashes(): void {
+  chunkHashMapCache = null;
+}
+
+/**
  * CURRENT `chunkId -> contentHash` map of the corpus, used to validate cached
  * vectors. A fragment missing from the map counts as stale.
  */
@@ -70,6 +86,11 @@ export async function buildCurrentChunkHashes(
   entities: DomainKnowledgeEntities,
   modelId: string = DEFAULT_EMBEDDING_MODEL_ID
 ): Promise<Map<string, string>> {
+  const key = `${dbBridge.getDataRevision()}::${modelId}`;
+  if (chunkHashMapCache && chunkHashMapCache.key === key) return chunkHashMapCache.map;
+
   const corpus = await buildSemanticCorpus(entities, modelId);
-  return new Map(corpus.chunks.map(chunk => [chunk.chunkId, chunk.contentHash]));
+  const map = new Map(corpus.chunks.map(chunk => [chunk.chunkId, chunk.contentHash]));
+  chunkHashMapCache = { key, map };
+  return map;
 }

@@ -1,3 +1,31 @@
+/**
+ * Detects a failure that is SPECIFIC to the WebGPU execution path.
+ *
+ * Used to decide automatic degradation to CPU/WASM. Shader/validation errors,
+ * lost devices and GPU memory pressure all qualify; a network, storage or
+ * programming error does not, and must never be masked by a fallback.
+ */
+export function isWebGpuFatalError(error: unknown): boolean {
+  const raw = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase();
+  if (!raw) return false;
+  return [
+    'shadermodule',
+    'index_kernel',
+    'compute stage',
+    'validating compute stage',
+    'wgsl',
+    'webgpu',
+    'requestadapter',
+    'requestdevice',
+    'adapter',
+    'execution provider',
+    'device lost',
+    'device destroyed',
+    'out of memory',
+    'gpu'
+  ].some((token) => raw.includes(token));
+}
+
 export type WebGPUCapabilityState = 'supported' | 'unsupported' | 'checking';
 export type LocalRuntimeBackend = 'webgpu' | 'wasm' | 'none';
 

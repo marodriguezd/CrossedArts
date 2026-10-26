@@ -318,7 +318,7 @@ import { EMBEDDING_MODELS_REGISTRY, DEFAULT_EMBEDDING_MODEL_ID, getEmbeddingMode
 import { detectEmbeddingCapabilities } from '../src/lib/localEmbeddings/capabilities.ts';
 import { computeContentHash, createSemanticChunksFromResources } from '../src/lib/localEmbeddings/chunking.ts';
 import { cosineSimilarity } from '../src/lib/localEmbeddings/engine.ts';
-import { embeddingCache } from '../src/lib/localEmbeddings/cache.ts';
+import { embeddingCache, EMBEDDING_PIPELINE_VERSION } from '../src/lib/localEmbeddings/cache.ts';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
 
 test('8.14 Embedding Registry: Validates browser-ready EmbeddingGemma specifications', () => {
@@ -409,7 +409,9 @@ test('8.17 Local Embedding Cache & Invalidation: Storage, retrieval, and model s
     text: 'Contenido de prueba',
     contentHash: computeContentHash('Contenido de prueba'),
     modelId: 'onnx-community/embeddinggemma-300m-ONNX',
-    pipelineVersion: 'v2.0-embeddinggemma-mrl256-sha256',
+    // La versión de pipeline es el contrato de identidad de la entrada: se usa
+    // la constante, no una copia literal que caduca con cada cambio de esquema.
+    pipelineVersion: EMBEDDING_PIPELINE_VERSION,
     dimensions: 256,
     vector: new Array(256).fill(0.1),
     updatedAt: Date.now()
@@ -471,7 +473,6 @@ test('8.19 Vector Isolation Guarantee: No vector tables or binary blobs in SQLit
 import { computeSha256ContentHash, createSemanticChunksFromResourcesAsync } from '../src/lib/localEmbeddings/chunking.ts';
 import { l2NormalizeVector, vectorNorm, localEmbeddingEngine } from '../src/lib/localEmbeddings/engine.ts';
 import { computeRrfScore, deduplicateAndDiversify, THRESHOLDS } from '../src/lib/localRag/retrieval.ts';
-import { EMBEDDING_PIPELINE_VERSION } from '../src/lib/localEmbeddings/cache.ts';
 
 test('9.1 Cryptographic Content Hashing (SHA-256): Determinism and collision avoidance', async () => {
   const hash1 = await computeSha256ContentHash('React Fiber Architecture');

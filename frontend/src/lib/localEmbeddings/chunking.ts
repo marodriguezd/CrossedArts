@@ -9,6 +9,17 @@ export interface SemanticChunk {
   contentHash: string;
   page?: number;
   chapter?: string;
+  /**
+   * The chunk carries real BODY content, not just a header/metadata line.
+   *
+   * The provenance gate uses this: metadata alone can never satisfy "there is
+   * substantive context", even when the vector similarity is high.
+   */
+  substantive?: boolean;
+  /** Owning resource (course or book), so scoped retrieval keeps the artifact. */
+  resourceId?: string;
+  /** Owning lesson, so lesson-scoped retrieval keeps notes/cards/practice. */
+  lessonId?: string;
 }
 
 /** Normalized inputs for semantic chunking (external-data boundary). */
@@ -47,12 +58,16 @@ export interface NoteChunkInput {
   title: string;
   content?: string | null;
   tags?: string | null;
+  resource_id?: string | null;
+  lesson_id?: string | null;
 }
 
 export interface FlashcardChunkInput {
   id: string;
   front: string;
   back: string;
+  resource_id?: string | null;
+  lesson_id?: string | null;
 }
 
 export interface ConceptChunkInput {
@@ -259,10 +274,12 @@ interface BuildChunkArgs {
   bodyText: string;
   page?: number;
   chapter?: string;
+  resourceId?: string;
+  lessonId?: string;
 }
 
 function buildChunksForSource(args: BuildChunkArgs): SemanticChunk[] {
-  const { baseId, sourceType, sourceId, title, headerText, bodyText, page, chapter } = args;
+  const { baseId, sourceType, sourceId, title, headerText, bodyText, page, chapter, resourceId, lessonId } = args;
   const bodyParts = splitIntoBoundedParts(bodyText);
   if (bodyParts.length === 0) {
     // Bodiless: the chunk is just the header (resource metadata).
@@ -276,7 +293,11 @@ function buildChunksForSource(args: BuildChunkArgs): SemanticChunk[] {
       text,
       contentHash: computeContentHash(text),
       page,
-      chapter
+      chapter,
+      // Metadata only: it must never satisfy the provenance gate.
+      substantive: false,
+      resourceId,
+      lessonId
     }];
   }
 
@@ -292,7 +313,10 @@ function buildChunksForSource(args: BuildChunkArgs): SemanticChunk[] {
       text,
       contentHash: computeContentHash(text),
       page,
-      chapter
+      chapter,
+      substantive: true,
+      resourceId,
+      lessonId
     };
   });
 }
@@ -319,7 +343,8 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
       sourceId: c.id,
       title: c.title,
       headerText: courseHeader,
-      bodyText: c.description || ''
+      bodyText: c.description || '',
+      resourceId: c.id
     }));
 
     for (const m of c.modules || []) {
@@ -333,7 +358,9 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
           sourceId: l.id,
           title: `${c.title} › ${l.title}`,
           headerText: lessonHeader,
-          bodyText: (l.content || '').trim()
+          bodyText: (l.content || '').trim(),
+          resourceId: c.id,
+          lessonId: l.id
         }));
       }
     }
@@ -348,7 +375,8 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
       sourceId: b.id,
       title: b.title,
       headerText: bookHeader,
-      bodyText: b.description || ''
+      bodyText: b.description || '',
+      resourceId: b.id
     }));
   }
 
@@ -362,7 +390,9 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
       title: n.title,
       headerText: noteHeader,
       bodyText: (n.content || '').trim(),
-      page: notePageFromTags(n.tags)
+      page: notePageFromTags(n.tags),
+      resourceId: n.resource_id || undefined,
+      lessonId: n.lesson_id || undefined
     }));
   }
 
@@ -374,7 +404,9 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
       sourceId: f.id,
       title: `Flashcard: ${f.front}`,
       headerText: 'Tarjeta mnemotécnica.',
-      bodyText: `Pregunta: ${f.front}. Respuesta: ${f.back}`.trim()
+      bodyText: `Pregunta: ${f.front}. Respuesta: ${f.back}`.trim(),
+      resourceId: f.resource_id || undefined,
+      lessonId: f.lesson_id || undefined
     }));
   }
 
@@ -405,7 +437,9 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
       sourceId: pw.id,
       title: pw.title,
       headerText: practiceHeader,
-      bodyText
+      bodyText,
+      resourceId: pw.resource_id || undefined,
+      lessonId: pw.lesson_id || undefined
     }));
   }
 
@@ -424,6 +458,8 @@ export function createSemanticChunksFromKnowledgeDocument(doc: {
   bodyText: string;
   page?: number;
   chapter?: string;
+  resourceId?: string;
+  lessonId?: string;
 }): SemanticChunk[] {
   return buildChunksForSource({
     baseId: doc.id,
@@ -433,7 +469,10 @@ export function createSemanticChunksFromKnowledgeDocument(doc: {
     headerText: doc.headerText,
     bodyText: doc.bodyText,
     page: doc.page,
-    chapter: doc.chapter
+    chapter: doc.chapter,
+    // Anchors travel with the chunk: scoped retrieval filters on them.
+    resourceId: doc.resourceId,
+    lessonId: doc.lessonId
   });
 }
 
@@ -450,6 +489,8 @@ export function createSemanticChunksFromKnowledgeDocuments(
     bodyText: string;
     page?: number;
     chapter?: string;
+    resourceId?: string;
+    lessonId?: string;
   }>
 ): SemanticChunk[] {
   return docs.flatMap(createSemanticChunksFromKnowledgeDocument);

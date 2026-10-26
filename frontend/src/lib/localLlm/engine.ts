@@ -1,6 +1,7 @@
-import { DEFAULT_LOCAL_MODEL_ID, getLocalModelById } from './registry.ts';
-import { detectWebGPUCapability } from './capabilities.ts';
-import { WasmWorkerClient } from './wasmWorkerClient.ts';
+import { DEFAULT_LOCAL_MODEL_ID, DEFAULT_WASM_MODEL_ID, getLocalModelById } from './registry.ts';
+import { detectWebGPUCapability, isWebGpuFatalError } from './capabilities.ts';
+import { WasmWorkerClient, abortError, isAbortError } from './wasmWorkerClient.ts';
+import { configureOnnxRuntimeWasm } from '../localEmbeddings/ortRuntime.ts';
 import {
   DeltaStream,
   stripGenerationArtifacts,
@@ -30,6 +31,43 @@ export interface ModelLoadingProgress {
 
 export type ProgressCallback = (progress: ModelLoadingProgress) => void;
 
+/**
+ * The environment has no WebGPU at all.
+ *
+ * It is NOT a runtime failure of the model: there is nothing to degrade from,
+ * and the UI already offers the CPU model. The type keeps the automatic
+ * fallback from masking an informative capability error.
+ */
+export class WebGpuUnavailableError extends Error {}
+
+/**
+ * Test seam for the WebGPU engine factory.
+ *
+ * Production delegates to `@mlc-ai/web-llm`; tests replace it to exercise the
+ * fallback policy deterministically (a real engine needs a GPU).
+ */
+export const localLlmInternals = {
+  async createWebGpuEngine(modelId: string, initProgressCallback: (report: any) => void): Promise<any> {
+    const webllm = await import('@mlc-ai/web-llm');
+    return webllm.CreateMLCEngine(modelId, { initProgressCallback });
+  },
+  detectCapability: detectWebGPUCapability,
+  /** Transformers.js text-generation pipeline on CPU (used without a Worker). */
+  async createWasmPipeline(modelId: string, progressCallback: (item: any) => void): Promise<any> {
+    const { pipeline, env } = await import('@huggingface/transformers');
+    env.allowLocalModels = false;
+    env.useBrowserCache = true;
+    configureOnnxRuntimeWasm(env, {
+      baseUri: typeof document !== 'undefined' ? document.baseURI : undefined
+    });
+    return pipeline('text-generation', modelId, {
+      device: 'wasm',
+      dtype: 'q4',
+      progress_callback: progressCallback
+    });
+  }
+};
+
 class LocalLlmEngine {
   private engineInstance: any = null;
   private wasmWorker = new WasmWorkerClient();
@@ -43,6 +81,13 @@ class LocalLlmEngine {
   // Concurrency and stale-request control
   private activeLoadPromise: Promise<void> | null = null;
   private loadSessionId: number = 0;
+  /** Explains an AUTOMATIC backend/model downgrade to the UI (null when none). */
+  private fallbackNotice: string | null = null;
+
+  /** Message describing the last automatic fallback, if any. */
+  public getFallbackNotice(): string | null {
+    return this.fallbackNotice;
+  }
 
   public getStatus(): EngineStatus {
     return this.status;
@@ -83,11 +128,54 @@ class LocalLlmEngine {
   }
 
   /**
+   * Loads a model, degrading to the CPU/WASM model when WebGPU fails for GPU
+   * reasons (shader rejection, lost device, out of memory).
+   *
+   * Only a WebGPU-specific failure triggers the retry: a network or storage
+   * error must surface as-is instead of being masked by a different model.
+   */
+  public async loadModel(modelId: string = DEFAULT_LOCAL_MODEL_ID, onProgress?: ProgressCallback): Promise<void> {
+    try {
+      await this.loadModelOnce(modelId, onProgress);
+    } catch (err: any) {
+      const modelDef = getLocalModelById(modelId);
+      // Only an actual WebGPU EXECUTION failure triggers the swap: a browser
+      // without WebGPU keeps its informative error.
+      const canDegrade =
+        !(err instanceof WebGpuUnavailableError) &&
+        modelId !== DEFAULT_WASM_MODEL_ID &&
+        modelDef?.runtimeBackend === 'webgpu' &&
+        isWebGpuFatalError(err);
+      if (!canDegrade) throw err;
+
+      this.fallbackNotice =
+        'WebGPU no pudo ejecutar el modelo en este equipo. Se ha cargado automáticamente el modelo CPU (WASM).';
+      this.status = 'loading';
+      this.lastError = null;
+      this.currentProgress = {
+        progress: 0,
+        text: 'WebGPU no disponible para este modelo: cambiando al modelo CPU (WASM)…'
+      };
+      this.notify();
+
+      await this.loadModelOnce(DEFAULT_WASM_MODEL_ID, onProgress);
+
+      if (this.getStatus() === 'ready' && this.getLoadedModelId() === DEFAULT_WASM_MODEL_ID) {
+        this.currentProgress = {
+          progress: 100,
+          text: 'Modelo CPU (WASM) listo (WebGPU no disponible en este equipo).'
+        };
+        this.notify();
+      }
+    }
+  }
+
+  /**
    * Lazily loads the WebLLM engine with the given model. When already loaded
    * with that model it reuses the existing instance. It prevents duplicated
    * concurrent downloads and handles stale requests.
    */
-  public async loadModel(modelId: string = DEFAULT_LOCAL_MODEL_ID, onProgress?: ProgressCallback): Promise<void> {
+  private async loadModelOnce(modelId: string, onProgress?: ProgressCallback): Promise<void> {
     if (this.status === 'ready' && this.currentModelId === modelId && this.engineInstance) {
       return;
     }
@@ -107,7 +195,7 @@ class LocalLlmEngine {
       this.currentProgress = { progress: 0, text: 'Comprobando compatibilidad WebGPU...' };
       this.notify();
 
-      const gpuCap = await detectWebGPUCapability();
+      const gpuCap = await localLlmInternals.detectCapability();
       if (sessionId !== this.loadSessionId) return; // Stale session
 
       const modelDef = getLocalModelById(modelId);
@@ -123,7 +211,7 @@ class LocalLlmEngine {
         this.status = 'unsupported';
         this.lastError = gpuCap.reason || 'WebGPU no está disponible en este dispositivo.';
         this.notify();
-        throw new Error(this.lastError);
+        throw new WebGpuUnavailableError(this.lastError);
       }
 
       // With a different prior model or an existing instance, unload it cleanly first
@@ -156,30 +244,18 @@ class LocalLlmEngine {
             if (sessionId !== this.loadSessionId) return;
             this.engineInstance = { backend: 'wasm-worker' };
           } else {
-            const { pipeline, env } = await import('@huggingface/transformers');
-            if (sessionId !== this.loadSessionId) return;
-
-            env.allowLocalModels = false;
-            env.useBrowserCache = true;
-            if (env.backends?.onnx?.wasm) {
-              env.backends.onnx.wasm.numThreads = Math.min(4, typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 2) : 2);
-            }
-
-            const instance = await pipeline('text-generation', modelId, {
-              device: 'wasm',
-              dtype: 'q4',
-              progress_callback: (item: any) => {
-                if (sessionId !== this.loadSessionId) return;
-                if (item.status === 'progress' && item.progress !== undefined) {
-                  const pct = Math.round(item.progress);
-                  this.currentProgress = {
-                    progress: pct,
-                    text: `Descargando modelo CPU (${item.file || ''}): ${pct}%`
-                  };
-                  this.notify();
-                  if (onProgress) {
-                    try { onProgress(this.currentProgress); } catch {}
-                  }
+            // Main-thread CPU fallback (no Worker available).
+            const instance = await localLlmInternals.createWasmPipeline(modelId, (item) => {
+              if (sessionId !== this.loadSessionId) return;
+              if (item.status === 'progress' && item.progress !== undefined) {
+                const pct = Math.round(item.progress);
+                this.currentProgress = {
+                  progress: pct,
+                  text: `Descargando modelo CPU (${item.file || ''}): ${pct}%`
+                };
+                this.notify();
+                if (onProgress) {
+                  try { onProgress(this.currentProgress); } catch {}
                 }
               }
             });
@@ -215,8 +291,6 @@ class LocalLlmEngine {
       this.notify();
 
       try {
-        // Dynamic import for code-splitting
-        const webllm = await import('@mlc-ai/web-llm');
         if (sessionId !== this.loadSessionId) return;
 
         const initProgressCallback = (report: any) => {
@@ -236,9 +310,8 @@ class LocalLlmEngine {
           }
         };
 
-        const instance = await webllm.CreateMLCEngine(modelId, {
-          initProgressCallback
-        });
+        // Dynamic import for code-splitting (inside the injectable factory).
+        const instance = await localLlmInternals.createWebGpuEngine(modelId, initProgressCallback);
 
         if (sessionId !== this.loadSessionId) {
           // When another load superseded this one while initializing, dispose the orphan instance
@@ -299,6 +372,8 @@ class LocalLlmEngine {
       throw new Error('El motor local no está listo. Carga el modelo antes de generar.');
     }
 
+    if (options?.signal?.aborted) throw abortError();
+
     this.status = 'generating';
     this.notify();
 
@@ -328,7 +403,8 @@ class LocalLlmEngine {
             prompt,
             wasmMaxTokens,
             temperature,
-            accumulated => stream?.push(accumulated)
+            accumulated => stream?.push(accumulated),
+            options?.signal
           );
           stream?.finish(cleanReply);
           this.status = 'ready';
@@ -380,25 +456,42 @@ class LocalLlmEngine {
       // GPU GENERATION VIA WEB-LLM
       // -----------------------------------------------------------
       if ((options?.stream ?? !!onChunk) && onChunk) {
-        const stream = await this.engineInstance.chat.completions.create({
-          messages,
-          temperature,
-          max_tokens,
-          stream: true
-        });
-
-        // WebGPU already emits DELTAS: they are forwarded as-is, unprocessed.
-        let fullText = '';
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta?.content || '';
-          if (delta) {
-            fullText += delta;
-            onChunk(delta);
+        // Cancellation has a real mechanism on WebGPU: WebLLM can interrupt the
+        // running generation, so the tokens stop being produced.
+        const onAbort = () => {
+          try {
+            (this.engineInstance as any)?.interruptGenerate?.();
+          } catch {
+            /* el motor puede no exponerlo */
           }
+        };
+        options?.signal?.addEventListener('abort', onAbort, { once: true });
+
+        try {
+          const stream = await this.engineInstance.chat.completions.create({
+            messages,
+            temperature,
+            max_tokens,
+            stream: true
+          });
+
+          // WebGPU already emits DELTAS: they are forwarded as-is, unprocessed.
+          let fullText = '';
+          for await (const chunk of stream) {
+            if (options?.signal?.aborted) throw abortError();
+            const delta = chunk.choices[0]?.delta?.content || '';
+            if (delta) {
+              fullText += delta;
+              onChunk(delta);
+            }
+          }
+          if (options?.signal?.aborted) throw abortError();
+          this.status = 'ready';
+          this.notify();
+          return fullText;
+        } finally {
+          options?.signal?.removeEventListener('abort', onAbort);
         }
-        this.status = 'ready';
-        this.notify();
-        return fullText;
       } else {
         const response = await this.engineInstance.chat.completions.create({
           messages,
@@ -413,6 +506,21 @@ class LocalLlmEngine {
         return reply;
       }
     } catch (err: any) {
+      // A user cancellation is not a failure: the engine stays ready.
+      //
+      // The abort SIGNAL is authoritative, not the error's name: WebLLM's
+      // `interruptGenerate()` rejects the running stream with whatever error
+      // the backend produces ("interrupted", a GPU callback failure, …), so
+      // checking only `isAbortError` reported "Detener" as a tutor error and
+      // left `lastError` set. The canonical AbortError is re-thrown so every
+      // upper layer classifies it the same way.
+      if (isAbortError(err) || options?.signal?.aborted) {
+        this.status = 'ready';
+        this.lastError = null;
+        this.notify();
+        throw isAbortError(err) ? err : abortError();
+      }
+
       const isGpuLoss = err?.message?.toLowerCase().includes('device lost') ||
                         err?.message?.toLowerCase().includes('device destroyed') ||
                         err?.message?.toLowerCase().includes('out of memory');

@@ -4,7 +4,9 @@ import {
   type EmbeddingCapabilitiesReport,
   type EmbeddingRuntimeBackend
 } from './capabilities.ts';
+import { isWebGpuFatalError } from '../localLlm/capabilities.ts';
 import { embeddingCache, EMBEDDING_PIPELINE_VERSION, expectedDimensionsForModel } from './cache.ts';
+import { configureOnnxRuntimeWasm } from './ortRuntime.ts';
 import type { SemanticChunk } from './chunking.ts';
 
 export type EmbeddingEngineStatus =
@@ -54,21 +56,37 @@ export function l2NormalizeVector(v: number[], expectedDimensions?: number): num
 }
 
 /**
+ * Norms memoized per vector OBJECT.
+ *
+ * Cached entry vectors are stable objects reused across queries, so their norm
+ * is computed once instead of on every comparison. A `WeakMap` never keeps a
+ * vector alive on its own.
+ */
+const VECTOR_NORMS = new WeakMap<object, number>();
+
+function memoizedNorm(v: number[]): number {
+  const cached = VECTOR_NORMS.get(v);
+  if (cached !== undefined) return cached;
+  const norm = vectorNorm(v);
+  VECTOR_NORMS.set(v, norm);
+  return norm;
+}
+
+/**
  * Cosine similarity. Inputs need not be pre-normalized (norms are computed
- * internally); zero-length or zero-norm inputs score 0.
+ * internally, memoized per vector object); zero-length or zero-norm inputs
+ * score 0.
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
   let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
   for (let i = 0; i < a.length; i++) {
     dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
   }
+  const normA = memoizedNorm(a);
+  const normB = memoizedNorm(b);
   if (normA === 0 || normB === 0) return 0;
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  return dotProduct / (normA * normB);
 }
 
 function stripKnownEmbeddingPrefix(text: string): string {
@@ -103,12 +121,16 @@ const defaultEmbeddingPipelineFactory: EmbeddingPipelineFactory = async ({ model
   // (first download, then offline).
   env.allowLocalModels = false;
   env.useBrowserCache = true;
-  if (env.backends?.onnx?.wasm) {
-    env.backends.onnx.wasm.numThreads = Math.min(
-      4,
-      typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 2) : 2
-    );
-  }
+  // The ONNX runtime itself is served from this same origin (never a CDN), and
+  // thread usage is bounded by what the page can actually provide.
+  //
+  // `proxy` moves the CPU forward pass into ONNX Runtime's own worker: the main
+  // thread keeps painting while a library is indexed. Only for `wasm` (the
+  // proxy refuses non-CPU tensors) and only where a document exists.
+  configureOnnxRuntimeWasm(env, {
+    baseUri: typeof document !== 'undefined' ? document.baseURI : undefined,
+    proxy: device === 'wasm'
+  });
 
   return pipeline('feature-extraction', modelId, {
     dtype,
@@ -153,6 +175,11 @@ export class LocalEmbeddingEngine {
   private loadSessionId: number = 0;
   private currentJobId: number = 0;
   private dirtyPending: boolean = false;
+  /**
+   * Last pipeline factory used by `loadModel`, kept so an inference-time WebGPU
+   * failure can rebuild the pipeline on CPU without re-running detection.
+   */
+  private lastPipelineFactory: EmbeddingPipelineFactory | null = null;
 
   public markDirty(): void {
     this.dirtyPending = true;
@@ -265,6 +292,7 @@ export class LocalEmbeddingEngine {
       const device = resolveEmbeddingDevice(modelDef, caps);
       const dtype = modelDef.preferredDtype ?? 'q8';
       const createPipeline = options?.createPipeline ?? defaultEmbeddingPipelineFactory;
+      this.lastPipelineFactory = createPipeline;
       // Stale-session callbacks are fully ignored: they cannot overwrite the
       // progress or state of a newer load.
       const onProgress = (item: any) => {
@@ -352,6 +380,44 @@ export class LocalEmbeddingEngine {
   }
 
   /**
+   * Runs one forward pass, degrading WebGPU -> CPU/WASM ONCE when the device
+   * itself fails (shader validation, lost device, GPU memory).
+   *
+   * Creating the pipeline successfully does not guarantee it can run: drivers
+   * routinely reject the compute shader only at the first dispatch. Without this
+   * retry the embedding engine stayed unusable until the person changed models
+   * by hand. The backend reported by `getBackend()` always reflects what really
+   * ran.
+   */
+  private async runPipeline(input: string, modelId: string): Promise<any> {
+    try {
+      return await this.pipelineInstance(input, { pooling: 'mean', normalize: false });
+    } catch (err) {
+      if (this.backend !== 'webgpu' || !isWebGpuFatalError(err) || !this.lastPipelineFactory) {
+        throw err;
+      }
+      console.warn('Inferencia de embeddings en WebGPU falló; se reintenta en CPU/WASM:', err);
+
+      await this.disposePipeline(this.pipelineInstance);
+      this.pipelineInstance = null;
+      this.backend = 'wasm';
+      const modelDef = getEmbeddingModelById(modelId);
+
+      const cpuPipeline = await this.lastPipelineFactory({
+        modelId,
+        dtype: modelDef?.preferredDtype ?? 'q8',
+        device: 'wasm',
+        onProgress: () => undefined
+      });
+      this.pipelineInstance = cpuPipeline;
+      this.notify();
+
+      // A second failure is a real error, not a device quirk: propagate it.
+      return await cpuPipeline(input, { pooling: 'mean', normalize: false });
+    }
+  }
+
+  /**
    * Embeds text with the ACTIVE model.
    *
    * - Applies the model prefix (`queryPrefix`/`documentPrefix` from the
@@ -393,10 +459,7 @@ export class LocalEmbeddingEngine {
       const prefix = isQuery ? (modelDef.queryPrefix ?? '') : (modelDef.documentPrefix ?? '');
       const formattedInput = `${prefix}${body}`;
 
-      const output = await this.pipelineInstance(formattedInput, {
-        pooling: 'mean',
-        normalize: false
-      });
+      const output = await this.runPipeline(formattedInput, modelId);
 
       const rawVector = Array.from(output.data as Float32Array | number[]);
       if (rawVector.length < modelDef.dimension) {
@@ -503,7 +566,12 @@ export class LocalEmbeddingEngine {
         pipelineVersion: EMBEDDING_PIPELINE_VERSION,
         dimensions: vector.length,
         vector,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        // Provenance travels WITH the vector: fusion and scoped retrieval read
+        // it from the cache entry, not from a guess based on `sourceType`.
+        substantive: chunk.substantive === true,
+        resourceId: chunk.resourceId,
+        lessonId: chunk.lessonId
       });
 
       newlyIndexed++;

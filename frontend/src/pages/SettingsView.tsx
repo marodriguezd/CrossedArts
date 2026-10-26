@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Download, Upload, RotateCcw, Database, Check, Cpu, AlertTriangle, RefreshCw, Trash2, Info, Palette, Volume2, VolumeX, Mic } from 'lucide-react';
-import { exportSqliteFile, importSqliteFile, exportJsonBackup, importJsonBackup } from '../db/exportImport.ts';
+import { exportSqliteFile, importSqliteFile, exportJsonBackup, importJsonBackup, parseJsonBackupText } from '../db/exportImport.ts';
 import { describeImportResult, describeConflicts, validateCoursePackage } from '../services/coursePackage.ts';
 import { dbBridge } from '../db/sqliteBridge.ts';
 import { aiService, AISettings } from '../ai/aiService.ts';
@@ -10,10 +10,12 @@ import { localLlmEngine, EngineStatus, ModelLoadingProgress } from '../lib/local
 import { LOCAL_MODELS_REGISTRY, getLocalModelById, DEFAULT_WASM_MODEL_ID } from '../lib/localLlm/registry.ts';
 import { localEmbeddingEngine, EmbeddingEngineStatus } from '../lib/localEmbeddings/engine.ts';
 import { embeddingCache } from '../lib/localEmbeddings/cache.ts';
-import { createSemanticChunksFromResourcesAsync } from '../lib/localEmbeddings/chunking.ts';
-import { EMBEDDING_MODELS_REGISTRY, DEFAULT_EMBEDDING_MODEL_ID, getEmbeddingModelById } from '../lib/localEmbeddings/registry.ts';
+import { buildSemanticCorpus } from '../lib/localEmbeddings/corpus.ts';
+import { EMBEDDING_MODELS_REGISTRY, getEmbeddingModelById } from '../lib/localEmbeddings/registry.ts';
+import { getStoredEmbeddingModelId, setStoredEmbeddingModelId } from '../services/embeddingModelPreference.ts';
 import { localAiRuntime, type LocalAiStatus } from '../services/localAiRuntime.ts';
 import { dao } from '../db/dao.ts';
+import { assessImportCapacity, formatBytes } from '../services/storageGuards.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { ThemeToggle } from '../components/common/ThemeToggle.tsx';
 import { useLanguage } from '../hooks/useLanguage.ts';
@@ -41,18 +43,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const [runtimeStatus, setRuntimeStatus] = useState<LocalAiStatus>(localAiRuntime.getStatus());
 
   const [embStatus, setEmbStatus] = useState<EmbeddingEngineStatus>(localEmbeddingEngine.getStatus());
+  const [embBackend, setEmbBackend] = useState(localEmbeddingEngine.getBackend());
   const [, setEmbProgress] = useState(localEmbeddingEngine.getProgress());
   const [embCount, setEmbCount] = useState<number>(0);
   const [indexingText, setIndexingText] = useState<string | null>(null);
   const [embError, setEmbError] = useState<string | null>(null);
   const [selectedEmbeddingModelId, setSelectedEmbeddingModelId] = useState<string>(
-    localEmbeddingEngine.getLoadedModelId() || DEFAULT_EMBEDDING_MODEL_ID
+    localEmbeddingEngine.getLoadedModelId() || getStoredEmbeddingModelId()
   );
   const selectedEmbeddingModelDef = getEmbeddingModelById(selectedEmbeddingModelId);
 
   const [speechConfig, setSpeechConfig] = useState<SpeechSettings>(speechService.getSettings());
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>(speechService.getAvailableVoices());
   const [isTestingVoice, setIsTestingVoice] = useState(false);
+
+  /**
+   * Timers of the transient status lines.
+   *
+   * They were fire-and-forget: navigating away before they fired set state on an
+   * unmounted view. They are tracked and cleared on unmount.
+   */
+  const messageTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    const timers = messageTimers.current;
+    return () => {
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
+    };
+  }, []);
+
+  const later = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      messageTimers.current.delete(id);
+      fn();
+    }, ms);
+    messageTimers.current.add(id);
+  }, []);
 
   const refreshEmbeddingCount = async (modelIdToCount?: string) => {
     try {
@@ -86,6 +113,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     const unsubscribeEmb = localEmbeddingEngine.subscribe((status, progress) => {
       setEmbStatus(status);
       setEmbProgress(progress);
+      setEmbBackend(localEmbeddingEngine.getBackend());
       setEmbError(localEmbeddingEngine.getLastError());
     });
 
@@ -137,7 +165,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       }
       setIndexingText('Extrayendo contenidos y generando hashes SHA-256...');
       const resources = await dao.getAllLearningResources();
-      const chunks = await createSemanticChunksFromResourcesAsync(resources);
+      // ONE chunking route: the canonical corpus boundary (KnowledgeDocument),
+      // exactly the one automatic indexing uses. A second ad-hoc path here used
+      // to produce different fragments for the same material.
+      const { chunks } = await buildSemanticCorpus(resources, selectedEmbeddingModelId);
 
       setIndexingText(`Indexando ${chunks.length} fragmentos...`);
       await localEmbeddingEngine.indexChunks(chunks, (indexed, total) => {
@@ -146,14 +177,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
       await refreshEmbeddingCount();
       setIndexingText(`✅ Indexación completa: ${chunks.length} fragmentos indexados.`);
-      setTimeout(() => setIndexingText(null), 3500);
+      later(() => setIndexingText(null), 3500);
     } catch (err: any) {
       if (err?.message?.includes('cancelada')) {
         setIndexingText('Indexación cancelada por el usuario.');
       } else {
         setEmbError(err?.message || 'Error durante la indexación semántica.');
       }
-      setTimeout(() => setIndexingText(null), 3000);
+      later(() => setIndexingText(null), 3000);
+    }
+  };
+
+  /**
+   * Releases the resident embedding model now (the vectors stay in IndexedDB).
+   * Indexing cannot be interrupted this way: the button is hidden while busy.
+   */
+  const handleReleaseEmbeddingMemory = async () => {
+    try {
+      await localEmbeddingEngine.unload();
+      setEmbStatus(localEmbeddingEngine.getStatus());
+      setEmbBackend(localEmbeddingEngine.getBackend());
+      setIndexingText('Modelo de embeddings liberado de la memoria.');
+      later(() => setIndexingText(null), 2500);
+    } catch (err: any) {
+      setEmbError(err?.message || 'No se pudo liberar el modelo de embeddings.');
     }
   };
 
@@ -166,7 +213,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     await embeddingCache.clearCache();
     await refreshEmbeddingCount();
     setIndexingText('Caché de vectores vaciado.');
-    setTimeout(() => setIndexingText(null), 2000);
+    later(() => setIndexingText(null), 2000);
   };
 
   const handleSaveAi = (e: React.FormEvent) => {
@@ -178,7 +225,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     }
     aiService.saveSettings(aiConfig);
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+    later(() => setSavedSuccess(false), 2500);
 
     // Enabling local AI prepares everything automatically if consent already exists.
     if (aiConfig.provider === 'local' && localAiRuntime.hasConsent()) {
@@ -229,6 +276,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   };
 
   const [storageReport, setStorageReport] = useState(dbBridge.getStorageReport());
+  const [storageEstimate, setStorageEstimate] = useState<{ usage?: number; quota?: number } | null>(null);
+  const [persistRequesting, setPersistRequesting] = useState(false);
+  const [persistFeedback, setPersistFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [lastExported, setLastExported] = useState<string | null>(null);
   const [dbFeedback, setDbFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [pendingImport, setPendingImport] = useState<File | null>(null);
@@ -242,6 +292,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     return () => unsubStorage();
   }, []);
 
+  /** Usage/quota is only readable after mount (and only where StorageManager exists). */
+  const refreshStorageEstimate = useCallback(async () => {
+    const estimate = await dbBridge.getStorageEstimate();
+    setStorageEstimate(estimate);
+    return estimate;
+  }, []);
+
+  useEffect(() => {
+    void refreshStorageEstimate();
+  }, [refreshStorageEstimate]);
+
+  /**
+   * Persistent storage is requested ONLY from this explicit gesture: browsers
+   * ignore (or auto-deny) an unprompted `persist()` call, and the app must never
+   * claim protection it does not have.
+   */
+  const handleRequestPersistence = async () => {
+    setPersistRequesting(true);
+    setPersistFeedback(null);
+    try {
+      const granted = await dbBridge.requestPersistentStorage();
+      setPersistFeedback({
+        type: granted ? 'success' : 'error',
+        text: granted ? t('settings.storageGranted') : t('settings.storageDenied')
+      });
+    } catch {
+      setPersistFeedback({ type: 'error', text: t('settings.storageDenied') });
+    } finally {
+      setPersistRequesting(false);
+      await refreshStorageEstimate();
+    }
+  };
+
   const handleExport = async () => {
     setDbFeedback(null);
     try {
@@ -253,12 +336,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     // Destructive confirmation goes through ConfirmDialog (accessible), not native confirm().
     e.target.value = '';
     if (!file) return;
     setDbFeedback(null);
+
+    // Restoring a backup keeps the file, the snapshot and the exported copy in
+    // memory at once. If the quota cannot cover it, say so BEFORE destroying
+    // anything instead of failing halfway through the restore.
+    const estimate = await refreshStorageEstimate();
+    const capacity = assessImportCapacity(file.size, estimate);
+    if (!capacity.sufficient) {
+      setDbFeedback({
+        type: 'error',
+        text: t('settings.storageImportBlocked', {
+          file: file.name,
+          need: formatBytes(capacity.requiredBytes),
+          free: formatBytes(capacity.availableBytes)
+        })
+      });
+      return;
+    }
+
     setPendingImport(file);
   };
 
@@ -311,12 +412,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       const isJson = file.name.toLowerCase().endsWith('.json') || file.type === 'application/json';
       if (isJson) {
         const text = await file.text();
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          throw new Error(t('settings.jsonInvalid'));
-        }
+        // The size ceiling is applied BEFORE parsing: an oversized backup used
+        // to freeze the tab with no explanation.
+        const parsed = parseJsonBackupText(text, effective);
         await importJsonBackup(parsed as Record<string, any[]>, effective);
         setDbFeedback({ type: 'success', text: `Respaldo JSON restaurado correctamente desde "${file.name}".` });
       } else {
@@ -405,11 +503,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </div>
           </dl>
 
+          {/* Protección del almacenamiento: solo se solicita con un gesto explícito. */}
+          <div className="space-y-2 rounded-lg border border-line bg-canvas p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="type-micro">{t('settings.storageTitle')}</span>
+              <Badge tone={storageReport.isPersistentGranted ? 'success' : 'warning'}>
+                {storageReport.isPersistentGranted ? t('settings.storageProtected') : t('settings.storageNotProtected')}
+              </Badge>
+            </div>
+            <p className="text-meta text-muted">{t('settings.storageBody')}</p>
+            <p className="text-meta font-mono text-ink">
+              {storageEstimate && (storageEstimate.quota ?? 0) > 0
+                ? t('settings.storageUsage', {
+                    used: formatBytes(storageEstimate.usage ?? 0),
+                    quota: formatBytes(storageEstimate.quota)
+                  })
+                : t('settings.storageUsageUnknown')}
+            </p>
+            {!storageReport.isPersistentGranted && (
+              <Button variant="outline" onClick={() => void handleRequestPersistence()} disabled={persistRequesting}>
+                <Database size={15} aria-hidden="true" />
+                {persistRequesting ? t('settings.storageRequesting') : t('settings.storageProtect')}
+              </Button>
+            )}
+            {persistFeedback && (
+              <InlineStatus tone={persistFeedback.type === 'success' ? 'success' : 'error'}>
+                {persistFeedback.type === 'success'
+                  ? <Check size={14} className="shrink-0" aria-hidden="true" />
+                  : <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />}
+                <span>{persistFeedback.text}</span>
+              </InlineStatus>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Button variant="outline" onClick={handleExport}>
               <Download size={15} aria-hidden="true" /> Exportar (.sqlite)
             </Button>
-            <Button variant="outline" onClick={() => exportJsonBackup()}>
+            <Button variant="outline" onClick={() => void exportJsonBackup()}>
               <Download size={15} aria-hidden="true" /> Exportar JSON
             </Button>
             <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-secondary font-medium text-ink transition-colors hover:bg-accent-soft/60">
@@ -794,8 +925,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                 <span>
                   <strong className="text-ink">Descarga y persistencia en caché:</strong> La primera
                   carga de un modelo local requiere conexión a internet para descargar sus pesos (
-                  {selectedModelDef?.downloadSizeApprox || '~1 GB'}). Una vez descargado, queda en la
-                  caché de IndexedDB y funcionará 100% offline.
+                  {selectedModelDef?.downloadSizeApprox || '~1 GB'}). Una vez descargado, el navegador
+                  lo guarda en su caché HTTP (Cache Storage) y funcionará 100% offline. Los vectores
+                  semánticos se guardan aparte, en IndexedDB.
                 </span>
               </div>
 
@@ -975,14 +1107,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                 onChange={async (e) => {
                   const newId = e.target.value;
                   setSelectedEmbeddingModelId(newId);
+                  // The choice survives the session: automatic indexing reads it
+                  // instead of silently falling back to the default model.
+                  setStoredEmbeddingModelId(newId);
                   try {
                     await localEmbeddingEngine.loadModel(newId);
                     await refreshEmbeddingCount(newId);
+                    // Switching identity leaves the new model without vectors: the
+                    // library is re-indexed in the background (never blocking).
+                    localAiRuntime.scheduleIndexing(aiConfig.provider);
                   } catch {}
                 }}
                 className={INPUT_CLS}
               >
-                <optgroup label="⚡ Recomendado (Ligero / Alta velocidad en CPU y WebGPU)">
+                <optgroup label="⚡ Recomendado (Ligero: se ejecuta en CPU/WASM)">
                   {EMBEDDING_MODELS_REGISTRY.filter(m => m.tier === 'light' || m.recommended).map(m => (
                     <option key={m.id} value={m.id}>
                       {m.name} · {m.downloadSizeApprox} ({m.dimensions || m.dimension}d) ★ Recomendado
@@ -1007,6 +1145,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
               {selectedEmbeddingModelDef && (
                 <div className="rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
                   <p className="text-ink">{selectedEmbeddingModelDef.description}</p>
+                  {/* Backend EFECTIVO: nunca se anuncia WebGPU si los vectores se
+                      calculan en CPU. */}
+                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-micro text-faint">
+                    <Badge tone={embBackend === 'webgpu' ? 'accent' : 'neutral'}>
+                      {embBackend === 'webgpu' ? 'WebGPU (GPU)' : embBackend === 'wasm' ? 'CPU · WASM' : 'Sin cargar'}
+                    </Badge>
+                    {selectedEmbeddingModelDef.preferredBackend === 'wasm' && (
+                      <span>Este modelo se ejecuta siempre en CPU/WASM.</span>
+                    )}
+                  </p>
                   <p className="mt-1 text-micro text-faint">
                     Dimensión vectorial: {selectedEmbeddingModelDef.dimensions || selectedEmbeddingModelDef.dimension}d · Idiomas: {selectedEmbeddingModelDef.languages} · Licencia: {selectedEmbeddingModelDef.license}
                   </p>
@@ -1023,6 +1171,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                   canónico permanece ligero y libre de matrices binarias.
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {embStatus === 'ready' && (
+                    <Button size="sm" variant="quiet" onClick={handleReleaseEmbeddingMemory}>
+                      <Trash2 size={12} aria-hidden="true" /> Liberar memoria
+                    </Button>
+                  )}
                   {embCount > 0 && (
                     <Button size="sm" variant="quiet" onClick={handleClearSemanticCache}>
                       <Trash2 size={12} aria-hidden="true" /> Vaciar caché

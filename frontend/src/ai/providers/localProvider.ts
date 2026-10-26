@@ -3,10 +3,11 @@ import type { AssistantResponse } from '../types.ts';
 import { localAiRuntime } from '../../services/localAiRuntime.ts';
 import { localLlmEngine } from '../../lib/localLlm/engine.ts';
 import { buildAssistantPrompt } from '../../lib/localLlm/prompts.ts';
+import { resolveContextBudget, trimChatHistory } from '../../lib/localLlm/contextBudget.ts';
 
 export class LocalProviderStrategy implements AIProviderStrategy {
   async execute(req: ProviderExecutionRequest): Promise<AssistantResponse> {
-    const { messages, combinedContext, ragContext, hasSubstantiveContext, retrievalMode, onChunk } = req;
+    const { messages, combinedContext, ragContext, hasSubstantiveContext, retrievalMode, onChunk, signal } = req;
     const lastUserQuery = messages[messages.length - 1]?.content || '';
 
     const readiness = await localAiRuntime.ensureLocalAiReady({ provider: 'local' });
@@ -41,9 +42,17 @@ export class LocalProviderStrategy implements AIProviderStrategy {
         { role: 'user' as const, content: user }
       ];
 
-      const answer = await localLlmEngine.generate(promptMessages, {
+      // Backstop: whatever the caller sent, the prompt must fit the window of
+      // the model that is actually loaded (2k-4k tokens for the CPU models).
+      const fitted = trimChatHistory(
+        promptMessages,
+        resolveContextBudget(localLlmEngine.getLoadedModelId())
+      );
+
+      const answer = await localLlmEngine.generate(fitted.messages, {
         stream: !!onChunk,
-        onChunk
+        onChunk,
+        signal
       });
 
       return {

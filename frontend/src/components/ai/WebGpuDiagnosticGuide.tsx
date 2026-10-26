@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Cpu,
   CheckCircle2,
@@ -48,6 +48,14 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  /** Timer of the "copiado" badge; cleared on unmount and on re-copy. */
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   const detectedBrowser = detectBrowserFamily();
   const detectedOs = detectOsPlatform();
@@ -87,7 +95,8 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
       if (typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(text);
         setCopiedKey(key);
-        setTimeout(() => setCopiedKey(null), 2200);
+        if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+        copiedTimerRef.current = setTimeout(() => setCopiedKey(null), 2200);
       }
     } catch {
       // Ignore clipboard failure: `navigator.clipboard` is unavailable in insecure contexts

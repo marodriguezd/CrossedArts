@@ -40,10 +40,26 @@ ${retrievedContext}
   return { system, user };
 }
 
+/**
+ * Ceiling for the text handed to the summarizer.
+ *
+ * The whole material used to be pasted into a 2k-4k-token window: the model then
+ * truncated it silently (usually losing the end) or failed. The input is capped
+ * explicitly and the model is told the text was shortened.
+ */
+export const MAX_SUMMARIZE_INPUT_CHARS = 6000;
+
 export function buildSummarizePrompt(textToSummarize: string): { system: string; user: string } {
   const system = `Eres un asistente de síntesis pedagógica para CrossedArts.
 Resume el texto suministrado destacando los puntos clave, sin agregar información externa ni opiniones inventadas.`;
 
-  const user = `Resume el siguiente texto en viñetas estructuradas:\n\n${textToSummarize}`;
+  const source = textToSummarize || '';
+  const truncated = source.length > MAX_SUMMARIZE_INPUT_CHARS;
+  const body = truncated ? source.slice(0, MAX_SUMMARIZE_INPUT_CHARS) : source;
+  const note = truncated
+    ? '\n\n[Texto acotado: se resume solo el fragmento inicial por límite de contexto del modelo.]'
+    : '';
+
+  const user = `Resume el siguiente texto en viñetas estructuradas:\n\n${body}${note}`;
   return { system, user };
 }

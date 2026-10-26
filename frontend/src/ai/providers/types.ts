@@ -13,6 +13,8 @@ export interface ProviderExecutionRequest {
    * only), never the accumulated text or the full final answer.
    */
   onChunk?: (delta: string) => void;
+  /** Cancellation token for a long generation (aborted stream). */
+  signal?: AbortSignal;
 }
 
 export interface AIProviderStrategy {

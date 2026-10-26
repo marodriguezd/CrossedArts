@@ -70,6 +70,25 @@ export interface ResourceDestination {
   targetTitle?: string;
 }
 
+/**
+ * Anything the ingestion pipeline can read.
+ *
+ * `bufferedBytes` and `cachedFingerprint` are MEMOIZED reads: the caller reads
+ * the file once, hashes it once, and every parser reuses both. Before, the
+ * service hashed the file and the parser read and hashed it again.
+ *
+ * The names avoid `bytes`/`fingerprint` because `Blob.bytes()` would be
+ * shadowed by an unrelated field on a real `File`.
+ */
+export interface IngestionSource {
+  name: string;
+  size: number;
+  text?: () => Promise<string>;
+  arrayBuffer: () => Promise<ArrayBuffer>;
+  bufferedBytes?: ArrayBuffer;
+  cachedFingerprint?: string;
+}
+
 export interface IngestionOptions {
   category?: string;
   importAsBook?: boolean;

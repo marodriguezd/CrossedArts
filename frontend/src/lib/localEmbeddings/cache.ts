@@ -1,6 +1,13 @@
 import { getEmbeddingModelById } from './registry.ts';
 
-export const EMBEDDING_PIPELINE_VERSION = 'v2.0-embeddinggemma-mrl256-sha256';
+/**
+ * Cache-schema identity.
+ *
+ * Bumped whenever the STORED entry shape changes: v2.1 adds `substantive` and
+ * the resource/lesson anchors, so entries written before it have no valid
+ * provenance and must expire instead of being served.
+ */
+export const EMBEDDING_PIPELINE_VERSION = 'v2.1-substantive-anchors';
 
 export interface CachedVectorEntry {
   chunkId: string;
@@ -14,6 +21,14 @@ export interface CachedVectorEntry {
   dimensions?: number;
   vector: number[];
   updatedAt: number;
+  /**
+   * Mirrors `SemanticChunk.substantive`: the chunk carries body content.
+   * Fusion reads it so a metadata-only hit never claims to be substantive.
+   */
+  substantive?: boolean;
+  /** Provenance anchors, needed by scoped retrieval. */
+  resourceId?: string;
+  lessonId?: string;
 }
 
 const IDB_NAME = 'CrossedArts_Embeddings';
@@ -61,9 +76,29 @@ export function migrateLegacyCacheRecord(record: CachedVectorEntry): CachedVecto
   return { ...record, pipelineVersion };
 }
 
+/**
+ * Upper bound for vectors retained in memory.
+ *
+ * A 256-d vector costs ~2 KB as a JS array; caching a 5k-chunk library kept
+ * ~10 MB alive forever. The cache is an OPTIMIZATION, so it is bounded and
+ * evicts least-recently-used entries: IndexedDB stays the source of truth.
+ */
+const MAX_IN_MEMORY_VECTORS = 512;
+
 class LocalEmbeddingCache {
-  /** In-memory cache keyed by the same logical key as IndexedDB. */
+  /** In-memory cache keyed by the same logical key as IndexedDB (LRU order). */
   private inMemoryCache: Map<string, CachedVectorEntry> = new Map();
+
+  /** Inserts/refreshes an entry and evicts the least recently used ones. */
+  private rememberInMemory(key: string, entry: CachedVectorEntry): void {
+    this.inMemoryCache.delete(key);
+    this.inMemoryCache.set(key, entry);
+    while (this.inMemoryCache.size > MAX_IN_MEMORY_VECTORS) {
+      const oldest = this.inMemoryCache.keys().next();
+      if (oldest.done) break;
+      this.inMemoryCache.delete(oldest.value);
+    }
+  }
   /**
    * IndexedDB handle reused across operations.
    *
@@ -168,7 +203,10 @@ class LocalEmbeddingCache {
     // session to the next.
     const inMemory = this.inMemoryCache.get(cacheKey);
     if (inMemory !== undefined) {
-      if (this.isEntryValid(inMemory, modelId, pipelineVersion)) return inMemory;
+      if (this.isEntryValid(inMemory, modelId, pipelineVersion)) {
+        this.rememberInMemory(cacheKey, inMemory);
+        return inMemory;
+      }
       // Invalid in-memory entry: dropped, then IndexedDB is tried.
       this.inMemoryCache.delete(cacheKey);
     }
@@ -183,7 +221,7 @@ class LocalEmbeddingCache {
         req.onsuccess = () => {
           const res = (req.result as CachedVectorEntry) || null;
           if (res && this.isEntryValid(res, modelId, pipelineVersion)) {
-            this.inMemoryCache.set(cacheKey, res);
+            this.rememberInMemory(cacheKey, res);
             resolve(res);
           } else {
             resolve(null);
@@ -200,7 +238,7 @@ class LocalEmbeddingCache {
     const pipelineVersion = entry.pipelineVersion || EMBEDDING_PIPELINE_VERSION;
     const normalized: CachedVectorEntry = { ...entry, pipelineVersion };
     const cacheKey = this.entryKey(normalized);
-    this.inMemoryCache.set(cacheKey, normalized);
+    this.rememberInMemory(cacheKey, normalized);
 
     if (!this.hasIndexedDB()) return;
 
@@ -215,6 +253,53 @@ class LocalEmbeddingCache {
       });
     } catch (err) {
       console.warn('Error guardando vector en IndexedDB:', err);
+    }
+  }
+
+  /**
+   * Writes MANY vectors in a single IndexedDB transaction.
+   *
+   * Restoring a backup used to call `setEntry` per vector: 5.000 vectors meant
+   * 5.000 transactions, each with its own commit. The whole batch now shares one
+   * readwrite transaction, which is atomic (all or nothing) and orders of
+   * magnitude cheaper.
+   *
+   * Returns how many entries were written: the full batch on commit, `0` when
+   * IndexedDB is unavailable or the transaction failed. Memory is updated in
+   * either case, since it is only a cache in front of the store.
+   */
+  public async setEntries(entries: CachedVectorEntry[]): Promise<number> {
+    if (entries.length === 0) return 0;
+
+    const normalized = entries.map((entry) => {
+      const withVersion: CachedVectorEntry = {
+        ...entry,
+        pipelineVersion: entry.pipelineVersion || EMBEDDING_PIPELINE_VERSION
+      };
+      return { entry: withVersion, cacheKey: this.entryKey(withVersion) };
+    });
+
+    for (const { entry, cacheKey } of normalized) this.rememberInMemory(cacheKey, entry);
+
+    if (!this.hasIndexedDB()) return normalized.length;
+
+    try {
+      const db = await this.openIDB();
+      const storeName = this.resolveStore(db);
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        for (const { entry, cacheKey } of normalized) {
+          store.put({ ...entry, cacheKey });
+        }
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      return normalized.length;
+    } catch (err) {
+      console.warn('Error guardando vectores en IndexedDB:', err);
+      return 0;
     }
   }
 
@@ -244,8 +329,10 @@ class LocalEmbeddingCache {
 
         const settle = (rawList: CachedVectorEntry[]) => {
           const list = (rawList || []).filter(isEntryValid);
+          // Only the tail is retained: loading a large library must not pin
+          // every vector in memory at once.
           for (const item of list) {
-            this.inMemoryCache.set(this.entryKey(item), item);
+            this.rememberInMemory(this.entryKey(item), item);
           }
           resolve(list);
         };
