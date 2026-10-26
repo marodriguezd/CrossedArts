@@ -1,11 +1,15 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from sqlalchemy import ForeignKey, String, Integer, Float, DateTime, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
 from backend.app.core.utils import utc_now_naive
+
+if TYPE_CHECKING:
+    from backend.app.models.resource import LearningResource, MediaAsset
+
 
 class ExtractedMetadata(Base):
     __tablename__ = "extracted_metadata"

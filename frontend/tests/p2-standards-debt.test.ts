@@ -90,6 +90,25 @@ test('P2.5: el editor de oclusión no usa literales de paleta', () => {
   }
 });
 
+test('P2.5: la variante `dark:` de Tailwind resuelve con data-theme, no con una clase', () => {
+  const config = readFileSync(new URL('../tailwind.config.js', import.meta.url), 'utf-8');
+  assert.ok(
+    /darkMode: \['selector', '\[data-theme="dark"\]'\]/.test(config),
+    'darkMode debe resolver con el atributo que escribe useTheme'
+  );
+
+  // Nadie añade la clase `.dark`: si el config volviera a `class`, la variante
+  // `dark:` quedaría muerta sin que ningún test lo notara.
+  const theme = readFileSync(new URL('../src/hooks/useTheme.ts', import.meta.url), 'utf-8');
+  assert.ok(theme.includes('dataset.theme'), 'useTheme escribe data-theme');
+  assert.ok(!/classList\.(?:add|toggle)\(['"]dark['"]\)/.test(theme), 'useTheme no pone la clase .dark');
+});
+
+test('P2.5: la paleta heredada `brand` no vuelve al tema', () => {
+  const config = readFileSync(new URL('../tailwind.config.js', import.meta.url), 'utf-8');
+  assert.ok(!/\bbrand: \{/.test(config), 'los 10 literales de `brand` no tenían un solo uso');
+});
+
 test('P2.5: Ajustes no afirma que los modelos vivan en IndexedDB', () => {
   const settings = readFileSync(new URL('../src/pages/SettingsView.tsx', import.meta.url), 'utf-8');
   assert.ok(

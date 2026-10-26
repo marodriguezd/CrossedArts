@@ -22,7 +22,7 @@ CrossedArts is a **local-first, offline-capable learning operating system**.
    - Every generated answer includes structured citations (`RagSourceCitation`) and honest model identification (`modelUsed`).
 5. **Modular AI Strategy & Model Runtime**:
    - AI provider strategies (`frontend/src/ai/providers/`): Local on-device (WebLLM / WebGPU / WASM fallback), Ollama (local server), OpenAI (in-memory opt-in key), and Demo (zero-network offline heuristic).
-   - Task selector (`frontend/src/lib/localLlm/taskSelector.ts`) pairs workloads (tutor, summarization, flashcards, questions) with right-sized models based on hardware capabilities.
+   - Task selector (`selectBestLocalModelForTask` en `frontend/src/lib/localLlm/selection.ts`) pairs workloads (tutor, summarization, flashcards, questions) with right-sized models based on hardware capabilities.
 6. **Zero-Web-Access Static Deployment**:
    - Static SPA (React 19 + TypeScript + Vite) deployed to GitHub Pages (`main -> GitHub Actions -> GitHub Pages`).
    - SQLite WASM (`sql-wasm.wasm`) is shipped locally in `frontend/public/`—zero external CDN script dependencies.

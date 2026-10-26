@@ -1,12 +1,18 @@
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 from sqlalchemy import ForeignKey, String, Float, Enum, Integer, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
 from backend.app.core.utils import utc_now_naive
 from backend.app.models.base import TimestampMixin, ResourceStatus, CourseDifficulty
+
+if TYPE_CHECKING:
+    from backend.app.models.activity import LearningSession, MediaProgress, Note
+    from backend.app.models.content import ExtractedMetadata, Transcript
+    from backend.app.models.course_structure import Lesson, Module, Task
+
 
 class LearningResource(Base, TimestampMixin):
     __tablename__ = "learning_resource"

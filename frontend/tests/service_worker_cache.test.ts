@@ -1,148 +1,196 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
+import * as vm from 'node:vm';
+
+const SW_SOURCE = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+const SITE_ORIGIN = 'https://app.example';
+// GitHub Pages sirve el shell bajo un prefijo: ambas formas tienen que pasar.
+const SCOPES = [`${SITE_ORIGIN}/`, `${SITE_ORIGIN}/CrossedArts/`];
+
+interface ServiceWorkerSandbox {
+  scope?: string;
+  caches?: Record<string, unknown>;
+  fetch?: (request: Request) => Promise<Response>;
+}
+
+/**
+ * Evalúa el `sw.js` REAL en un contexto aislado y devuelve sus funciones y sus
+ * handlers. Copiar las funciones dentro del test dejaba pasar los bugs del
+ * worker (el guard de `/api/` bajo subdirectorio, por ejemplo): se comprobaba
+ * la copia, no el archivo.
+ */
+function loadServiceWorker(options: ServiceWorkerSandbox = {}) {
+  const handlers: Record<string, (event: unknown) => void> = {};
+  const context = vm.createContext({
+    self: {
+      addEventListener: (name: string, handler: (event: unknown) => void) => {
+        handlers[name] = handler;
+      },
+      skipWaiting: () => {},
+      clients: { claim: async () => {} },
+      location: { origin: SITE_ORIGIN },
+      registration: { scope: options.scope ?? `${SITE_ORIGIN}/` }
+    },
+    caches: options.caches ?? {
+      match: async () => undefined,
+      open: async () => ({ put: async () => {}, add: async () => {} }),
+      keys: async () => []
+    },
+    fetch: options.fetch ?? (async () => new Response('ok', { status: 200 })),
+    console,
+    URL,
+    Request,
+    Response,
+    Error
+  });
+
+  const api = vm.runInContext(
+    `${SW_SOURCE}
+     ;({
+       isDynamicOrBackendRequest,
+       isCacheableFrontendAsset,
+       STATIC_SHELL_ASSETS,
+       KNOWN_SHELL_FILENAMES,
+       APP_SHELL_VERSION,
+       CACHE_PREFIX
+     });`,
+    context
+  );
+
+  return { api, handlers };
+}
 
 test('SW-1: Service Worker defines explicit version and prefix', () => {
-  const sw = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+  const { api } = loadServiceWorker();
 
-  assert.ok(/const APP_SHELL_VERSION = 'v\d+'/.test(sw), 'Must have explicit version');
-  assert.ok(sw.includes("const CACHE_PREFIX = 'crossedarts-shell-'"), 'Must define cache prefix');
-  assert.ok(sw.includes('${CACHE_PREFIX}${APP_SHELL_VERSION}'), 'Cache name must include version');
+  assert.match(api.APP_SHELL_VERSION, /^v\d+$/, 'Must have explicit version');
+  assert.equal(api.CACHE_PREFIX, 'crossedarts-shell-', 'Must define cache prefix');
+  assert.ok(SW_SOURCE.includes('${CACHE_PREFIX}${APP_SHELL_VERSION}'), 'Cache name must include version');
 });
 
 test('SW-2: Dynamic backend routes (/api/, /api/v1/, /docs, /openapi.json, /static/, /media/, /stream/, /content/) are strictly bypassed', () => {
-  const sw = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+  for (const scope of SCOPES) {
+    const { api } = loadServiceWorker({ scope });
+    const plain = { headers: new Headers() };
+    const url = (path: string) => new URL(path, scope);
 
-  assert.ok(sw.includes("isDynamicOrBackendRequest"), 'Must have backend route detection function');
-  assert.ok(sw.includes("pathname.startsWith('/api/')"), 'Must exclude /api/ routes');
-  assert.ok(sw.includes("pathname.startsWith('/docs')"), 'Must exclude /docs');
-  assert.ok(sw.includes("pathname.startsWith('/openapi.json')"), 'Must exclude /openapi.json');
-  assert.ok(sw.includes("pathname.startsWith('/media/')"), 'Must exclude /media/');
-  assert.ok(sw.includes("pathname.startsWith('/stream/')"), 'Must exclude /stream/');
-  assert.ok(sw.includes("pathname.startsWith('/content/')"), 'Must exclude /content/');
+    for (const path of [
+      'api/v1/courses',
+      'api/health',
+      'docs',
+      'openapi.json',
+      'static/a.css',
+      'media/1/stream',
+      'stream/1',
+      'content/abc'
+    ]) {
+      const resolved = url(path);
+      assert.equal(api.isDynamicOrBackendRequest(plain, resolved), true, `${resolved.pathname} debe ser dinámica`);
+      assert.equal(api.isCacheableFrontendAsset(plain, resolved), false, `${resolved.pathname} no debe cachearse`);
+    }
+  }
 });
 
 test('SW-3: Dynamic headers (range, authorization, event-stream) are bypassed from cache', () => {
-  const sw = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+  const { api } = loadServiceWorker();
+  const asset = new URL(`${SITE_ORIGIN}/assets/index-abc.js`);
 
-  assert.ok(sw.includes("request.headers.has('range')"), 'Must check for Range header');
-  assert.ok(sw.includes("request.headers.has('authorization')"), 'Must check for Authorization header');
-  assert.ok(sw.includes("!cacheControl.includes('no-store')"), 'Must respect no-store');
-  assert.ok(sw.includes("!cacheControl.includes('private')"), 'Must respect private cache-control');
+  assert.equal(api.isDynamicOrBackendRequest({ headers: new Headers({ authorization: 'Bearer x' }) }, asset), true);
+  assert.equal(api.isDynamicOrBackendRequest({ headers: new Headers({ range: 'bytes=0-1024' }) }, asset), true);
+  assert.equal(api.isDynamicOrBackendRequest({ headers: new Headers({ range: 'bytes=0-1024' }) }, asset), true);
+  assert.equal(api.isCacheableFrontendAsset({ headers: new Headers({ authorization: 'Bearer x' }) }, asset), false);
+
+  assert.ok(SW_SOURCE.includes("!cacheControl.includes('no-store')"), 'Must respect no-store');
+  assert.ok(SW_SOURCE.includes("!cacheControl.includes('private')"), 'Must respect private cache-control');
 });
 
 test('SW-4: Static frontend assets and app shell navigation remain cacheable and offline-first', () => {
-  const sw = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+  for (const scope of SCOPES) {
+    const { api } = loadServiceWorker({ scope });
+    const plain = { headers: new Headers() };
 
-  // Precache includes core shell assets
-  assert.ok(sw.includes("'./'"), 'Must precache root');
-  assert.ok(sw.includes("'./index.html'"), 'Must precache index.html');
-  assert.ok(sw.includes("'./sql-wasm.wasm'"), 'Must precache sql-wasm.wasm');
-  assert.ok(sw.includes("'./manifest.json'"), 'Must precache manifest.json');
+    for (const path of ['assets/index-abc.js', 'sql-wasm.wasm', 'manifest.json', 'favicon.svg', 'index.html']) {
+      const resolved = new URL(path, scope);
+      assert.equal(api.isDynamicOrBackendRequest(plain, resolved), false, `${resolved.pathname} es estática`);
+      assert.equal(api.isCacheableFrontendAsset(plain, resolved), true, `${resolved.pathname} debe cachearse`);
+    }
+  }
 
-  // Navigation mode handles app-shell fallback
-  assert.ok(sw.includes("event.request.mode === 'navigate'"), 'Must handle navigation fallback');
-  assert.ok(sw.includes("caches.match('./index.html')"), 'Must fall back to cached index.html offline');
+  assert.ok(SW_SOURCE.includes("event.request.mode === 'navigate'"), 'Must handle navigation fallback');
+  assert.ok(SW_SOURCE.includes("caches.match('./index.html')"), 'Must fall back to cached index.html offline');
 });
 
-test('SW-5: Logic evaluation of isDynamicOrBackendRequest and isCacheableFrontendAsset', () => {
-  // Test the pure logic by evaluating isolated helper representations matching sw.js
-  const KNOWN_SHELL_FILENAMES = new Set([
-    'index.html',
-    'favicon.svg',
-    'manifest.json',
-    'sql-wasm.wasm'
-  ]);
-  const STATIC_ASSET_EXTENSIONS = /\.(?:js|mjs|css|wasm|html|svg|png|jpg|jpeg|webp|gif|ico|woff|woff2|ttf|webmanifest)$/i;
+test('SW-5: la lista blanca no cachea rutas arbitrarias del mismo origen', () => {
+  for (const scope of SCOPES) {
+    const { api } = loadServiceWorker({ scope });
+    const plain = { headers: new Headers() };
 
-  function isDynamicOrBackendRequest(request: { headers: Map<string, string> }, url: { pathname: string }) {
-    const pathname = url.pathname;
-    if (
-      pathname.startsWith('/api/') ||
-      pathname === '/api' ||
-      pathname.startsWith('/docs') ||
-      pathname.startsWith('/redoc') ||
-      pathname.startsWith('/openapi.json') ||
-      pathname.startsWith('/static/') ||
-      pathname.startsWith('/media/') ||
-      pathname.startsWith('/stream/') ||
-      pathname.startsWith('/content/')
-    ) {
-      return true;
+    for (const path of ['custom-dynamic', 'user-data', 'data.json', 'some/path']) {
+      const resolved = new URL(path, scope);
+      assert.equal(api.isCacheableFrontendAsset(plain, resolved), false, `${resolved.pathname} no es un asset`);
     }
-    if (
-      request.headers.has('range') ||
-      request.headers.has('authorization') ||
-      request.headers.get('accept')?.includes('text/event-stream')
-    ) {
-      return true;
-    }
-    return false;
   }
+});
 
-  function isCacheableFrontendAsset(request: { headers: Map<string, string> }, url: { pathname: string }) {
-    if (isDynamicOrBackendRequest(request, url)) return false;
-    const pathname = url.pathname;
-    if (pathname.includes('/assets/')) return true;
-    const basename = pathname.substring(pathname.lastIndexOf('/') + 1);
-    if (basename && KNOWN_SHELL_FILENAMES.has(basename)) {
-      return true;
+test('SW-6: la revalidación en segundo plano se entrega a waitUntil', async () => {
+  const requested: string[] = [];
+  const stored: string[] = [];
+  const { handlers } = loadServiceWorker({
+    caches: {
+      match: async () => new Response('cached', { status: 200 }),
+      open: async () => ({
+        put: async (request: Request) => {
+          stored.push(request.url);
+        },
+        add: async () => {}
+      }),
+      keys: async () => []
+    },
+    fetch: async (request: Request) => {
+      requested.push(request.url);
+      return new Response('fresh', { status: 200, headers: { 'content-type': 'text/javascript' } });
     }
-    if (STATIC_ASSET_EXTENSIONS.test(pathname)) {
-      return true;
+  });
+
+  const waited: Promise<unknown>[] = [];
+  let responded: Promise<Response> | undefined;
+  const assetUrl = `${SITE_ORIGIN}/assets/index-abc.js`;
+
+  handlers.fetch({
+    request: new Request(assetUrl),
+    respondWith: (promise: Promise<Response>) => {
+      responded = promise;
+    },
+    waitUntil: (promise: Promise<unknown>) => {
+      waited.push(promise);
     }
-    return false;
-  }
+  });
 
-  const emptyHeaders = new Map<string, string>();
-  const authHeaders = new Map([['authorization', 'Bearer token']]);
-  const rangeHeaders = new Map([['range', 'bytes=0-1024']]);
+  assert.equal(waited.length, 1, 'sin waitUntil el worker muere antes de revalidar');
+  assert.ok(responded, 'el evento debe responder');
+  assert.equal(await (await responded!).text(), 'cached', 'la caché se sirve al instante');
 
-  // Dynamic API routes must return true for isDynamicOrBackendRequest and false for isCacheable
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/api/v1/courses' }), true);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/api/v1/courses' }), false);
+  await Promise.all(waited);
+  assert.deepEqual(requested, [assetUrl], 'una sola petición de red');
+  assert.deepEqual(stored, [assetUrl], 'el refresco se escribe en la caché');
+});
 
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/api/health' }), true);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/api/health' }), false);
+test('SW-7: la lista del shell coincide con la que usa el build para el BUILD_ID', () => {
+  const config = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
+  const match = config.match(/const STATIC_SHELL_ASSETS = \[([^\]]*)\];/);
+  assert.ok(match, 'vite.config.ts debe declarar STATIC_SHELL_ASSETS');
 
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/content/stream/video.mp4' }), true);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/content/stream/video.mp4' }), false);
+  const fromConfig = match![1]
+    .split(',')
+    .map((value) => value.trim().replace(/^'|'$/g, ''))
+    .filter(Boolean);
 
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: authHeaders }, { pathname: '/assets/index.js' }), true);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: authHeaders }, { pathname: '/assets/index.js' }), false);
-
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: rangeHeaders }, { pathname: '/assets/video.mp4' }), true);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: rangeHeaders }, { pathname: '/assets/video.mp4' }), false);
-
-  // Static frontend assets must be cacheable (both direct root and GitHub Pages subpath)
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/assets/index-abc123.js' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/assets/index-abc123.js' }), true);
-
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/CrossedArts/assets/index-abc123.js' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/CrossedArts/assets/index-abc123.js' }), true);
-
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/sql-wasm.wasm' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/sql-wasm.wasm' }), true);
-
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/CrossedArts/sql-wasm.wasm' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/CrossedArts/sql-wasm.wasm' }), true);
-
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/favicon.svg' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/favicon.svg' }), true);
-
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/CrossedArts/manifest.json' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/CrossedArts/manifest.json' }), true);
-
-  assert.strictEqual(isDynamicOrBackendRequest({ headers: emptyHeaders }, { pathname: '/CrossedArts/index.html' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/CrossedArts/index.html' }), true);
-
-  // Arbitrary same-origin paths must NOT be cacheable (Allowlist regression protection)
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/custom-dynamic' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/user-data' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/data.json' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/some/path' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/CrossedArts/custom-dynamic' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/CrossedArts/user-data' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/CrossedArts/data.json' }), false);
-  assert.strictEqual(isCacheableFrontendAsset({ headers: emptyHeaders }, { pathname: '/CrossedArts/some/path' }), false);
+  const { api } = loadServiceWorker();
+  assert.deepEqual(
+    [...api.STATIC_SHELL_ASSETS].sort(),
+    [...fromConfig].sort(),
+    'si las dos listas divergen, el BUILD_ID deja de describir el precache real'
+  );
+  assert.equal(api.KNOWN_SHELL_FILENAMES.size, fromConfig.filter((asset) => asset !== './').length);
 });

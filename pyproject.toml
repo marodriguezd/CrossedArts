@@ -8,21 +8,15 @@ filterwarnings = [
     "ignore::pytest.PytestUnraisableExceptionWarning:",
 ]
 
-[tool.coverage.run]
-source = ["backend"]
-omit = ["backend/tests/*", "backend/alembic/*"]
-
-[tool.coverage.report]
-show_missing = true
-skip_empty = true
-
 [tool.ruff]
-line-length = 120
 target-version = "py311"
+# E501 sigue apagado por 60 líneas heredadas de más de 120; el ancho queda
+# documentado aquí aunque no se aplique (no hay formateador configurado).
+line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
-ignore = ["E501", "E712", "F821"]
+ignore = ["E501", "E712"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -30,4 +24,55 @@ explicit_package_bases = true
 ignore_missing_imports = true
 follow_imports = "silent"
 warn_unused_ignores = false
-disable_error_code = ["name-defined", "assignment", "return-value", "call-arg", "arg-type", "var-annotated", "misc", "truthy-function", "union-attr"]
+
+# Deuda de tipos acotada al módulo que la tiene. Cualquier módulo ausente de
+# esta lista se comprueba con TODOS los códigos activos; al tocar uno de estos,
+# se le retira su código.
+[[tool.mypy.overrides]]
+module = ["backend.app.api.dashboard"]
+disable_error_code = ["arg-type", "union-attr"]
+
+[[tool.mypy.overrides]]
+module = [
+    "backend.app.api.ingestion",
+    "backend.app.services.context",
+    "backend.app.services.scanner",
+    "backend.app.services.vector_store",
+]
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.api.resources"]
+disable_error_code = ["assignment", "var-annotated"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.core.logging"]
+disable_error_code = ["union-attr"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.services.embedding"]
+disable_error_code = ["arg-type", "assignment", "call-arg"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.services.extractor"]
+disable_error_code = ["assignment"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.services.insights"]
+disable_error_code = ["assignment", "truthy-function", "var-annotated"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.services.llm"]
+disable_error_code = ["arg-type", "assignment", "call-arg", "misc", "return-value"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.services.search"]
+disable_error_code = ["arg-type", "return-value"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.services.semantic_search"]
+disable_error_code = ["arg-type", "assignment"]
+
+[[tool.mypy.overrides]]
+module = ["backend.app.services.workflow"]
+disable_error_code = ["return-value", "var-annotated"]

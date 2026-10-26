@@ -1,12 +1,19 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import TYPE_CHECKING, Optional, List
 from sqlalchemy import ForeignKey, String, Integer, Float, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
 from backend.app.core.utils import utc_now_naive
 from backend.app.models.base import TimestampMixin
+
+if TYPE_CHECKING:
+    from backend.app.models.activity import Note
+    from backend.app.models.content import Quiz
+    from backend.app.models.course_structure import Lesson, Task
+    from backend.app.models.resource import LearningResource
+
 
 class LearningPath(Base, TimestampMixin):
     __tablename__ = "learning_path"

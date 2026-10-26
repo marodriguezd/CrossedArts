@@ -1,21 +1,13 @@
-// Service Worker nativo para Application Shell Offline de CrossedArts
+// Service Worker del app shell offline.
 //
-// Estrategia de versionado y frontera de caché:
-//   - `APP_SHELL_VERSION` se incrementa cuando cambia el shell desplegado.
-//     El nombre de la caché incluye la versión, así que un despliegue nuevo
-//     escribe en una caché nueva en lugar de reusar la anterior.
-//   - En `activate` se BORRAN todas las cachés antiguas del propio servicio
-//     (cualquiera que empiece por `crossedarts-shell-`), de modo que un shell
-//     obsoleto no puede volver a servirse tras un despliegue.
-//   - Las rutas siguen siendo relativas (`./`), compatibles con GitHub Pages
-//     publicado en un subdirectorio de proyecto.
-//   - No se cachean orígenes externos: Ollama y APIs remotas quedan fuera.
-//   - FRONTERA DINÁMICA / API (Self-Hosted y Mismo Origen):
-//     Se excluyen taxativamente todas las rutas dinámicas del backend (/api/, /api/v1/,
-//     /docs, /redoc, /openapi.json, /static/, endpoints de streaming/media como /media/,
-//     /stream/, /content/), peticiones autenticadas y respuestas HTTP Range / 206.
-//     Bajo ningún concepto se almacenan datos dinámicos ni JSONs de API en Cache Storage.
-//   - `sql-wasm.wasm` se precachea para que SQLite siga funcionando sin red.
+// La versión va en el nombre de la caché y `activate` borra las anteriores, así
+// que un despliegue nuevo no puede servir un shell viejo. Rutas relativas (`./`)
+// por GitHub Pages en subdirectorio.
+//
+// Nunca entran en Cache Storage: orígenes externos, rutas dinámicas del backend
+// (/api/, /docs, /openapi.json, /static/, /media/, /stream/, /content/),
+// peticiones con `Authorization`, respuestas Range/206 y JSON de API.
+// `sql-wasm.wasm` sí, para que SQLite siga funcionando sin red.
 
 const APP_SHELL_VERSION = 'v6';
 /**
@@ -48,14 +40,25 @@ const STATIC_SHELL_ASSETS = [
   './sql-wasm.wasm'
 ];
 
-const KNOWN_SHELL_FILENAMES = new Set([
-  'index.html',
-  'favicon.svg',
-  'manifest.json',
-  'sql-wasm.wasm'
-]);
+const KNOWN_SHELL_FILENAMES = new Set(
+  STATIC_SHELL_ASSETS.map((asset) => asset.replace('./', '')).filter(Boolean)
+);
 
-// Extensiones de archivos estáticos del frontend que son seguras para cachear
+/**
+ * Ruta pedida, medida desde la raíz del SCOPE y no del origen.
+ *
+ * El shell se publica bajo un prefijo en GitHub Pages, así que comparar contra
+ * `/api/` a secas dejaba las rutas dinámicas de un backend del mismo origen
+ * fuera del guard cuando el sitio vivía en un subdirectorio.
+ */
+function scopeRelativePath(pathname) {
+  const scope = self.registration?.scope ? new URL(self.registration.scope).pathname : '/';
+  if (scope !== '/' && pathname.startsWith(scope)) {
+    return `/${pathname.slice(scope.length)}`;
+  }
+  return pathname;
+}
+
 const STATIC_ASSET_EXTENSIONS = /\.(?:js|mjs|css|wasm|html|svg|png|jpg|jpeg|webp|gif|ico|woff|woff2|ttf|webmanifest)$/i;
 
 /**
@@ -63,9 +66,8 @@ const STATIC_ASSET_EXTENSIONS = /\.(?:js|mjs|css|wasm|html|svg|png|jpg|jpeg|webp
  * API, streaming de medios o datos de usuario que NUNCA deben cachearse.
  */
 function isDynamicOrBackendRequest(request, url) {
-  const pathname = url.pathname;
+  const pathname = scopeRelativePath(url.pathname);
 
-  // 1. Prefijos y rutas de API / backend
   if (
     pathname.startsWith('/api/') ||
     pathname === '/api' ||
@@ -80,7 +82,6 @@ function isDynamicOrBackendRequest(request, url) {
     return true;
   }
 
-  // 2. Cabeceras dinámicas / streaming / autenticación
   if (
     request.headers.has('range') ||
     request.headers.has('authorization') ||
@@ -103,23 +104,20 @@ function isCacheableFrontendAsset(request, url) {
 
   const pathname = url.pathname;
 
-  // 1. Archivos bajo /assets/ generados por Vite (p.ej. /assets/... o /CrossedArts/assets/...)
   if (pathname.includes('/assets/')) {
     return true;
   }
 
-  // 2. Archivos específicos del shell estático (en raíz o en subdirectorio de proyecto)
   const basename = pathname.substring(pathname.lastIndexOf('/') + 1);
   if (basename && KNOWN_SHELL_FILENAMES.has(basename)) {
     return true;
   }
 
-  // 3. Extensiones estáticas conocidas del frontend (imágenes, fuentes, scripts, estilos)
   if (STATIC_ASSET_EXTENSIONS.test(pathname)) {
     return true;
   }
 
-  // Cualquier otra ruta del mismo origen (p.ej. datos dinámicos, rutas GET desconocidas) queda fuera
+  // Cualquier otra ruta del mismo origen (datos dinámicos, GET desconocidos) queda fuera.
   return false;
 }
 
@@ -200,72 +198,72 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Ignorar peticiones que no sean GET
   if (event.request.method !== 'GET') return;
 
-  // Ignorar cualquier origen externo: Ollama, APIs de IA y CDNs no se cachean.
+  // Ollama, APIs de IA y CDNs: ningún origen externo entra en la caché.
   if (url.origin !== self.location.origin) return;
 
-  // Exclusión estricta de backend/API/medios en despliegues con mismo origen
   if (isDynamicOrBackendRequest(event.request, url)) {
     return;
   }
 
-  // Navegación (app shell): red primero con respaldo en caché. Así un despliegue
-  // nuevo trae su index.html sin esperar, pero sin red seguimos sirviendo la
-  // última versión conocida (offline-first).
+  // Navegación: red primero para que un despliegue nuevo traiga su index.html,
+  // con la última copia conocida como respaldo cuando no hay red.
   if (event.request.mode === 'navigate') {
+    const navigationResponse = fetch(event.request);
+    // La copia del shell va por su propia cadena: no retrasa la navegación y
+    // queda dentro de `waitUntil`, así que el evento no la mata al cerrarse.
+    const cacheUpdate = navigationResponse
+      .then((networkResponse) => {
+        if (!networkResponse || networkResponse.status !== 200) return undefined;
+        const copy = networkResponse.clone();
+        return caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', copy));
+      })
+      .catch(() => {});
+    event.waitUntil(cacheUpdate);
     event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const copy = networkResponse.clone();
-            // Una escritura de caché rechazada (cuota, respuesta opaca) no debe
-            // convertirse en un rechazo de la navegación.
-            caches.open(CACHE_NAME)
-              .then((cache) => cache.put('./index.html', copy))
-              .catch(() => {});
-          }
-          return networkResponse;
-        })
-        .catch(() => caches.match('./index.html').then((cached) => cached || caches.match('./')))
+      navigationResponse.catch(() =>
+        caches.match('./index.html').then((cached) => cached || caches.match('./'))
+      )
     );
     return;
   }
 
-  // Solo interceptar y cachear si es un asset estático reconocido del frontend
   if (!isCacheableFrontendAsset(event.request, url)) {
     return;
   }
 
   // Assets estáticos: Stale-While-Revalidate. La respuesta cacheada se sirve al
-  // instante (sin dependencia de red) y se refresca en segundo plano.
+  // instante y el refresco se entrega a `waitUntil`: sin eso el worker puede
+  // morir al cerrar el evento y la revalidación se pierde en silencio.
+  const networkUpdate = fetch(event.request)
+    .then((networkResponse) => {
+      if (!networkResponse || networkResponse.status !== 200) return networkResponse;
+
+      const cacheControl = networkResponse.headers.get('cache-control') || '';
+      const contentType = networkResponse.headers.get('content-type') || '';
+      const cacheable =
+        !cacheControl.includes('no-store') &&
+        !cacheControl.includes('private') &&
+        !contentType.includes('text/event-stream');
+      if (!cacheable) return networkResponse;
+
+      const responseToCache = networkResponse.clone();
+      return caches
+        .open(CACHE_NAME)
+        .then((cache) => cache.put(event.request, responseToCache))
+        .then(() => networkResponse);
+    })
+    .catch(() => undefined);
+
+  event.waitUntil(networkUpdate);
+
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request)
-        .then((networkResponse) => {
-          // Solo almacenar respuestas 200 completas (nunca 206 Partial Content ni errores)
-          // y que no tengan directivas explícitas de no-store/private
-          if (networkResponse && networkResponse.status === 200) {
-            const cacheControl = networkResponse.headers.get('cache-control') || '';
-            const contentType = networkResponse.headers.get('content-type') || '';
-
-            if (
-              !cacheControl.includes('no-store') &&
-              !cacheControl.includes('private') &&
-              !contentType.includes('text/event-stream')
-            ) {
-              const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME)
-                .then((cache) => cache.put(event.request, responseToCache))
-                .catch(() => {});
-            }
-          }
-          return networkResponse;
-        })
-        .catch(() => cachedResponse); // Si falla la red, recurrir a la caché
-
-      return cachedResponse || fetchPromise;
+    caches.match(event.request).then(async (cachedResponse) => {
+      if (cachedResponse) return cachedResponse;
+      const networkResponse = await networkUpdate;
+      if (!networkResponse) throw new Error(`Ni red ni caché para ${event.request.url}`);
+      return networkResponse;
     })
   );
 });

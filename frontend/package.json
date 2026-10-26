@@ -22,6 +22,9 @@
   "author": "Miguel Ángel Rodríguez Dalí",
   "license": "GPL-3.0-only",
   "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "@mlc-ai/web-llm": "^0.2.85",

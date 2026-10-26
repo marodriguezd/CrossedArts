@@ -1,12 +1,16 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import CheckConstraint, ForeignKey, String, Integer, DateTime, Boolean, Float, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
 from backend.app.core.utils import utc_now_naive
 from backend.app.models.base import TimestampMixin
+
+if TYPE_CHECKING:
+    from backend.app.models.course_structure import Lesson
+    from backend.app.models.resource import LearningResource, MediaAsset
 
 #: Canonical study-session scopes. Match the frontend (SQLite WASM):
 #: `frontend/src/services/sessionScope.ts`. SINGLE domain rule shared by both layers.

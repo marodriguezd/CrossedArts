@@ -1,11 +1,16 @@
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 from sqlalchemy import ForeignKey, String, Integer, Boolean, Enum, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
 from backend.app.models.base import LessonType
+
+if TYPE_CHECKING:
+    from backend.app.models.activity import Note
+    from backend.app.models.resource import Course, MediaAsset
+
 
 class Module(Base):
     __tablename__ = "module"

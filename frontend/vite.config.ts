@@ -25,12 +25,9 @@ const ORT_RUNTIME_FILES = [
 ];
 
 /**
- * JS glue modules that pair with the WASM binaries.
- *
- * ONNX Runtime receives `wasmPaths` as a DIRECTORY, so at runtime it does
- * `import('<wasmPaths>ort-wasm-simd-threaded.jsep.mjs')`; if that module is not
- * served from our own origin, the pipeline cannot start offline (and the proxy
- * worker cannot boot at all). `vite dev` needs them served too.
+ * JS glue that pairs with the binaries. `wasmPaths` is a DIRECTORY, so ONNX
+ * Runtime `import()`s `<wasmPaths>ort-wasm-simd-threaded.jsep.mjs` at runtime;
+ * unserved, neither the pipeline nor the `wasm.proxy` worker can start.
  */
 const ORT_RUNTIME_GLUE_FILES = [
   'ort-wasm-simd-threaded.jsep.mjs',
@@ -75,16 +72,9 @@ function serveOrtRuntimeInDev(): Plugin {
 }
 
 /**
- * Emits the ONNX Runtime artifacts under `dist/ort/` with stable names.
- *
- * Two things are done here, both required for real offline support:
- *
- * 1. The runtime WASM is copied next to `index.html`, so `wasmPaths` can point
- *    at the site's own origin instead of the CDN that Transformers.js installs
- *    by default.
- * 2. Rollup's own hashed copy of that same 21 MB binary is dropped: every
- *    pipeline is configured with the stable `ort/` directory (main thread and
- *    worker), so the hashed duplicate would only double the deploy size.
+ * Emits the ONNX Runtime artifacts under `dist/ort/` with stable names and
+ * drops Rollup's hashed duplicate of the same 21 MB binary, which every
+ * pipeline already resolves through the stable directory.
  */
 function emitOrtRuntime(): Plugin {
   return {
@@ -118,14 +108,10 @@ function emitOrtRuntime(): Plugin {
 }
 
 /**
- * Transformers.js hard-codes its CDN artifact base at import time:
- * `https://cdn.jsdelivr.net/npm/@huggingface/transformers@<version>/dist/`.
- *
- * The runtime override in `ortRuntime.ts` is authoritative, but a build that
- * still carries the CDN URL can silently reach out to the network if a new
- * entry point forgets to configure the env. The default is therefore rewritten
- * to the relative local directory, which also happens to be correct when the
- * app is served from a project subdirectory.
+ * Rewrites the artifact base Transformers.js hard-codes at import time
+ * (`cdn.jsdelivr.net/npm/@huggingface/transformers@<version>/dist/`) to the
+ * relative `./ort/`: a new entry point that forgets the runtime override would
+ * otherwise reach the network silently. Relative also survives a subdirectory deploy.
  */
 const TRANSFORMERS_CDN_BASE = /https:\/\/cdn\.jsdelivr\.net\/npm\/@huggingface\/transformers@[^`"']*\/dist\//g;
 
@@ -171,13 +157,11 @@ const STATIC_SHELL_ASSETS = ['./', './index.html', './favicon.svg', './manifest.
 /**
  * Injects the real chunk list into `dist/sw.js`.
  *
- * The service worker lives in `public/`, so it is copied verbatim and cannot
- * import the Vite manifest. Without an injected list it can only discover the
- * entry assets referenced by `index.html`, which is exactly why opening a lazy
- * view offline used to fail: its chunk had never been requested.
- *
- * The injected build id also makes `sw.js` byte-different on every deploy, which
- * is what tells the browser an update exists.
+ * The worker is copied verbatim from `public/` and cannot import the Vite
+ * manifest; without the list it only knows what `index.html` references, so a
+ * lazy view opened offline failed because its chunk was never requested. The
+ * build id makes `sw.js` byte-different per deploy, which is what triggers the
+ * browser's update check.
  */
 function injectServiceWorkerManifest(): Plugin {
   return {

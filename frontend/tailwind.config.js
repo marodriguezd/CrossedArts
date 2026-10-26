@@ -15,7 +15,9 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
-  darkMode: 'class',
+  // `useTheme.ts` escribe `data-theme` en <html> y nadie pone la clase `.dark`,
+  // así que la variante `class` nunca encendía ninguna utilidad `dark:`.
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
@@ -39,20 +41,6 @@ export default {
         info: semantic('--c-info'),
         'info-soft': semantic('--c-info-soft'),
         focus: semantic('--c-focus'),
-        // Identidad heredada: se conserva solo como referencia puntual del
-        // producto, nunca como paleta dominante.
-        brand: {
-          50: '#f5f3ff',
-          100: '#ede9fe',
-          200: '#ddd6fe',
-          300: '#c4b5fd',
-          400: '#a78bfa',
-          500: '#8b5cf6',
-          600: '#7c3aed',
-          700: '#6d28d9',
-          800: '#5b21b6',
-          900: '#4c1d95',
-        },
       },
       fontFamily: {
         sans: ['system-ui', '-apple-system', "'SF Pro Display'", "'Segoe UI'", 'Roboto', "'Helvetica Neue'", 'Arial', 'sans-serif'],
