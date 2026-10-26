@@ -621,3 +621,26 @@ test('2.21 filterNotesByQueryAndTag es insensible a tildes en ambos sentidos', (
   assert.strictEqual(filterNotesByQueryAndTag(notes, '', 'ética').length, 1);
   assert.strictEqual(filterNotesByQueryAndTag(notes, '', 'etica').length, 0, 'la etiqueta elegida no se difumina');
 });
+
+test('2.22 dao lee la misma nota de la misma manera por todos los caminos', async () => {
+  await dbBridge.init();
+  await dao.addNote({ title: 'Nota de mapeo', content: 'Contenido de prueba.', tags: 'prueba' });
+
+  try {
+    const listed = (await dao.getNotes()).find(n => n.title === 'Nota de mapeo');
+    assert.ok(listed, 'la nota debe aparecer en el listado');
+
+    const byId = await dao.getNoteById(listed.id);
+    assert.ok(byId, 'la nota debe encontrarse por id');
+    assert.deepStrictEqual(byId, listed, 'getNotes() y getNoteById() deben devolver el mismo objeto para la misma fila');
+
+    // La divergencia real: un camino devolvía `null` y el otro `undefined`
+    // para los opcionales, mientras el tipo declara `resource_id?: string`.
+    assert.strictEqual(listed.resource_id, undefined, 'un opcional ausente es undefined, no null');
+    assert.strictEqual(listed.lesson_id, undefined);
+    assert.strictEqual(typeof listed.created_at, 'string', 'los textos llegan coercionados');
+  } finally {
+    const leftover = (await dao.getNotes()).find(n => n.title === 'Nota de mapeo');
+    if (leftover) await dao.deleteNote(leftover.id);
+  }
+});

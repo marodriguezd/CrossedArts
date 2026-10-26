@@ -16,6 +16,7 @@ import {
 } from '../../services/sessionScope.ts';
 import type {
   LearningSession,
+  Note,
   PracticeWork,
   PracticeWorkKind,
   PracticeWorkStatus,
@@ -125,6 +126,21 @@ export function mapLearningSessionRow(row: readonly unknown[]): LearningSession 
     resource_title: r.optionalStr(11),
     lesson_id: lessonId,
     lesson_title: r.optionalStr(13)
+  };
+}
+
+/** Maps a raw `note` row to a typed domain object. */
+export function mapNoteRow(row: readonly unknown[]): Note {
+  const r = new SqlRow(row);
+  return {
+    id: r.str(0),
+    resource_id: r.optionalStr(1),
+    lesson_id: r.optionalStr(2),
+    title: r.str(3),
+    content: r.str(4),
+    tags: r.optionalStr(5),
+    created_at: r.str(6),
+    updated_at: r.str(7)
   };
 }
 

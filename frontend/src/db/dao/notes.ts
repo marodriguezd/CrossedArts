@@ -1,13 +1,15 @@
 /**
  * User notes.
  *
- * Domain contract (mirrors the backend): a note can be STANDALONE (null
- * `resource_id` and `lesson_id`). No placeholder resources "fix" the link, and
- * deleting the resource or lesson UNLINKS the note instead of destroying it.
+ * Domain contract (mirrors the backend): a note can be STANDALONE — SQL NULL
+ * in `resource_id`/`lesson_id`, `undefined` in the mapped object
+ * (`mapNoteRow`). No placeholder resources "fix" the link, and deleting the
+ * resource or lesson UNLINKS the note instead of destroying it.
  */
 import { dbBridge } from '../sqliteBridge.ts';
 import { translateKey } from '../../i18n/dictionaries.ts';
 import { daoLang } from '../daoLanguage.ts';
+import { mapNoteRow } from './sqlRows.ts';
 import type { Note } from '../../types/models.ts';
 
 export const noteDao = {
@@ -48,9 +50,7 @@ export const noteDao = {
       ? db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE lesson_id = ? ORDER BY updated_at DESC', [lessonId])
       : db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE resource_id = ? ORDER BY updated_at DESC', [resourceId]);
     if (!res.length) return [];
-    return res[0].values.map((r: any[]) => ({
-      id: r[0], resource_id: r[1], lesson_id: r[2], title: r[3], content: r[4], tags: r[5], created_at: r[6], updated_at: r[7]
-    }));
+    return res[0].values.map(mapNoteRow);
   },
   async getNotesForLesson(lessonId: string): Promise<Note[]> {
     const db = dbBridge.getDatabase();
@@ -59,24 +59,13 @@ export const noteDao = {
       [lessonId]
     );
     if (!res.length) return [];
-    return res[0].values.map((r: any[]) => ({
-      id: r[0], resource_id: r[1], lesson_id: r[2], title: r[3], content: r[4], tags: r[5], created_at: r[6], updated_at: r[7]
-    }));
+    return res[0].values.map(mapNoteRow);
   },
   async getNotes(): Promise<Note[]> {
     const db = dbBridge.getDatabase();
     const res = db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note ORDER BY updated_at DESC');
     if (!res.length) return [];
-    return res[0].values.map((r: any[]) => ({
-      id: r[0],
-      resource_id: r[1],
-      lesson_id: r[2],
-      title: r[3],
-      content: r[4],
-      tags: r[5],
-      created_at: r[6],
-      updated_at: r[7]
-    }));
+    return res[0].values.map(mapNoteRow);
   },
   async addNote(note: Partial<Note>): Promise<void> {
     const db = dbBridge.getDatabase();
@@ -100,7 +89,6 @@ export const noteDao = {
     const db = dbBridge.getDatabase();
     const res = db.exec('SELECT id, resource_id, lesson_id, title, content, tags, created_at, updated_at FROM note WHERE id = ?', [id]);
     if (!res.length || !res[0].values.length) return null;
-    const r = res[0].values[0];
-    return { id: String(r[0]), resource_id: r[1] ? String(r[1]) : undefined, lesson_id: r[2] ? String(r[2]) : undefined, title: String(r[3]), content: String(r[4]), tags: r[5] ? String(r[5]) : undefined, created_at: String(r[6]), updated_at: String(r[7]) };
+    return mapNoteRow(res[0].values[0]);
   },
 };

@@ -78,4 +78,30 @@ test('dao: el mapeo de filas es único y compartido', () => {
   const pw = mapPracticeWorkRow(pwRow);
   assert.strictEqual(pw.id, 'pw1');
   assert.strictEqual(pw.kind, 'project');
+
+  // La parte que el nombre promete: NINGÚN módulo de dominio proyecta filas a
+  // mano. Cada lectura pasa por el mapper compartido de sqlRows, así que una
+  // misma fila no puede leerse de dos formas distintas.
+  for (const [file, mapper] of [
+    ['../src/db/dao/sessions.ts', 'mapLearningSessionRow'],
+    ['../src/db/dao/notes.ts', 'mapNoteRow'],
+    ['../src/db/dao/practiceWork.ts', 'mapPracticeWorkRow'],
+    ['../src/db/dao/goals.ts', 'SqlRow']
+  ] as const) {
+    const source = read(file);
+    assert.ok(source.includes(mapper), `${file} debe leer filas con ${mapper}`);
+    assert.ok(!source.includes('(r: any[])'), `${file} no puede proyectar filas sin tipos`);
+  }
+
+  // Las cuatro lecturas de notas (por recurso, por lección, listado y por id)
+  // comparten UN mapper: tres como referencia de `.map(...)` y una invocada
+  // directamente para la lectura por id.
+  const notesSource = read('../src/db/dao/notes.ts');
+  const listCalls = (notesSource.match(/values\.map\(mapNoteRow\)/g) || []).length;
+  assert.strictEqual(listCalls, 3, 'las tres lecturas por lista pasan por mapNoteRow');
+  assert.ok(
+    notesSource.includes('mapNoteRow(res[0].values[0])'),
+    'la lectura por id pasa por el mismo mapper'
+  );
+  assert.ok(!notesSource.includes('(r: any[])'), 'notes.ts no proyecta filas a mano');
 });
