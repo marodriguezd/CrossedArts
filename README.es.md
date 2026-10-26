@@ -180,13 +180,20 @@ El servidor API se ejecuta en `http://127.0.0.1:8080` con documentación interac
 ### La exposición en red es opt-in
 
 > [!CAUTION]
-> La API **no tiene autenticación** y está pensada para uso local. Escucha en
-> `127.0.0.1` por defecto, y arrancarla en una interfaz no local (p. ej.
-> `HOST=0.0.0.0`) se **rechaza** salvo que definas explícitamente
-> `ALLOW_NETWORK_ACCESS=true`. Activar esa opción expone a tu red una API de
-> escritura sin autenticación; si lo haces, restringe el puerto con un cortafuegos
-> o un reverse proxy. Si usas Ollama, define `OLLAMA_ORIGINS` con tu origen exacto
-> (p. ej. `http://localhost:5173`) en lugar de `"*"`.
+> La API escucha en `127.0.0.1` por defecto, y arrancarla en una interfaz no local
+> (p. ej. `HOST=0.0.0.0`) se **rechaza** salvo que definas explícitamente
+> `ALLOW_NETWORK_ACCESS=true`. En ese modo red la API **sí tiene autenticación**:
+> todas las rutas `/api/*` salvo `/api/health` exigen
+> `Authorization: Bearer <API_TOKEN>`, con un secreto de al menos 16 caracteres
+> (en modo red el servidor no arranca sin él), y las peticiones se limitan por
+> cliente (`NETWORK_RATE_LIMIT_PER_MINUTE`, 60/min por defecto). Solo se protegen
+> esas rutas: el shell estático (`/`, `/assets/*`, `/static/*`,
+> `manifest.json`, `sw.js`),
+> `/docs` y `/openapi.json` siguen públicos porque no contienen datos de usuario y
+> un navegador no puede adjuntar `Authorization` en una navegación. Aun así,
+> restringe el puerto con un cortafuegos o un reverse proxy si lo expones. Si usas
+> Ollama, define `OLLAMA_ORIGINS` con tu origen exacto (p. ej.
+> `http://localhost:5173`) en lugar de `"*"`.
 
 ## Copia de Seguridad
 

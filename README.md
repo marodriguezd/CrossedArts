@@ -181,13 +181,19 @@ The API server runs at `http://127.0.0.1:8080` with interactive documentation at
 ### Network exposure is opt-in
 
 > [!CAUTION]
-> The API has **no authentication** and is meant to be used locally. It binds to
-> `127.0.0.1` by default, and starting it on a non-loopback interface (e.g.
-> `HOST=0.0.0.0`) is **refused** unless you explicitly set
-> `ALLOW_NETWORK_ACCESS=true`. Enabling that flag exposes a write-capable,
-> unauthenticated API to your network; restrict the port with a firewall or a
-> reverse proxy if you do. When using Ollama, set `OLLAMA_ORIGINS` to your exact
-> origin (e.g. `http://localhost:5173`) rather than `"*"`.
+> The API binds to `127.0.0.1` by default, and starting it on a non-loopback
+> interface (e.g. `HOST=0.0.0.0`) is **refused** unless you explicitly set
+> `ALLOW_NETWORK_ACCESS=true`. In that network mode the API is **authenticated**:
+> every `/api/*` route except `/api/health` requires
+> `Authorization: Bearer <API_TOKEN>`, where `API_TOKEN` is a secret of at least
+> 16 characters (the server refuses to start in network mode without one), and
+> requests are throttled per client (`NETWORK_RATE_LIMIT_PER_MINUTE`, 60/min by
+> default). Only those routes are protected: the static shell (`/`, `/assets/*`,
+> `/static/*`, `manifest.json`, `sw.js`), `/docs` and `/openapi.json` stay public because they
+> carry no user data and a browser cannot attach an `Authorization` header to a
+> navigation. Even so, restrict the port with a firewall or a reverse proxy if
+> you expose it. When using Ollama, set `OLLAMA_ORIGINS` to your exact origin
+> (e.g. `http://localhost:5173`) rather than `"*"`.
 
 ## Data Backup
 

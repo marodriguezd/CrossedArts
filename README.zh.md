@@ -181,10 +181,15 @@ API 服务器运行于 `http://127.0.0.1:8080`，交互文档位于 `/docs`。
 ### 网络暴露是 opt-in
 
 > [!CAUTION]
-> API **无鉴权**，仅供本地使用。默认绑定 `127.0.0.1`，在非 loopback 接口启动（如
-> `HOST=0.0.0.0`）会被**拒绝**，除非显式设置 `ALLOW_NETWORK_ACCESS=true`。启用该标志会把
-> 可写的未鉴权 API 暴露到你的网络；若启用，请用防火墙或反向代理限制端口。使用 Ollama 时，
-> 将 `OLLAMA_ORIGINS` 设为你的确切 origin（如 `http://localhost:5173`）而非 `"*"`。
+> API 默认绑定 `127.0.0.1`，在非 loopback 接口启动（如 `HOST=0.0.0.0`）会被**拒绝**，
+> 除非显式设置 `ALLOW_NETWORK_ACCESS=true`。在该网络模式下 API **需要鉴权**：除
+> `/api/health` 外，所有 `/api/*` 路由都要求 `Authorization: Bearer <API_TOKEN>`（密钥至少
+> 16 个字符；网络模式下没有 token 服务器会拒绝启动），并按客户端限流
+> （`NETWORK_RATE_LIMIT_PER_MINUTE`，默认 60 次/分钟）。只有这些路由受保护：静态 shell
+> （`/`、`/assets/*`、`/static/*`、`manifest.json`、`sw.js`）、`/docs` 和 `/openapi.json` 保持公开，
+> 因为它们不包含用户数据，而且浏览器无法在导航请求中附带 `Authorization` 头。即便如此，
+> 若对外暴露，请用防火墙或反向代理限制端口。使用 Ollama 时，将 `OLLAMA_ORIGINS` 设为你的
+> 确切 origin（如 `http://localhost:5173`）而非 `"*"`。
 
 ## 数据备份
 

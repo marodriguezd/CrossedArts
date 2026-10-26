@@ -181,13 +181,20 @@ Le serveur API tourne à `http://127.0.0.1:8080` avec documentation interactive 
 ### L'exposition réseau est opt-in
 
 > [!CAUTION]
-> L'API n'a **pas d'authentification** et est destinée à un usage local. Elle se lie à
-> `127.0.0.1` par défaut, et la démarrer sur une interface non-loopback (p. ex.
-> `HOST=0.0.0.0`) est **refusé** sauf si vous définissez explicitement
-> `ALLOW_NETWORK_ACCESS=true`. Activer ce flag expose une API inscriptible et non
-> authentifiée à votre réseau ; restreignez le port avec un pare-feu ou un
-> reverse proxy si vous le faites. Avec Ollama, définissez `OLLAMA_ORIGINS` à votre origine
-> exacte (p. ex. `http://localhost:5173`) plutôt que `"*"`.
+> L'API se lie à `127.0.0.1` par défaut, et la démarrer sur une interface
+> non-loopback (p. ex. `HOST=0.0.0.0`) est **refusé** sauf si vous définissez
+> explicitement `ALLOW_NETWORK_ACCESS=true`. Dans ce mode réseau l'API **est
+> authentifiée** : toutes les routes `/api/*` sauf `/api/health` exigent
+> `Authorization: Bearer <API_TOKEN>`, un secret d'au moins 16 caractères (sans
+> jeton, le serveur refuse de démarrer en mode réseau), et les requêtes sont
+> limitées par client (`NETWORK_RATE_LIMIT_PER_MINUTE`, 60/min par défaut). Seules
+> ces routes sont protégées : le shell statique (`/`, `/assets/*`,
+> `/static/*`, `manifest.json`, `sw.js`), `/docs` et `/openapi.json` restent publics car ils ne
+> contiennent aucune donnée utilisateur et un navigateur ne peut pas joindre
+> d'en-tête `Authorization` à une navigation. Restreignez tout de même le port
+> avec un pare-feu ou un reverse proxy si vous l'exposez. Avec Ollama, définissez
+> `OLLAMA_ORIGINS` à votre origine exacte (p. ex. `http://localhost:5173`) plutôt
+> que `"*"`.
 
 ## Sauvegarde des données
 

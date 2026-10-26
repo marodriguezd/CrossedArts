@@ -181,13 +181,20 @@ Il server API gira su `http://127.0.0.1:8080` con documentazione interattiva su 
 ### L'esposizione di rete è opt-in
 
 > [!CAUTION]
-> L'API **non ha autenticazione** ed è pensata per uso locale. Fa bind su
-> `127.0.0.1` di default, e avviarla su un'interfaccia non-loopback (es.
-> `HOST=0.0.0.0`) è **rifiutato** a meno di impostare esplicitamente
-> `ALLOW_NETWORK_ACCESS=true`. Attivare quel flag espone un'API scrivibile e non
-> autenticata alla tua rete; se lo fai, limita la porta con firewall o reverse
-> proxy. Con Ollama, imposta `OLLAMA_ORIGINS` alla tua origin esatta (es.
-> `http://localhost:5173`) invece di `"*"`.
+> L'API fa bind su `127.0.0.1` di default, e avviarla su un'interfaccia
+> non-loopback (es. `HOST=0.0.0.0`) è **rifiutato** a meno di impostare
+> esplicitamente `ALLOW_NETWORK_ACCESS=true`. In quella modalità rete l'API **ha
+> autenticazione**: tutte le rotte `/api/*` tranne `/api/health` richiedono
+> `Authorization: Bearer <API_TOKEN>`, un segreto di almeno 16 caratteri (senza
+> token il server non parte in modalità rete), e le richieste sono limitate per
+> client (`NETWORK_RATE_LIMIT_PER_MINUTE`, 60/min di default). Solo quelle rotte
+> sono protette: la shell statica (`/`, `/assets/*`, `/static/*`,
+> `manifest.json`, `sw.js`),
+> `/docs` e `/openapi.json` restano pubbliche perché non contengono dati utente e
+> un browser non può aggiungere l'header `Authorization` a una navigazione. Limita
+> comunque la porta con firewall o reverse proxy se la esponi. Con Ollama, imposta
+> `OLLAMA_ORIGINS` alla tua origin esatta (es. `http://localhost:5173`) invece di
+> `"*"`.
 
 ## Backup dati
 

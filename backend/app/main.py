@@ -1,11 +1,20 @@
 import os
 import httpx
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from backend.app.core.database import engine, Base
 from backend.app.core.settings import settings
 from backend.app.core.logging import get_logger
+from backend.app.core.network_security import (
+    RateLimiter,
+    is_network_mode,
+    is_token_valid,
+    requires_network_token,
+    resolve_reload,
+    validate_network_exposure,
+)
 from backend.app.api.router import api_router
 # Import models so SQLAlchemy registers them in Base.metadata.
 import backend.app.models  # noqa: F401
@@ -98,6 +107,55 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# NETWORK MODE GUARD.
+#
+# The API serves local study data and, in loopback, deliberately needs no
+# credentials. Exposing it to the network is the one case where that is unsafe,
+# so every `/api/*` request must present the configured Bearer token and stays
+# inside a basic per-client rate limit. The static shell and the documentation
+# stay public (they hold no user data, and a browser cannot send an
+# `Authorization` header on a navigation). Loopback requests pass through
+# untouched.
+_rate_limiter = RateLimiter(max_requests=settings.network_rate_limit_per_minute, window_seconds=60.0)
+
+
+@app.middleware("http")
+async def network_mode_guard(request: Request, call_next):
+    # Evaluated per request (not at import time) so the guard always reflects the
+    # live configuration instead of whatever was set when the module loaded.
+    if (
+        not is_network_mode(settings.host, settings.allow_network_access)
+        or request.method == "OPTIONS"
+        or not requires_network_token(request.url.path)
+    ):
+        return await call_next(request)
+
+    client_key = request.client.host if request.client else "desconocido"
+    if not _rate_limiter.check(client_key):
+        retry_after = _rate_limiter.retry_after_seconds(client_key)
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Demasiadas peticiones: espera antes de reintentar."},
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    authorization = request.headers.get("authorization")
+    if not authorization:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Falta el token Bearer para usar la API en modo red."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not is_token_valid(authorization, settings.api_token):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Token Bearer no válido para la API en modo red."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return await call_next(request)
+
+
 # CORS setup.
 #
 # It used to be allow_origins=["*"] with allow_credentials=True, an overly broad
@@ -105,6 +163,12 @@ app = FastAPI(
 # local-first: only the real local origins running the frontend are allowed
 # (Vite on 5173 and the backend itself on its configured port). The list is
 # configurable via CORS_ORIGINS (comma-separated) for concrete deployments.
+#
+# Registered AFTER the guard on purpose: Starlette applies middleware in reverse
+# registration order, so the last one added is the OUTERMOST. CORS therefore sees
+# the guard's short-circuit responses and decorates the 401/403/429 too; added
+# first, the browser got a CORS error instead of the real status and the UI
+# could not tell "falta el token" from a network failure.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -112,6 +176,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
+
 
 # Register the global versioned API router (/api/v1).
 app.include_router(api_router)
@@ -151,14 +216,24 @@ if __name__ == "__main__":
         logger.error(refusal)
         raise SystemExit(1)
 
+    # Network exposure without a token used to start an unauthenticated API.
+    exposure_refusal = validate_network_exposure(host, settings.allow_network_access, settings.api_token)
+    if exposure_refusal:
+        logger.error(exposure_refusal)
+        raise SystemExit(1)
+
     if not is_loopback_host(host):
         logger.warning(
-            "MODO RED ACTIVADO: la API escucha en %s:%s y es alcanzable desde la red SIN "
-            "autenticación. Restringe el acceso con un cortafuegos o un reverse proxy, y si "
-            "usas Ollama define OLLAMA_ORIGINS con tu origen exacto (p. ej. "
-            "http://localhost:5173) en lugar de \"*\".",
+            "MODO RED ACTIVADO: la API escucha en %s:%s y exige Authorization: Bearer <API_TOKEN> "
+            "en cada petición, con un límite de %s peticiones por minuto y cliente. Si usas "
+            "Ollama define OLLAMA_ORIGINS con tu origen exacto (p. ej. http://localhost:5173) "
+            "en lugar de \"*\".",
             host,
             settings.port,
+            settings.network_rate_limit_per_minute,
         )
 
-    uvicorn.run("backend.app.main:app", host=host, port=settings.port, reload=True)
+    # `reload` is a development convenience: it rewrites code while serving and is
+    # forced off whenever the API is reachable from the network.
+    reload_enabled = resolve_reload(settings.uvicorn_reload, host, settings.allow_network_access)
+    uvicorn.run("backend.app.main:app", host=host, port=settings.port, reload=reload_enabled)

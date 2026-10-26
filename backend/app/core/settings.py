@@ -29,7 +29,21 @@ class CrossedArtsSettings(BaseSettings):
     # exposes it to the network silently.
     allow_network_access: bool = Field(
         default=False,
-        description="Allow binding the API to non-local interfaces (no auth)",
+        description="Allow binding the API to non-local interfaces",
+    )
+    # Bearer token required ONLY in network mode: loopback stays tokenless so the
+    # local workflow is unchanged, and a network exposure is never open.
+    api_token: str = Field(
+        default="",
+        description="Bearer token required when the API is exposed to the network",
+    )
+    network_rate_limit_per_minute: int = Field(
+        default=60,
+        description="Max requests per client per minute in network mode",
+    )
+    uvicorn_reload: bool = Field(
+        default=False,
+        description="Auto-reload on source changes (development only; forced off in network mode)",
     )
 
     # Computed after init

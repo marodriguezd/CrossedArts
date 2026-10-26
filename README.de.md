@@ -181,13 +181,19 @@ Der API-Server läuft unter `http://127.0.0.1:8080` mit interaktiver Dokumentati
 ### Netzwerkexposition ist Opt-in
 
 > [!CAUTION]
-> Die API hat **keine Authentifizierung** und ist für lokale Nutzung gedacht. Sie bindet standardmäßig an
-> `127.0.0.1`, und ein Start auf einer Nicht-Loopback-Schnittstelle (z. B.
-> `HOST=0.0.0.0`) wird **verweigert**, sofern nicht explizit
-> `ALLOW_NETWORK_ACCESS=true` gesetzt ist. Das Aktivieren dieses Flags exponiert eine schreibfähige,
-> unauthentifizierte API an dein Netzwerk; bei Bedarf den Port mit Firewall oder
-> Reverse-Proxy beschränken. Bei Ollama-Nutzung `OLLAMA_ORIGINS` auf den exakten
-> Origin setzen (z. B. `http://localhost:5173`) statt auf `"*"`.
+> Die API bindet standardmäßig an `127.0.0.1`, und ein Start auf einer
+> Nicht-Loopback-Schnittstelle (z. B. `HOST=0.0.0.0`) wird **verweigert**, sofern
+> nicht explizit `ALLOW_NETWORK_ACCESS=true` gesetzt ist. In diesem Netzwerkmodus ist
+> die API **authentifiziert**: alle `/api/*`-Routen außer `/api/health` verlangen
+> `Authorization: Bearer <API_TOKEN>` mit einem Geheimnis von mindestens 16 Zeichen
+> (ohne Token startet der Server im Netzwerkmodus nicht), und Anfragen werden pro
+> Client begrenzt (`NETWORK_RATE_LIMIT_PER_MINUTE`, standardmäßig 60/Minute). Nur
+> diese Routen sind geschützt: die statische Shell (`/`, `/assets/*`,
+> `/static/*`, `manifest.json`, `sw.js`), `/docs` und `/openapi.json` bleiben öffentlich, weil sie
+> keine Nutzerdaten enthalten und ein Browser bei einer Navigation keinen
+> `Authorization`-Header senden kann. Beschränke den Port trotzdem mit Firewall oder
+> Reverse-Proxy, wenn du die API exponierst. Bei Ollama-Nutzung `OLLAMA_ORIGINS` auf
+> den exakten Origin setzen (z. B. `http://localhost:5173`) statt auf `"*"`.
 
 ## Datensicherung
 
