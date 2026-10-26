@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "preview:qa": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
-    "qa:visual": "node scripts/visual-qa.mjs"
+    "qa:visual": "node scripts/visual-qa.mjs",
+    "qa:embeddings": "node scripts/embedding-qa.mjs"
   },
   "keywords": [
     "lms",

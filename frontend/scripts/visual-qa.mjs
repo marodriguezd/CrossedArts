@@ -10,7 +10,11 @@
  *    navegación entre vistas (fallo duro si una vista principal no aparece);
  *  - apertura de la paleta (Ctrl+K) y del detalle de recurso / espacio de
  *    trabajo práctico;
- *  - cambio de tema (claro/oscuro).
+ *  - cambio de tema (claro/oscuro);
+ *  - smoke test del runtime ONNX local (`ort/`): glue servido con MIME de
+ *    módulo, módulo evaluado e instantado en la página y en un realm de worker
+ *    (el que usa `wasm.proxy`), sin una sola petición a un CDN;
+ *  - ninguna petición a orígenes externos durante toda la ejecución.
  *
  * Los rótulos se comparan en minúsculas porque `innerText` devuelve el texto
  * RENDERIZADO y los estilos `type-micro` lo muestran en mayúsculas.
@@ -33,6 +37,20 @@ const BASE = process.env.QA_URL || 'http://localhost:4173';
 const SHOTS = process.env.QA_SHOTS || '/tmp/crossedarts-qa';
 mkdirSync(SHOTS, { recursive: true });
 
+/**
+ * Artefactos del runtime ONNX que el build emite en `ort/` (espejo de
+ * `src/lib/localEmbeddings/ortRuntime.ts`, que no se puede importar desde Node
+ * sin compilar TypeScript; el test unitario valida la lista canónica).
+ */
+const ORT_ARTIFACTS = [
+  'ort-wasm-simd-threaded.jsep.wasm',
+  'ort-wasm-simd-threaded.jsep.mjs',
+  'ort-wasm-simd-threaded.wasm',
+  'ort-wasm-simd-threaded.mjs'
+];
+/** Glue que ONNX Runtime `import()`a en el realm que ejecuta la inferencia. */
+const ORT_GLUE = 'ort-wasm-simd-threaded.jsep.mjs';
+
 const VIEWPORTS = [
   { name: 'desktop', width: 1280, height: 800 },
   { name: 'tablet', width: 834, height: 1112 },
@@ -41,8 +59,124 @@ const VIEWPORTS = [
 
 const problems = [];
 const notes = [];
+const externalRequests = new Set();
 const record = (scope, message) => problems.push(`[${scope}] ${message}`);
 const note = (scope, message) => notes.push(`[${scope}] ${message}`);
+
+/**
+ * El servidor de vista previa tiene que estar vivo antes de navegar: sin esto,
+ * `goto` falla y cada vista reporta "falta el encabezado" en vez de la causa.
+ */
+async function assertServerReachable() {
+  try {
+    const response = await fetch(`${BASE}/index.html`, { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  } catch (err) {
+    console.error(
+      `QA no puede alcanzar ${BASE} (${err?.message || err}).\n` +
+        'Arranca el servidor de vista previa en otra terminal: npm run preview:qa'
+    );
+    process.exit(2);
+  }
+}
+
+/**
+ * Smoke test del runtime ONNX local en un navegador real.
+ *
+ * No descarga el modelo de embeddings (300 MB): verifica la parte que rompía
+ * en producción, que es el hosting de los artefactos. ONNX Runtime recibe
+ * `wasmPaths` como DIRECTORIO e `import()`a el glue en tiempo de ejecución
+ * desde el realm que infiere; si el build no emite el `.mjs`, o el servidor no
+ * lo entrega como módulo JS, la indexación semántica no arranca ni en el hilo
+ * principal ni en el worker de `wasm.proxy`.
+ */
+async function checkOnnxRuntime(page, scope) {
+  const artifacts = await page.evaluate(async files => {
+    const base = new URL('ort/', document.baseURI).href;
+    const results = [];
+    for (const file of files) {
+      try {
+        const response = await fetch(base + file);
+        results.push({
+          file,
+          status: response.status,
+          type: response.headers.get('content-type') || '',
+          bytes: (await response.arrayBuffer()).byteLength
+        });
+      } catch (err) {
+        results.push({ file, status: 0, type: '', bytes: 0, error: String(err?.message || err) });
+      }
+    }
+    return results;
+  }, ORT_ARTIFACTS);
+
+  for (const artifact of artifacts) {
+    if (artifact.status !== 200) {
+      record(scope, `${artifact.file} no se sirve (status ${artifact.status})`);
+      continue;
+    }
+    if (artifact.bytes < 1000) record(scope, `${artifact.file} está vacío (${artifact.bytes} bytes)`);
+    if (artifact.file.endsWith('.mjs') && !/javascript|ecmascript/i.test(artifact.type)) {
+      // Un MIME que no sea JS hace que el `import()` del glue falle en runtime.
+      record(scope, `${artifact.file} se sirve con content-type "${artifact.type}" en vez de JS`);
+    }
+  }
+
+  // Hilo principal: el glue se evalúa y la instancia WASM se crea (compila el
+  // `.wasm` y expone los HEAP que usa la sesión).
+  const mainThread = await page.evaluate(async glue => {
+    const url = new URL(`ort/${glue}`, document.baseURI).href;
+    try {
+      const module = await import(url);
+      if (typeof module.default !== 'function') return { ok: false, error: 'el glue no exporta una factory' };
+      const runtime = await module.default({ numThreads: 1 });
+      return { ok: true, heap: typeof runtime?.HEAPU8 === 'object' };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
+    }
+  }, ORT_GLUE);
+  if (!mainThread.ok) {
+    record(scope, `el glue no arranca en el hilo principal: ${mainThread.error}`);
+  } else if (!mainThread.heap) {
+    record(scope, 'el glue arrancó sin memoria WASM (HEAPU8 ausente)');
+  }
+
+  // Realm de worker: `wasm.proxy` arranca la inferencia en un worker propio que
+  // re-importa el mismo glue desde `ort/`. Se reproduce ese arranque sin modelo.
+  const workerRealm = await page.evaluate(async glue => {
+    const url = new URL(`ort/${glue}`, document.baseURI).href;
+    const source = `
+      self.onmessage = async () => {
+        try {
+          const module = await import(${JSON.stringify(url)});
+          const runtime = await module.default({ numThreads: 1 });
+          self.postMessage({ ok: true, heap: typeof runtime?.HEAPU8 === 'object' });
+        } catch (err) {
+          self.postMessage({ ok: false, error: String(err && err.message ? err.message : err) });
+        }
+      };
+    `;
+    const blobUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    const worker = new Worker(blobUrl, { type: 'module' });
+    return await new Promise(resolve => {
+      const timer = setTimeout(() => resolve({ ok: false, error: 'timeout' }), 25000);
+      worker.onmessage = event => {
+        clearTimeout(timer);
+        resolve(event.data);
+      };
+      worker.onerror = event => {
+        clearTimeout(timer);
+        resolve({ ok: false, error: `onerror: ${event.message}` });
+      };
+      worker.postMessage('go');
+    });
+  }, ORT_GLUE);
+  if (!workerRealm.ok) {
+    record(scope, `el glue no arranca en el realm del worker (wasm.proxy): ${workerRealm.error}`);
+  } else if (!workerRealm.heap) {
+    record(scope, 'el glue arrancó en el worker sin memoria WASM (HEAPU8 ausente)');
+  }
+}
 
 async function detectOverflow(page) {
   return page.evaluate(() => {
@@ -137,6 +271,7 @@ async function gotoTab(page, label) {
 }
 
 async function run() {
+  await assertServerReachable();
   const browser = await chromium.launch({ headless: true });
   // Every expectation below asserts Spanish copy: pin the context locale so
   // the app resolves 'es' on any machine (local es-ES dev boxes and C-locale
@@ -149,6 +284,13 @@ async function run() {
     if (msg.type() === 'error' && !/favicon|Download the React DevTools/i.test(msg.text())) {
       record('runtime', `error de consola: ${msg.text().slice(0, 160)}`);
     }
+  });
+  // Invariante de cero acceso a la web: nada se pide fuera del propio sitio.
+  // `blob:`/`data:` no salen de la máquina, así que no cuentan como externos.
+  page.on('request', request => {
+    const url = request.url();
+    if (!/^https?:/i.test(url)) return;
+    if (new URL(url).origin !== new URL(BASE).origin) externalRequests.add(url);
   });
 
   await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
@@ -282,6 +424,13 @@ async function run() {
   } else {
     record('drawer-focus', 'no se encontró el disparador del cajón móvil');
   }
+
+  // 10. Runtime ONNX local (glue + WASM + realm del proxy) en navegador real.
+  await page.goto(BASE, { waitUntil: 'networkidle' }).catch(() => {});
+  await page.waitForTimeout(1500);
+  await checkOnnxRuntime(page, 'onnx-runtime');
+
+  for (const url of externalRequests) record('offline', `petición a un origen externo: ${url}`);
 
   await browser.close();
 
