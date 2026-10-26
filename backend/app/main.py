@@ -39,10 +39,10 @@ def resolve_binding(host: str, allow_network_access: bool) -> tuple[str, str | N
     if is_loopback_host(normalized) or allow_network_access:
         return normalized, None
     return normalized, (
-        f"Se pidió enlazar CrossedArts en '{normalized}', accesible desde la red, pero la "
-        "API NO tiene autenticación y está pensada para uso local. Autoriza el modo red de "
-        "forma explícita con ALLOW_NETWORK_ACCESS=true (asumiendo el riesgo) o vuelve a "
-        "HOST=127.0.0.1."
+        f"Se pidió enlazar CrossedArts en '{normalized}', accesible desde la red. En local "
+        "la API no pide credenciales, pero exponerla exige autorización explícita: define "
+        "ALLOW_NETWORK_ACCESS=true y un API_TOKEN de al menos 16 caracteres (todas las "
+        "rutas /api/* lo exigirán). Vuelve a HOST=127.0.0.1 si no es lo que quieres."
     )
 
 

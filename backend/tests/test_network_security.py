@@ -62,11 +62,22 @@ def test_resolve_binding_always_allows_loopback(host, allow):
 
 
 def test_resolve_binding_refuses_network_binding_without_opt_in():
+    """El rechazo debe describir el modo red REAL, no el de antes de P2.4.
+
+    El mensaje afirmaba que «la API NO tiene autenticación», justo al usuario que
+    iba a exponerla: en modo red toda `/api/*` exige `API_TOKEN`. El texto tenía
+    su propio test que fijaba la afirmación falsa, así que la regresión se
+    comprobaba al revés.
+    """
     resolved, refusal = resolve_binding("0.0.0.0", allow_network_access=False)
     assert resolved == "0.0.0.0"
     assert refusal is not None
     assert "ALLOW_NETWORK_ACCESS=true" in refusal
-    assert "no tiene autenticación" in refusal.lower()
+    assert "API_TOKEN" in refusal
+    assert "16" in refusal
+    assert "127.0.0.1" in refusal
+    assert "no tiene autenticación" not in refusal.lower()
+    assert "no pide credenciales" in refusal, "el uso local sí sigue sin credenciales"
 
 
 def test_resolve_binding_allows_network_binding_with_explicit_opt_in():
