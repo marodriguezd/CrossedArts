@@ -522,3 +522,58 @@ test('2.18 dao.updateBookDetails keeps page, percentage and status coherent when
   // Estado conocido para el resto de la suite.
   await dao.updateBookProgress(book.id, total, total);
 });
+
+test('2.19 dao.searchKnowledge encuentra títulos con tildes en las seis tablas', async () => {
+  await dbBridge.init();
+  const db = dbBridge.getDatabase();
+
+  // Semilla con vocal acentuada en MAYÚSCULA: lo que `lower()` de SQLite no
+  // pliega y por lo tanto no encontraba nunca.
+  const created = await dao.createCourse({ title: 'Ética aplicada de la memoria' });
+  assert.ok(created.success && created.id, 'el curso de prueba debe crearse');
+  await dao.addNote({ title: 'Ética de las notas', content: 'Contenido con tilde: ÉTICA.' });
+  const workId = await dao.addPracticeWork({ title: 'Ética del trabajo práctico' });
+  const goalId = await dao.createGoal({ title: 'Ética de las metas', kind: 'custom' });
+
+  const seedCourse = await dao.getCourseById('c1-react');
+  const moduleId = seedCourse?.modules?.[0]?.id;
+  assert.ok(moduleId, 'El curso semilla debe tener módulo');
+  db.run('INSERT INTO lesson (id, module_id, title, order_index) VALUES (?, ?, ?, 999)', ['l-search-accents', moduleId, 'Ética de la atención']);
+  db.run("INSERT INTO concept (id, name) VALUES ('concept-search-accents', 'Ética del concepto')");
+
+  const expected: Array<[string, string]> = [
+    ['course', 'Ética aplicada de la memoria'],
+    ['note', 'Ética de las notas'],
+    ['practice', 'Ética del trabajo práctico'],
+    ['goal', 'Ética de las metas'],
+    ['lesson', 'Ética de la atención'],
+    ['concept', 'Ética del concepto']
+  ];
+
+  try {
+    // Tres formas de la misma consulta: con tilde, sin tilde y en mayúsculas.
+    for (const query of ['ética', 'etica', 'ÉTICA']) {
+      const found = await dao.searchKnowledge(query, 200);
+      for (const [type, title] of expected) {
+        assert.ok(
+          found.some(r => r.type === type && r.title === title),
+          `La consulta "${query}" debe encontrar ${type} «${title}»`
+        );
+      }
+    }
+
+    // Una consulta sin coincidencias no devuelve la semilla por arte de magia.
+    const none = await dao.searchKnowledge('ética falsísima innexistente');
+    for (const [, title] of expected) {
+      assert.ok(!none.some(r => r.title === title), 'Una consulta sin coincidencias no debe devolver la semilla');
+    }
+  } finally {
+    db.run('DELETE FROM lesson WHERE id = ?', ['l-search-accents']);
+    db.run("DELETE FROM concept WHERE id = 'concept-search-accents'");
+    await dao.deleteCourse(created.id!);
+    const note = (await dao.getNotes()).find(n => n.title === 'Ética de las notas');
+    if (note) await dao.deleteNote(note.id);
+    await dao.deletePracticeWork(workId);
+    await dao.deleteGoal(goalId);
+  }
+});

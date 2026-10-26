@@ -893,6 +893,17 @@ export function extractUniqueTagsWithCounts(notes: Note[]): Array<{ tag: string;
 }
 
 /**
+ * Accent- and case-insensitive form of a text, for matching.
+ *
+ * Lowercase first, then NFD splits each base letter from its diacritic so the
+ * combining marks can be dropped. SQLite's `lower()` folds ASCII only, which is
+ * why a query for «ética» never matched a stored «Ética aplicada».
+ */
+export function foldForSearch(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
  * Filters notes by combined text query and exact tag filter.
  */
 export function filterNotesByQueryAndTag(

@@ -1,6 +1,6 @@
 import { dbBridge } from './sqliteBridge.ts';
 import type { Course, Book, LearningResource, Flashcard, FlashcardType, MediaAsset, ConceptNode, ConceptEdge, Module, Lesson, LearningSession, StudySessionMode, GraphNodeType, KnowledgeConnection, SearchResult, UnorganizedResource, CourseDifficulty, LessonType, ResourceKind, ResourceDetail, ResourceFragment, RelatedKnowledgeItem, LessonWorkspace, LessonProgressState, DailyActivityPoint, TimeRangeFilter, PracticeWork, PracticeWorkKind, PracticeWorkStatus, PracticeChecklistItem } from '../types/models.ts';
-import { calculateBookProgress, calculateSM2, validateKnowledgeConnection } from '../services/domainLogic.ts';
+import { calculateBookProgress, calculateSM2, foldForSearch, validateKnowledgeConnection } from '../services/domainLogic.ts';
 import {
   buildCoursePackage,
   planCoursePackageImport,
@@ -1367,20 +1367,22 @@ export const dao = {
     }));
   },
   async searchKnowledge(query: string, limit: number = 25): Promise<SearchResult[]> {
-    const trimmed = (query || '').trim().toLowerCase();
-    if (trimmed.length < 2) return [];
-    const escaped = trimmed.replace(/[\\%_]/g, c => `\\${c}`);
-    const like = `%${escaped}%`;
+    const folded = foldForSearch((query || '').trim());
+    if (folded.length < 2) return [];
     const db = dbBridge.getDatabase();
     const results: SearchResult[] = [];
 
-    const resRes = db.exec(
-      `SELECT id, title, description, category, type FROM learning_resource
-       WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(COALESCE(description,'')) LIKE ? ESCAPE '\\' OR lower(COALESCE(category,'')) LIKE ? ESCAPE '\\'`,
-      [like, like, like]
-    );
+    // Matching runs in JS over the same fold as the query: SQLite's `lower()`
+    // only folds ASCII, so «Ética aplicada» was invisible to a search for
+    // «ética». Those `LIKE '%…%'` scans were unindexable anyway — every row of
+    // the table already crossed the filter — they just now cross it here.
+    const hit = (value: unknown): boolean =>
+      foldForSearch(value === null || value === undefined ? '' : String(value)).includes(folded);
+
+    const resRes = db.exec(`SELECT id, title, description, category, type FROM learning_resource`);
     if (resRes.length) {
       for (const r of resRes[0].values) {
+        if (!(hit(r[1]) || hit(r[2]) || hit(r[3]))) continue;
         const type = String(r[4]);
         results.push({
           id: String(r[0]),
@@ -1394,46 +1396,37 @@ export const dao = {
 
     const lesRes = db.exec(
       `SELECT l.id, l.title, m.course_id, r.title, m.title
-       FROM lesson l JOIN module m ON l.module_id = m.id JOIN learning_resource r ON m.course_id = r.id
-       WHERE lower(l.title) LIKE ? ESCAPE '\\'`,
-      [like]
+       FROM lesson l JOIN module m ON l.module_id = m.id JOIN learning_resource r ON m.course_id = r.id`
     );
     if (lesRes.length) {
       for (const r of lesRes[0].values) {
+        if (!hit(r[1])) continue;
         results.push({ id: String(r[0]), type: 'lesson', title: String(r[1]), subtitle: `${r[3]} › ${r[4]}`, resourceId: String(r[2]), lessonId: String(r[0]) });
       }
     }
 
-    const noteRes = db.exec(
-      `SELECT id, title, content, resource_id, lesson_id FROM note
-       WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(COALESCE(content,'')) LIKE ? ESCAPE '\\'`,
-      [like, like]
-    );
+    const noteRes = db.exec(`SELECT id, title, content, resource_id, lesson_id FROM note`);
     if (noteRes.length) {
       for (const r of noteRes[0].values) {
+        if (!(hit(r[1]) || hit(r[2]))) continue;
         results.push({ id: String(r[0]), type: 'note', title: String(r[1]), subtitle: String(r[2]).slice(0, 80), resourceId: r[3] ? String(r[3]) : undefined, lessonId: r[4] ? String(r[4]) : undefined });
       }
     }
 
-    const conceptRes = db.exec(
-      `SELECT id, name, description FROM concept WHERE lower(name) LIKE ? ESCAPE '\\' OR lower(COALESCE(description,'')) LIKE ? ESCAPE '\\'`,
-      [like, like]
-    );
+    const conceptRes = db.exec(`SELECT id, name, description FROM concept`);
     if (conceptRes.length) {
       for (const r of conceptRes[0].values) {
+        if (!(hit(r[1]) || hit(r[2]))) continue;
         results.push({ id: String(r[0]), type: 'concept', title: String(r[1]), subtitle: r[2] ? String(r[2]) : undefined });
       }
     }
 
     // Practice work is user learning evidence: if global search missed it, an
     // artifact visible in the panel and graph would be unreachable from search.
-    const practiceRes = db.exec(
-      `SELECT id, title, description, resource_id, lesson_id FROM practice_work
-       WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(COALESCE(description,'')) LIKE ? ESCAPE '\\'`,
-      [like, like]
-    );
+    const practiceRes = db.exec(`SELECT id, title, description, resource_id, lesson_id FROM practice_work`);
     if (practiceRes.length) {
       for (const r of practiceRes[0].values) {
+        if (!(hit(r[1]) || hit(r[2]))) continue;
         results.push({
           id: String(r[0]),
           type: 'practice',
@@ -1447,13 +1440,10 @@ export const dao = {
 
     // Learning goals are personal planning: if global search missed them, they
     // would be unreachable from the Library.
-    const goalRes = db.exec(
-      `SELECT id, title, description, kind, status FROM learning_goal
-       WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(COALESCE(description,'')) LIKE ? ESCAPE '\\'`,
-      [like, like]
-    );
+    const goalRes = db.exec(`SELECT id, title, description, kind, status FROM learning_goal`);
     if (goalRes.length) {
       for (const r of goalRes[0].values) {
+        if (!(hit(r[1]) || hit(r[2]))) continue;
         const rawKind = String(r[3]);
         const kindLabel = goalKindLabel(((['course', 'book', 'practice', 'study_time', 'custom'] as readonly string[]).includes(rawKind) ? rawKind : 'custom') as 'course' | 'book' | 'practice' | 'study_time' | 'custom', daoLang());
         results.push({
