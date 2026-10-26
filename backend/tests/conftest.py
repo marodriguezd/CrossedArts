@@ -145,7 +145,10 @@ def client_fixture(db: Session):
             pass
 
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
+    # The network guard reads the CONNECTING address, so the test client declares
+    # a loopback one: Starlette's default (`"testclient"`) is not an address and
+    # the guard fails closed on it.
+    yield TestClient(app, client=("127.0.0.1", 12345))
     app.dependency_overrides.clear()
 
 

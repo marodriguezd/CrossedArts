@@ -11,6 +11,7 @@ verificar el contrato sin arrancar el servidor.
 """
 from __future__ import annotations
 
+import ipaddress
 import secrets
 import time
 from collections import deque
@@ -31,12 +32,49 @@ def is_loopback_host(host: str) -> bool:
 
 def is_network_mode(host: str, allow_network_access: bool) -> bool:
     """
-    True cuando la API es alcanzable desde la red.
+    True cuando la API fue CONFIGURADA para ser alcanzable desde la red.
 
-    Es la ÚNICA condición que activa autenticación y limitación de peticiones:
-    en loopback el uso local sigue funcionando sin configurar nada.
+    En loopback el uso local sigue funcionando sin configurar nada.
     """
     return bool(allow_network_access) and not is_loopback_host(host)
+
+
+def is_loopback_client(host: str) -> bool:
+    """
+    True cuando la dirección del cliente que CONECTA es de loopback.
+
+    `ipaddress` cubre todo 127.0.0.0/8, `::1` y la forma mapeada
+    `::ffff:127.0.0.1` que reportan los sockets dual-stack. Un nombre que no es
+    una dirección (el `"testclient"` del cliente de pruebas) NO cuenta como
+    loopback: ante la duda se exige token, nunca se deja pasar.
+    """
+    raw = (host or "").strip()
+    if not raw:
+        return False
+    try:
+        address = ipaddress.ip_address(raw)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped.is_loopback
+    return address.is_loopback
+
+
+def network_auth_required(client_host: str, host: str, allow_network_access: bool) -> bool:
+    """
+    True cuando una petición de `client_host` necesita el token Bearer.
+
+    Dos motivos independientes, unidos con OR para que ninguno se pueda eludir:
+
+    * el servidor está CONFIGURADO en modo red (`host` + `ALLOW_NETWORK_ACCESS`),
+      lo que mantiene protegido un proxy inverso local que conecta desde
+      127.0.0.1;
+    * la petición llega desde una dirección que no es loopback. Esto cierra el
+      bypass de arrancar `uvicorn backend.app.main:app --host 0.0.0.0`: la
+      configuración sigue en su valor local por defecto, pero un cliente
+      remoto alcanza igualmente la API.
+    """
+    return is_network_mode(host, allow_network_access) or not is_loopback_client(client_host)
 
 
 def validate_network_exposure(host: str, allow_network_access: bool, api_token: str) -> str | None:

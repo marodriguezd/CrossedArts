@@ -9,8 +9,9 @@ from backend.app.core.settings import settings
 from backend.app.core.logging import get_logger
 from backend.app.core.network_security import (
     RateLimiter,
-    is_network_mode,
+    is_loopback_host,
     is_token_valid,
+    network_auth_required,
     requires_network_token,
     resolve_reload,
     validate_network_exposure,
@@ -21,13 +22,7 @@ import backend.app.models  # noqa: F401
 
 logger = get_logger("main")
 
-# Loopback interfaces: binding here never exposes the API to the network.
-LOCALHOST_BINDINGS = {"127.0.0.1", "localhost", "::1"}
-
-
-def is_loopback_host(host: str) -> bool:
-    """True when the host binds to the local interface only."""
-    return (host or "").strip().lower() in LOCALHOST_BINDINGS
+# `is_loopback_host` lives in core.network_security (one list, imported here).
 
 
 def resolve_binding(host: str, allow_network_access: bool) -> tuple[str, str | None]:
@@ -110,12 +105,17 @@ app = FastAPI(
 # NETWORK MODE GUARD.
 #
 # The API serves local study data and, in loopback, deliberately needs no
-# credentials. Exposing it to the network is the one case where that is unsafe,
-# so every `/api/*` request must present the configured Bearer token and stays
-# inside a basic per-client rate limit. The static shell and the documentation
-# stay public (they hold no user data, and a browser cannot send an
-# `Authorization` header on a navigation). Loopback requests pass through
-# untouched.
+# credentials. Every other case is unsafe, so a `/api/*` request needs the
+# configured Bearer token and stays inside a basic per-client rate limit. The
+# static shell and the documentation stay public (they hold no user data, and a
+# browser cannot send an `Authorization` header on a navigation).
+#
+# The decision reads the CONNECTING client address, not the configured host: a
+# server started outside `__main__` (e.g. `uvicorn backend.app.main:app --host
+# 0.0.0.0`) keeps the loopback default in settings, so trusting settings alone
+# left the API open. The configured network mode is still sufficient on its own,
+# which keeps a local reverse proxy protected even when it connects from
+# 127.0.0.1.
 _rate_limiter = RateLimiter(max_requests=settings.network_rate_limit_per_minute, window_seconds=60.0)
 
 
@@ -123,14 +123,13 @@ _rate_limiter = RateLimiter(max_requests=settings.network_rate_limit_per_minute,
 async def network_mode_guard(request: Request, call_next):
     # Evaluated per request (not at import time) so the guard always reflects the
     # live configuration instead of whatever was set when the module loaded.
-    if (
-        not is_network_mode(settings.host, settings.allow_network_access)
-        or request.method == "OPTIONS"
-        or not requires_network_token(request.url.path)
-    ):
+    if request.method == "OPTIONS" or not requires_network_token(request.url.path):
         return await call_next(request)
 
     client_key = request.client.host if request.client else "desconocido"
+    if not network_auth_required(client_key, settings.host, settings.allow_network_access):
+        return await call_next(request)
+
     if not _rate_limiter.check(client_key):
         retry_after = _rate_limiter.retry_after_seconds(client_key)
         return JSONResponse(
@@ -143,13 +142,13 @@ async def network_mode_guard(request: Request, call_next):
     if not authorization:
         return JSONResponse(
             status_code=401,
-            content={"detail": "Falta el token Bearer para usar la API en modo red."},
+            content={"detail": "Falta el token Bearer para usar la API fuera de loopback."},
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not is_token_valid(authorization, settings.api_token):
         return JSONResponse(
             status_code=403,
-            content={"detail": "Token Bearer no válido para la API en modo red."},
+            content={"detail": "Token Bearer no válido para la API fuera de loopback."},
             headers={"WWW-Authenticate": "Bearer"},
         )
 

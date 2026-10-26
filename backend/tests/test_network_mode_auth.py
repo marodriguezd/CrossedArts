@@ -31,6 +31,32 @@ def test_network_mode_requires_a_token():
     assert ns.validate_network_exposure("0.0.0.0", True, "x" * 40) is None
 
 
+LOOPBACK_CLIENTS = ("127.0.0.1", "127.0.0.5", "::1", "::ffff:127.0.0.1")
+REMOTE_CLIENTS = ("192.168.1.20", "203.0.113.10", "fe80::1", "desconocido")
+
+
+@pytest.mark.parametrize("client_host", LOOPBACK_CLIENTS)
+def test_loopback_client_addresses_need_no_token(client_host):
+    assert ns.is_loopback_client(client_host) is True
+    assert ns.network_auth_required(client_host, "127.0.0.1", False) is False
+
+
+@pytest.mark.parametrize("client_host", REMOTE_CLIENTS)
+def test_non_loopback_client_addresses_always_need_a_token(client_host):
+    """Regresión: el guard decidía con `settings.host`, no con el cliente.
+
+    Con `uvicorn backend.app.main:app --host 0.0.0.0` la configuración seguía en
+    127.0.0.1, así que `/api/*` se servía sin token a cualquier cliente remoto.
+    """
+    assert ns.is_loopback_client(client_host) is False
+    assert ns.network_auth_required(client_host, "127.0.0.1", False) is True
+
+
+def test_configured_network_mode_protects_even_a_loopback_client():
+    # Un proxy inverso local conecta desde 127.0.0.1: el modo red lo cubre.
+    assert ns.network_auth_required("127.0.0.1", "0.0.0.0", True) is True
+
+
 def test_network_mode_rejects_a_short_token():
     refusal = ns.validate_network_exposure("0.0.0.0", True, "corto")
     assert refusal is not None
@@ -223,6 +249,37 @@ def test_cors_preflight_still_answers_without_a_token(network_mode):
 
 
 def test_loopback_requests_need_no_token(client: TestClient):
-    # `settings.host` sigue en loopback en este test: uso local intacto.
+    # El cliente declara 127.0.0.1 (conftest) y la configuración es local:
+    # el uso local sigue intacto.
     response = client.get("/api/v1/resources")
     assert response.status_code == 200
+
+
+def test_remote_client_is_challenged_even_with_local_configuration(monkeypatch):
+    """Regresión del bypass: servidor arrancado fuera de `__main__`.
+
+    La configuración por defecto (host de loopback, sin `ALLOW_NETWORK_ACCESS`)
+    es la que ve el guard cuando alguien lanza `uvicorn … --host 0.0.0.0`: aun
+    así, un cliente que no es loopback no puede leer `/api/*` sin token.
+    """
+    monkeypatch.setattr(settings, "host", "127.0.0.1")
+    monkeypatch.setattr(settings, "allow_network_access", False)
+    monkeypatch.setattr(settings, "api_token", "")
+
+    remote = TestClient(app, client=("203.0.113.10", 45678))
+    unauthorized = remote.get("/api/v1/resources")
+    assert unauthorized.status_code == 401
+    assert "Bearer" in unauthorized.headers.get("www-authenticate", "")
+
+    # Sin token configurado no hay credencial que valga: el cliente remoto sigue fuera.
+    assert remote.get(
+        "/api/v1/resources", headers={"Authorization": "Bearer cualquier-cosa"}
+    ).status_code == 403
+
+    # La sonda de salud no lleva datos y sigue pública para todos.
+    assert remote.get("/api/health").status_code == 200
+
+
+def test_loopback_client_is_still_challenged_in_configured_network_mode(network_mode):
+    local = TestClient(app, client=("127.0.0.1", 45679))
+    assert local.get("/api/v1/resources").status_code == 401
