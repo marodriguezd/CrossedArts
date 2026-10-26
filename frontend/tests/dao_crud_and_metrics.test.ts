@@ -601,3 +601,23 @@ test('2.20 dao.createModule y dao.addNote responden en el idioma activo', async 
     setDaoLanguage(before);
   }
 });
+
+test('2.21 filterNotesByQueryAndTag es insensible a tildes en ambos sentidos', () => {
+  const notes: any[] = [
+    { id: '6', title: 'Ética aplicada', content: 'Notas sobre ÉTICA y memoria.', tags: 'ética, filosofía' }
+  ];
+
+  // La consulta se pliega a los dos lados: con tilde, sin tilde y en mayúsculas.
+  for (const query of ['etica', 'Ética', 'ÉTICA', 'ética aplicada']) {
+    assert.strictEqual(
+      filterNotesByQueryAndTag(notes, query, null).length,
+      1,
+      `La consulta "${query}" debe encontrar la nota`
+    );
+  }
+  assert.strictEqual(filterNotesByQueryAndTag(notes, 'quimica', null).length, 0);
+
+  // La etiqueta seleccionada sigue siendo una comparación exacta.
+  assert.strictEqual(filterNotesByQueryAndTag(notes, '', 'ética').length, 1);
+  assert.strictEqual(filterNotesByQueryAndTag(notes, '', 'etica').length, 0, 'la etiqueta elegida no se difumina');
+});

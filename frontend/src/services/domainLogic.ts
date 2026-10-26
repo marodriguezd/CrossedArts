@@ -905,13 +905,18 @@ export function foldForSearch(text: string): string {
 
 /**
  * Filters notes by combined text query and exact tag filter.
+ *
+ * The free-text query is folded on BOTH sides (see `foldForSearch`), so
+ * «etica» finds «Ética aplicada»; the selected tag stays an exact,
+ * case-insensitive comparison — it is picked from the note's own tags, so
+ * folding it could only blur what was selected.
  */
 export function filterNotesByQueryAndTag(
   notes: Note[],
   query: string,
   selectedTag: string | null
 ): Note[] {
-  const q = query.trim().toLowerCase();
+  const q = foldForSearch(query.trim());
   const targetTag = selectedTag ? selectedTag.trim().toLowerCase() : null;
 
   return notes.filter(n => {
@@ -926,9 +931,9 @@ export function filterNotesByQueryAndTag(
     // 2. Query filter when present
     if (!q) return true;
     return (
-      n.title.toLowerCase().includes(q) ||
-      n.content.toLowerCase().includes(q) ||
-      (n.tags || '').toLowerCase().includes(q)
+      foldForSearch(n.title).includes(q) ||
+      foldForSearch(n.content).includes(q) ||
+      foldForSearch(n.tags || '').includes(q)
     );
   });
 }
