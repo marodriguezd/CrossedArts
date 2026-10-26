@@ -6,11 +6,15 @@ import { Dashboard } from './pages/Dashboard.tsx';
 import { CommandPalette } from './components/common/CommandPalette.ts';
 import { localMediaService } from './services/localMediaService.ts';
 import { localAiRuntime } from './services/localAiRuntime.ts';
+import { localEmbeddingEngine } from './lib/localEmbeddings/engine.ts';
+import { embeddingMemoryReleaser, releaseOnPageHide } from './services/embeddingMemory.ts';
 import { aiService } from './ai/aiService.ts';
 import { useAppData } from './hooks/useAppData.ts';
 import { useTheme } from './hooks/useTheme.ts';
 import { useLanguage } from './hooks/useLanguage.ts';
 import { useCommandPaletteHotkey } from './hooks/useCommandPaletteHotkey.ts';
+import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate.ts';
+import { LazyViewBoundary } from './components/common/LazyViewBoundary.tsx';
 import {
   buildPaletteCatalog,
   navigateToDestination,
@@ -24,7 +28,7 @@ import {
 import { exportSqliteFile } from './db/exportImport.ts';
 import type { ResourceDestination } from './types/models.ts';
 import { parseUrlState, serializeUrlState } from './services/deepLinking.ts';
-import { Loader2, AlertTriangle, X, RotateCcw } from 'lucide-react';
+import { Loader2, AlertTriangle, X, RotateCcw, RefreshCw } from 'lucide-react';
 import { Button } from './components/ui/index.tsx';
 
 // Deferred code-splitting: every heavy view loads on demand
@@ -243,11 +247,47 @@ export const App: React.FC = () => {
   };
 
   const { t, effective } = useLanguage();
+  const { state: swUpdate, acceptUpdate } = useServiceWorkerUpdate();
 
   useEffect(() => {
     setDaoLanguage(effective);
     setDbLanguage(effective);
   }, [effective]);
+
+  /**
+   * Releases the resident embedding model after inactivity.
+   *
+   * Every transition to `ready` (load, index, query) restarts the window; the
+   * releaser itself refuses to unload while the engine is busy.
+   */
+  useEffect(() => {
+    const unsubscribe = localEmbeddingEngine.subscribe((status) => {
+      if (status === 'ready') embeddingMemoryReleaser.touch();
+    });
+    const onPageHide = () => {
+      // `pagehide` may be the last chance to free the model: cancel the timer
+      // AND release (never while indexing or loading).
+      void releaseOnPageHide(embeddingMemoryReleaser);
+    };
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', onPageHide);
+    return () => {
+      unsubscribe();
+      if (typeof window !== 'undefined') window.removeEventListener('pagehide', onPageHide);
+      embeddingMemoryReleaser.dispose();
+    };
+  }, []);
+
+  /**
+   * One-time cleanup of legacy image-occlusion cards that stored the bitmap twice
+   * (in `media_asset` and as a data URL inside `extra_data`). It is a no-op once
+   * there is nothing to clean, and a failure is never allowed to block the app.
+   */
+  useEffect(() => {
+    if (loading || initError) return;
+    dao.pruneDuplicateOcclusionImageUrls().catch((err) => {
+      console.warn('No se pudo limpiar la imagen duplicada de tarjetas de oclusión:', err);
+    });
+  }, [loading, initError]);
 
   const handleMountLocalFolder = async () => {
     if (!localMediaService.isSupported()) {
@@ -552,6 +592,22 @@ export const App: React.FC = () => {
       paletteOpen={isPaletteOpen}
     >
       <>
+        {swUpdate.hasUpdate && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft px-3 py-2.5 text-secondary text-ink"
+          >
+            <RefreshCw size={15} className="shrink-0 text-accent" aria-hidden="true" />
+            <span className="flex-1 min-w-[12rem]">
+              <strong className="font-semibold">{t('app.updateTitle')}</strong> {t('app.updateBody')}
+            </span>
+            <Button variant="solid" onClick={acceptUpdate} disabled={swUpdate.status === 'activating'}>
+              {swUpdate.status === 'activating' ? t('app.updating') : t('app.updateNow')}
+            </Button>
+          </div>
+        )}
+
         {appNotice && (
           <div
             role="status"
@@ -585,6 +641,7 @@ export const App: React.FC = () => {
           />
         )}
 
+        <LazyViewBoundary resetKey={currentTab}>
         <Suspense fallback={<TabLoadingFallback />}>
           {currentTab === 'focus' && (
             <FocusToday
@@ -700,6 +757,7 @@ export const App: React.FC = () => {
             <SettingsView onDataReset={refreshData} />
           )}
         </Suspense>
+        </LazyViewBoundary>
       </>
     </Shell>
 

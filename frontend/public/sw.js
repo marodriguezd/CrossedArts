@@ -17,9 +17,28 @@
 //     Bajo ningún concepto se almacenan datos dinámicos ni JSONs de API en Cache Storage.
 //   - `sql-wasm.wasm` se precachea para que SQLite siga funcionando sin red.
 
-const APP_SHELL_VERSION = 'v5';
+const APP_SHELL_VERSION = 'v6';
+/**
+ * Identificador del build, inyectado al construir (ver `vite.config.ts`).
+ *
+ * Cambia cuando cambia el conjunto de chunks emitidos, así que un despliegue
+ * produce un `sw.js` distinto y el navegador detecta la actualización. En
+ * desarrollo vale 'dev' y el worker ni siquiera se registra.
+ */
+const BUILD_ID = /*__BUILD_ID__*/ 'dev';
 const CACHE_PREFIX = 'crossedarts-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}${APP_SHELL_VERSION}`;
+const CACHE_NAME = `${CACHE_PREFIX}${APP_SHELL_VERSION}-${BUILD_ID}`;
+
+/**
+ * Chunks del build (vistas perezosas incluidas), inyectados al construir.
+ *
+ * Sin esta lista el precache solo descubría lo referenciado por `index.html`,
+ * de modo que abrir una vista perezosa sin red fallaba porque su chunk nunca
+ * se había pedido. El runtime ONNX (`ort/*.wasm`, ~21 MB) queda fuera a
+ * propósito: se cachea bajo demanda en el primer uso para no forzar su
+ * descarga a quien nunca active la IA local.
+ */
+const PRECACHE_ASSETS = /*__PRECACHE_ASSETS__*/ [];
 
 const STATIC_SHELL_ASSETS = [
   './',
@@ -116,7 +135,7 @@ async function precacheShell(cache) {
     console.warn('[sw] No se pudo obtener index.html durante la instalación:', err);
   }
 
-  const assets = new Set(STATIC_SHELL_ASSETS);
+  const assets = new Set([...STATIC_SHELL_ASSETS, ...PRECACHE_ASSETS]);
   if (indexResponse?.ok) {
     try {
       const html = await indexResponse.text();
@@ -142,12 +161,28 @@ async function precacheShell(cache) {
   );
 }
 
+/**
+ * Instalación sin activación inmediata (actualización controlada).
+ *
+ * El worker nuevo queda en `waiting`: una pestaña abierta sigue servida por la
+ * versión que conoce, y el cambio de versión ocurre solo cuando la persona lo
+ * confirma (mensaje `SKIP_WAITING`). Activar a la fuerza dejaba a la pestaña
+ * pidiendo chunks que el despliegue ya había borrado.
+ */
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => precacheShell(cache))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => precacheShell(cache))
   );
+});
+
+/**
+ * Confirmación de la persona: recién aquí el worker en espera toma el control.
+ * La página recarga UNA sola vez al recibir `controllerchange`.
+ */
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {
@@ -185,7 +220,11 @@ self.addEventListener('fetch', (event) => {
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const copy = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', copy));
+            // Una escritura de caché rechazada (cuota, respuesta opaca) no debe
+            // convertirse en un rechazo de la navegación.
+            caches.open(CACHE_NAME)
+              .then((cache) => cache.put('./index.html', copy))
+              .catch(() => {});
           }
           return networkResponse;
         })
@@ -217,9 +256,9 @@ self.addEventListener('fetch', (event) => {
               !contentType.includes('text/event-stream')
             ) {
               const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
+              caches.open(CACHE_NAME)
+                .then((cache) => cache.put(event.request, responseToCache))
+                .catch(() => {});
             }
           }
           return networkResponse;

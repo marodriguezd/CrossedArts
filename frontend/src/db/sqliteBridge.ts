@@ -197,6 +197,14 @@ class SQLiteBridge {
    * be stale, without resolving conflicts.
    */
   private persistedRevision = 0;
+  /**
+   * Local data revision, bumped on EVERY mutation attempt of this tab.
+   *
+   * It is the invalidation signal for derived caches (e.g. the corpus hash map):
+   * unlike `persistedRevision` it also advances when a write fails or when the
+   * app runs without IndexedDB, so a cache never outlives its data.
+   */
+  private dataRevision = 0;
   private lastSeenRevision = 0;
   /** Second-highest revision seen on the channel: our local version is old. */
   private remoteRevision = 0;
@@ -208,9 +216,37 @@ class SQLiteBridge {
    */
   private databaseSizeBytes = 0;
   private persistentStorageGranted = false;
+  /**
+   * Reused IndexedDB connection.
+   *
+   * Opening one connection per operation and never closing it grew without
+   * bound over a long session (each handle holds memory and keeps other tabs'
+   * `deleteDatabase` blocked). It is memoized after first use and reopened
+   * lazily if it was closed.
+   */
+  private idbPromise: Promise<IDBDatabase> | null = null;
+  /**
+   * Serialized persistence queue (single-flight).
+   *
+   * Every `persist()` exports the WHOLE database and compares-and-swaps the
+   * coordinator revision. Running two of those concurrently made the second one
+   * read a revision the first had already bumped and surface a false
+   * `StaleWriteError`. Writes are now chained: each one starts after the
+   * previous one settled, and the CAS check sees the revision it just wrote.
+   */
+  private persistQueue: Promise<void> = Promise.resolve();
+  /** Writes enqueued but not yet settled (see `pagehide` handling). */
+  private pendingPersists = 0;
 
   constructor() {
     void this.refreshPersistentStorageState();
+    if (typeof window !== 'undefined') {
+      // Release the handle when the page goes away, but never in the middle of a
+      // write: closing the connection would abort the pending transaction.
+      window.addEventListener('pagehide', () => {
+        if (this.pendingPersists === 0) this.closeStorageConnection();
+      });
+    }
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.broadcastChannel = new BroadcastChannel('crossedarts_storage_coordination');
@@ -250,9 +286,10 @@ class SQLiteBridge {
   }
 
   private async refreshPersistentStorageState(): Promise<void> {
-    if (typeof navigator === 'undefined' || !('storage' in navigator) || typeof navigator.storage.persisted !== 'function') return;
+    const storage = this.storageManager();
+    if (!storage || typeof storage.persisted !== 'function') return;
     try {
-      this.persistentStorageGranted = await navigator.storage.persisted();
+      this.persistentStorageGranted = await storage.persisted();
       const report = this.getStorageReport();
       for (const listener of this.stateListeners) {
         try { listener(report); } catch { /* listener aislado */ }
@@ -546,6 +583,7 @@ class SQLiteBridge {
     this.db = reloaded;
     this.isInitialized = true;
     this.inMemoryBytes = bytes;
+    this.dataRevision += 1;
     this.persistedRevision = effectiveTargetRevision;
     this.remoteRevision = 0;
     this.lastSeenRevision = Math.max(this.lastSeenRevision, this.persistedRevision);
@@ -685,7 +723,44 @@ class SQLiteBridge {
     });
   }
 
-  public async persist(): Promise<void> {
+  /**
+   * Serializes a snapshot write behind every previously enqueued one.
+   *
+   * The returned promise is the promise of THIS write: callers still know when
+   * their change is durable, they just no longer interleave.
+   */
+  public persist(): Promise<void> {
+    if (!this.db) return Promise.resolve();
+    // Any mutation that persists invalidates every derived cache, whether or
+    // not the write ultimately wins the CAS.
+    this.dataRevision += 1;
+    const task = () => this.runPersist();
+    const next = this.persistQueue.then(task, task);
+    // The chain itself never stays rejected: one failed write must not poison
+    // every later one.
+    this.persistQueue = next.then(
+      () => undefined,
+      () => undefined
+    );
+    this.pendingPersists++;
+    void next.then(
+      () => { this.pendingPersists = Math.max(0, this.pendingPersists - 1); },
+      () => { this.pendingPersists = Math.max(0, this.pendingPersists - 1); }
+    );
+    return next;
+  }
+
+  /**
+   * Monotone revision of this tab's data. Derived caches key on it: when it
+   * changes, previously computed results (corpus hashes, vector lookups) are no
+   * longer trusted.
+   */
+  public getDataRevision(): number {
+    return this.dataRevision;
+  }
+
+  /** Exports and commits the current database snapshot. Never called directly. */
+  private async runPersist(): Promise<void> {
     if (!this.db) return;
     this.setStorageState('persisting');
     try {
@@ -753,6 +828,7 @@ class SQLiteBridge {
       tempDb = null;
       this.isInitialized = true;
       this.initState = 'ready';
+      this.dataRevision += 1;
       this.setStorageState('persisted');
     } catch (err: any) {
       if (tempDb) { try { tempDb.close(); } catch {} }
@@ -1165,33 +1241,70 @@ class SQLiteBridge {
     return typeof indexedDB !== 'undefined';
   }
 
+  /**
+   * `navigator.storage` may exist but be undefined/partial (`in` alone is not a
+   * guard): every access is checked before use so a browser without the Storage
+   * Manager reports "no protection" instead of throwing.
+   */
+  private storageManager(): StorageManager | null {
+    if (typeof navigator === 'undefined') return null;
+    const storage = (navigator as Navigator & { storage?: StorageManager }).storage;
+    return storage ?? null;
+  }
+
   public async requestPersistentStorage(): Promise<boolean> {
-    if (typeof navigator !== 'undefined' && 'storage' in navigator && typeof navigator.storage.persist === 'function') {
-      try {
-        const granted = await navigator.storage.persist();
-        this.persistentStorageGranted = granted || await navigator.storage.persisted();
-        this.setStorageState(this.storageState);
-        return granted;
-      } catch {
-        return false;
-      }
+    const storage = this.storageManager();
+    if (!storage || typeof storage.persist !== 'function') return false;
+    try {
+      const granted = await storage.persist();
+      this.persistentStorageGranted =
+        granted || (typeof storage.persisted === 'function' ? await storage.persisted() : false);
+      this.setStorageState(this.storageState);
+      return this.persistentStorageGranted;
+    } catch {
+      this.persistentStorageGranted = false;
+      return false;
     }
-    return false;
   }
 
   public async getStorageEstimate(): Promise<{ usage?: number; quota?: number } | null> {
-    if (typeof navigator !== 'undefined' && 'storage' in navigator && typeof navigator.storage.estimate === 'function') {
-      try {
-        const est = await navigator.storage.estimate();
-        return { usage: est.usage, quota: est.quota };
-      } catch {
-        return null;
-      }
+    const storage = this.storageManager();
+    if (!storage || typeof storage.estimate !== 'function') return null;
+    try {
+      const est = await storage.estimate();
+      return { usage: est.usage, quota: est.quota };
+    } catch {
+      return null;
     }
-    return null;
   }
 
+  /** Reused connection: one `indexedDB.open` for the whole session. */
   private openIDB(): Promise<IDBDatabase> {
+    if (this.idbPromise) return this.idbPromise;
+
+    const opening = this.openIDBConnection();
+    this.idbPromise = opening;
+    opening.then(
+      (idb) => {
+        // Another tab upgrading the schema closes this handle; the next caller
+        // must transparently reopen instead of reusing a dead connection.
+        try {
+          idb.onclose = () => {
+            if (this.idbPromise === opening) this.idbPromise = null;
+          };
+        } catch {
+          /* el motor puede no exponer onclose */
+        }
+      },
+      () => {
+        // A failed open is never memoized: the next call retries.
+        if (this.idbPromise === opening) this.idbPromise = null;
+      }
+    );
+    return opening;
+  }
+
+  private openIDBConnection(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open('CrossedArts_IDB', 1);
       req.onupgradeneeded = () => {
@@ -1203,6 +1316,27 @@ class SQLiteBridge {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+  }
+
+  /**
+   * Closes the reused IndexedDB connection. Safe to call at any time: the next
+   * operation reopens lazily.
+   */
+  public closeStorageConnection(): void {
+    const pending = this.idbPromise;
+    this.idbPromise = null;
+    if (!pending) return;
+    pending
+      .then((idb) => {
+        try {
+          idb.close();
+        } catch {
+          /* ya cerrada */
+        }
+      })
+      .catch(() => {
+        /* nunca llegó a abrirse */
+      });
   }
 
   private async saveToStorage(bytes: Uint8Array): Promise<void> {
