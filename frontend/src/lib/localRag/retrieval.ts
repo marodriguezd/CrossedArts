@@ -39,22 +39,147 @@ export function tokenizeLexical(text: string): string[] {
 }
 
 /**
- * Deterministic lexical-similarity score between a query and a target text.
+ * Closed-class Spanish function words (articles, prepositions, conjunctions,
+ * pronouns/quantifiers and auxiliaries), already normalized like
+ * `tokenizeLexical` output: lowercase and accent-free.
+ *
+ * They are a LEXICAL resource, not a heuristic: a corpus cannot reveal that
+ * «sin» is grammatical when it appears in one of 45 documents. Measured on the
+ * demo library with pure IDF weights, «sin bloquear a los escritores» made the
+ * SQLite WAL card rank 3rd for «¿…horas sin perder el hilo?», and the
+ * «como»+«una» React lesson 2nd. The list decides WHAT is a candidate; IDF
+ * decides how much each surviving content term weighs.
  */
-export function scoreLexicalRelevance(queryTokens: string[], targetText: string): number {
+const SPANISH_FUNCTION_WORDS = new Set<string>([
+  // Articles and contractions (the 1–2 letter ones already fail the length filter).
+  'una', 'unas', 'unos', 'los', 'las', 'del',
+  // Prepositions.
+  'ante', 'bajo', 'con', 'contra', 'desde', 'durante', 'entre', 'hacia', 'hasta',
+  'mediante', 'para', 'por', 'segun', 'sin', 'sobre', 'tras', 'via',
+  // Conjunctions and relatives.
+  'que', 'como', 'cuando', 'donde', 'mientras', 'aunque', 'porque', 'pues', 'pero',
+  'sino', 'tanto', 'cuanto', 'cual', 'cuales', 'quien', 'quienes', 'cuyo', 'cuya',
+  // Pronouns, determiners and quantifiers.
+  'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'esos', 'esas', 'aquel', 'aquella',
+  'ellos', 'ellas', 'nosotros', 'vosotros', 'usted', 'ustedes', 'todo', 'toda',
+  'todos', 'todas', 'otro', 'otra', 'otros', 'otras', 'mismo', 'misma', 'cada',
+  'algun', 'alguna', 'algunos', 'algunas', 'ningun', 'ninguna', 'nada', 'algo',
+  'muy', 'mas', 'menos', 'tan', 'tambien', 'aqui', 'alli', 'ahora',
+  // Auxiliaries: ser / estar / haber / tener / poder / deber / hacer.
+  'ser', 'son', 'era', 'eran', 'fue', 'fueron', 'sea', 'sean', 'sido', 'siendo',
+  // «estado» queda fuera a propósito: como sustantivo («estado de la materia»)
+  // es contenido, y perderlo cuesta más recuerdo que el ruido que añade.
+  'estoy', 'estas', 'estamos', 'estan', 'estaba', 'estaban', 'estuvo',
+  'he', 'has', 'hemos', 'han', 'hay', 'habia', 'habian', 'hubo', 'haber',
+  'tiene', 'tienen', 'tengo', 'tienes', 'tenemos', 'tenia', 'tenian', 'tener',
+  'puedo', 'puedes', 'puede', 'pueden', 'podemos', 'podia', 'podian', 'poder',
+  'debo', 'debe', 'deben', 'deberia', 'deberian', 'hace', 'hacen', 'hacer', 'hizo'
+]);
+
+/**
+ * Query tokenization for retrieval: content words only.
+ *
+ * `tokenizeLexical` stays untouched because `checkGrounding` calibrates its
+ * threshold on that raw tokenization; only candidate selection filters here.
+ *
+ * When the query is made EXCLUSIVELY of function words (e.g. «¿cómo es?»)
+ * there is no content signal, so the raw tokens are returned rather than an
+ * empty list: the caller then scores them with IDF exactly as before instead
+ * of losing the query.
+ */
+export function tokenizeQuery(text: string): string[] {
+  const tokens = tokenizeLexical(text);
+  const contentTokens = tokens.filter(token => !SPANISH_FUNCTION_WORDS.has(token));
+  return contentTokens.length > 0 ? contentTokens : tokens;
+}
+
+/**
+ * Accent- and case-insensitive form of a text, shared by scoring and document
+ * frequency so both compare EXACTLY the same characters.
+ */
+function normalizeForMatch(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Whole-word regexes for query tokens, compiled ONCE per token.
+ *
+ * They used to be built inside the double loop (token x document), so one query
+ * over 5k documents compiled tens of thousands of identical `RegExp` objects.
+ * The cache is bounded because query tokens are user input.
+ */
+const WORD_REGEX_CACHE = new Map<string, RegExp>();
+const WORD_REGEX_CACHE_MAX = 512;
+
+function wordBoundaryRegex(token: string): RegExp {
+  const cached = WORD_REGEX_CACHE.get(token);
+  if (cached) return cached;
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+  if (WORD_REGEX_CACHE.size >= WORD_REGEX_CACHE_MAX) {
+    const oldest = WORD_REGEX_CACHE.keys().next();
+    if (!oldest.done) WORD_REGEX_CACHE.delete(oldest.value);
+  }
+  WORD_REGEX_CACHE.set(token, regex);
+  return regex;
+}
+
+/**
+ * IDF weight per query token, computed over the documents of THIS retrieval.
+ *
+ * Raw hit counting made a single article decisive: `scoreLexicalRelevance`
+ * awards 2.5 points for a whole-word hit, so «como» + «una» scored 5.0 against a
+ * React lesson and pushed it above the genuinely relevant material in fusion.
+ * A frequency-based weight fixes that without a hard-coded word list: a term
+ * present in most documents (a function word) weighs close to zero, a rare term
+ * (the content word the question is about) weighs the most.
+ *
+ * BM25 IDF: `ln(1 + (N - df + 0.5) / (df + 0.5))`, always positive, so the
+ * weight never erases a hit — it only ranks it. Deterministic: `df` comes from
+ * the caller's fixed document order and `N` from the document count.
+ */
+export function computeLexicalIdf(
+  queryTokens: string[],
+  documents: Array<{ text: string }>
+): Map<string, number> {
+  const weights = new Map<string, number>();
+  if (!queryTokens.length || documents.length === 0) return weights;
+
+  const normalizedDocs = documents.map(doc => normalizeForMatch(doc.text || ''));
+  const total = normalizedDocs.length;
+
+  for (const token of queryTokens) {
+    let frequency = 0;
+    for (const doc of normalizedDocs) {
+      if (doc.includes(token)) frequency++;
+    }
+    weights.set(token, Math.log(1 + (total - frequency + 0.5) / (frequency + 0.5)));
+  }
+  return weights;
+}
+
+/**
+ * Deterministic lexical-similarity score between a query and a target text.
+ *
+ * With `weights` (from `computeLexicalIdf`) each hit counts by term rarity;
+ * without them every hit counts 1.0 (+1.5 for a whole word), the historic
+ * unweighted scale callers and tests still rely on.
+ */
+export function scoreLexicalRelevance(
+  queryTokens: string[],
+  targetText: string,
+  weights?: ReadonlyMap<string, number>
+): number {
   if (!queryTokens.length || !targetText) return 0;
-  const targetNormalized = targetText
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+  const targetNormalized = normalizeForMatch(targetText);
 
   let score = 0;
   for (const token of queryTokens) {
+    const weight = weights?.get(token) ?? 1;
     if (targetNormalized.includes(token)) {
-      score += 1.0;
-      const regex = new RegExp(`\\b${token}\\b`, 'i');
-      if (regex.test(targetNormalized)) {
-        score += 1.5;
+      score += 1.0 * weight;
+      if (wordBoundaryRegex(token).test(targetNormalized)) {
+        score += 1.5 * weight;
       }
     }
   }
@@ -65,10 +190,30 @@ export function scoreLexicalRelevance(queryTokens: string[], targetText: string)
  * A hit is substantive when query tokens appear in the artifact's CONTENT (not
  * just its title). Deterministic and conservative.
  */
-function isSubstantiveMatch(queryTokens: string[], content: string | null | undefined): boolean {
+function isSubstantiveMatch(
+  queryTokens: string[],
+  content: string | null | undefined,
+  weights?: ReadonlyMap<string, number>
+): boolean {
   const text = (content || '').trim();
   if (!text) return false;
-  return scoreLexicalRelevance(queryTokens, text) > 0;
+  return scoreLexicalRelevance(queryTokens, text, weights) > 0;
+}
+
+/**
+ * Meaningful body of a practice-work item: description, content and notes.
+ * Shared by the scored text and the IDF document collection so both weigh the
+ * same words.
+ */
+function buildPracticeBody(work: {
+  description?: string | null;
+  content?: string | null;
+  notes?: string | null;
+}): string {
+  return [work.description, work.content, work.notes]
+    .map((value: string | null | undefined) => (value || '').trim())
+    .filter(Boolean)
+    .join(' ');
 }
 
 /**
@@ -142,7 +287,7 @@ export async function retrieveLocalContext(
     retrievalMode: 'lexical'
   });
 
-  const tokens = tokenizeLexical(query);
+  const tokens = tokenizeQuery(query);
   if (!tokens.length) return emptyResult();
 
   let courses: any[] = [];
@@ -177,12 +322,27 @@ export async function retrieveLocalContext(
     return emptyResult();
   }
 
+  /**
+   * Document collection of THIS retrieval, used only to weight terms by rarity.
+   * Same texts the loops below score, in the same fixed order, so `df` is
+   * deterministic and needs no persisted statistics.
+   */
+  const lexicalWeights = computeLexicalIdf(tokens, [
+    ...courses.map(course => ({ text: `${course.title} ${course.description || ''} ${course.category}` })),
+    ...lessonIndex.map(entry => ({ text: `${entry.lessonTitle} ${entry.moduleTitle} ${entry.lessonContent || ''}` })),
+    ...books.map(book => ({ text: `${book.title} ${book.author || ''} ${book.description || ''} ${book.category}` })),
+    ...notes.map(note => ({ text: `${note.title} ${note.content || ''}` })),
+    ...flashcards.map(fc => ({ text: `${fc.front} ${fc.back}` })),
+    ...graph.nodes.map((node: any) => ({ text: `${node.name} ${node.description || ''}` })),
+    ...practiceWork.map((work: any) => ({ text: `${work.title} ${buildPracticeBody(work)}` }))
+  ]);
+
   const lexicalCandidates: Map<string, RetrievedDocument> = new Map();
 
   // 1a. Courses (resource metadata, no hierarchy rebuild).
   for (const course of courses) {
     const courseText = `${course.title} ${course.description || ''} ${course.category}`;
-    const score = scoreLexicalRelevance(tokens, courseText);
+    const score = scoreLexicalRelevance(tokens, courseText, lexicalWeights);
     if (score > 0) {
       lexicalCandidates.set(`course_${course.id}`, {
         id: course.id,
@@ -190,7 +350,7 @@ export async function retrieveLocalContext(
         title: course.title,
         snippet: course.description ? `${course.description} (${course.category})` : `Curso: ${course.title} [${course.category}]`,
         score: score * 1.2,
-        substantive: isSubstantiveMatch(tokens, course.description),
+        substantive: isSubstantiveMatch(tokens, course.description, lexicalWeights),
         path: [course.title],
         resourceId: course.id
       });
@@ -202,7 +362,7 @@ export async function retrieveLocalContext(
   // ranking and per-source dedup.
   for (const entry of lessonIndex) {
     const lesText = `${entry.lessonTitle} ${entry.moduleTitle} ${entry.lessonContent || ''}`;
-    const lScore = scoreLexicalRelevance(tokens, lesText);
+    const lScore = scoreLexicalRelevance(tokens, lesText, lexicalWeights);
     if (lScore > 0) {
       const snippetBase = `Módulo: ${entry.moduleTitle}. Lección: ${entry.lessonTitle}. Duración: ${entry.durationMinutes}m.`;
       const contentSnippet = (entry.lessonContent || '').trim();
@@ -212,7 +372,7 @@ export async function retrieveLocalContext(
         title: `${entry.courseTitle} › ${entry.lessonTitle}`,
         snippet: contentSnippet ? `${snippetBase} Contenido: ${contentSnippet.slice(0, 240)}` : snippetBase,
         score: lScore,
-        substantive: isSubstantiveMatch(tokens, entry.lessonContent),
+        substantive: isSubstantiveMatch(tokens, entry.lessonContent, lexicalWeights),
         path: [entry.courseTitle, entry.moduleTitle, entry.lessonTitle],
         resourceId: entry.courseId,
         lessonId: entry.lessonId
@@ -223,7 +383,7 @@ export async function retrieveLocalContext(
   // 2. Books
   for (const book of books) {
     const bookText = `${book.title} ${book.author || ''} ${book.description || ''} ${book.category}`;
-    const score = scoreLexicalRelevance(tokens, bookText);
+    const score = scoreLexicalRelevance(tokens, bookText, lexicalWeights);
     if (score > 0) {
       lexicalCandidates.set(`book_${book.id}`, {
         id: book.id,
@@ -231,17 +391,18 @@ export async function retrieveLocalContext(
         title: book.title,
         snippet: `Libro de ${book.author || 'Autor desconocido'}: ${book.title}. Progreso: ${book.reading_percentage}%.`,
         score,
-        substantive: isSubstantiveMatch(tokens, book.description),
+        substantive: isSubstantiveMatch(tokens, book.description, lexicalWeights),
         path: [book.title],
         resourceId: book.id
       });
     }
   }
 
-  // 3. Notes
+  // 3. Notes — `content` is nullable in the schema (a note may only have tags).
   for (const note of notes) {
-    const noteText = `${note.title} ${note.content}`;
-    const score = scoreLexicalRelevance(tokens, noteText);
+    const noteContent = note.content || '';
+    const noteText = `${note.title} ${noteContent}`;
+    const score = scoreLexicalRelevance(tokens, noteText, lexicalWeights);
     if (score > 0) {
       let pageNum: number | undefined = undefined;
       if (note.tags) {
@@ -253,9 +414,9 @@ export async function retrieveLocalContext(
         id: note.id,
         sourceType: 'note',
         title: note.title,
-        snippet: note.content.slice(0, 200) + (note.content.length > 200 ? '...' : ''),
+        snippet: noteContent.slice(0, 200) + (noteContent.length > 200 ? '...' : ''),
         score: score * 1.3,
-        substantive: isSubstantiveMatch(tokens, note.content),
+        substantive: isSubstantiveMatch(tokens, noteContent, lexicalWeights),
         page: pageNum,
         resourceId: note.resource_id || undefined,
         lessonId: note.lesson_id || undefined
@@ -266,7 +427,7 @@ export async function retrieveLocalContext(
   // 4. Flashcards SM-2
   for (const fc of flashcards) {
     const fcText = `${fc.front} ${fc.back}`;
-    const score = scoreLexicalRelevance(tokens, fcText);
+    const score = scoreLexicalRelevance(tokens, fcText, lexicalWeights);
     if (score > 0) {
       lexicalCandidates.set(`flashcard_${fc.id}`, {
         id: fc.id,
@@ -285,7 +446,7 @@ export async function retrieveLocalContext(
   // 5. Graph concepts
   for (const node of graph.nodes) {
     const conceptText = `${node.name} ${node.description || ''}`;
-    const score = scoreLexicalRelevance(tokens, conceptText);
+    const score = scoreLexicalRelevance(tokens, conceptText, lexicalWeights);
     if (score > 0) {
       lexicalCandidates.set(`concept_${node.id}`, {
         id: node.id,
@@ -293,7 +454,7 @@ export async function retrieveLocalContext(
         title: `Concepto: ${node.name}`,
         snippet: node.description || `Concepto en el grafo: ${node.name}`,
         score,
-        substantive: isSubstantiveMatch(tokens, node.description)
+        substantive: isSubstantiveMatch(tokens, node.description, lexicalWeights)
       });
     }
   }
@@ -302,12 +463,9 @@ export async function retrieveLocalContext(
   // description, content, and notes, keeping provenance to its resource/lesson
   // so scope can narrow it.
   for (const work of practiceWork) {
-    const bodySource = [work.description, work.content, work.notes]
-      .map((value: string | null | undefined) => (value || '').trim())
-      .filter(Boolean)
-      .join(' ');
+    const bodySource = buildPracticeBody(work);
     const workText = `${work.title} ${bodySource}`;
-    const score = scoreLexicalRelevance(tokens, workText);
+    const score = scoreLexicalRelevance(tokens, workText, lexicalWeights);
     if (score > 0) {
       lexicalCandidates.set(`practice_${work.id}`, {
         id: work.id,
@@ -315,7 +473,7 @@ export async function retrieveLocalContext(
         title: `Práctica: ${work.title}`,
         snippet: (bodySource || `Trabajo práctico: ${work.title}`).slice(0, 200),
         score: score * 1.1,
-        substantive: isSubstantiveMatch(tokens, bodySource),
+        substantive: isSubstantiveMatch(tokens, bodySource, lexicalWeights),
         resourceId: work.resource_id || undefined,
         lessonId: work.lesson_id || undefined
       });
