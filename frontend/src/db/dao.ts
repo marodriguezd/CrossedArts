@@ -1315,14 +1315,23 @@ export const dao = {
       [fields.author ?? null, fields.isbn ?? null, fields.pageCount ?? null, id]
     );
 
-    // On page-count change, recompute the reading percentage coherently.
+    // On page-count change the WHOLE reading state is recomputed with the same
+    // pure calculator `updateBookProgress` uses, so both write paths keep the
+    // invariant the tests assert: pct = 100 ⇒ COMPLETED, and `current_page` can
+    // never stay above the new `page_count` (80 de 50 páginas).
     if (fields.pageCount !== undefined) {
-      const row = db.exec('SELECT current_page, page_count FROM book WHERE id = ?', [id]);
+      const row = db.exec('SELECT current_page FROM book WHERE id = ?', [id]);
       if (row.length && row[0].values.length) {
         const current = Number(row[0].values[0][0]) || 0;
-        const total = Number(row[0].values[0][1]) || fields.pageCount;
-        const pct = total > 0 ? Number(((Math.min(current, total) / total) * 100).toFixed(1)) : 0;
-        db.run('UPDATE book SET reading_percentage = ? WHERE id = ?', [pct, id]);
+        const calc = calculateBookProgress(current, fields.pageCount, daoLang());
+        if (calc.valid) {
+          db.run('UPDATE book SET current_page = ?, reading_percentage = ? WHERE id = ?', [
+            calc.data.clampedPage,
+            calc.data.percentage,
+            id
+          ]);
+          db.run("UPDATE learning_resource SET status = ? WHERE id = ?", [calc.data.status, id]);
+        }
       }
     }
 

@@ -483,7 +483,42 @@ test('2.17 dao.getAllLearningResources uses batch loading without per-course N+1
   assert.ok(reactCourse.modules[0].lessons && reactCourse.modules[0].lessons.length > 0);
 });
 
+test('2.18 dao.updateBookDetails keeps page, percentage and status coherent when the page count changes', async () => {
+  await dbBridge.init();
+  const books = await dao.getBooks();
+  const book = books.find(b => b.id === 'b1-deepwork');
+  assert.ok(book, 'El libro Deep Work debe existir');
+  const total = book.page_count || 304;
 
+  // Estado inicial conocido: mitad del libro → IN_PROGRESS.
+  const startPage = Math.max(1, Math.floor(total / 2));
+  await dao.updateBookProgress(book.id, startPage, total);
+  let updated = (await dao.getBooks()).find(b => b.id === book.id);
+  assert.strictEqual(updated?.status, 'IN_PROGRESS');
 
+  // 1. REGRESIÓN: reducir el total por debajo de la página actual. Antes solo
+  //    se recalculaba el porcentaje: la página seguía por encima del total y el
+  //    estado quedaba IN_PROGRESS con pct = 100.
+  const smaller = Math.max(1, Math.floor(startPage / 2));
+  const shrink = await dao.updateBookDetails(book.id, { pageCount: smaller });
+  assert.strictEqual(shrink.success, true);
+  updated = (await dao.getBooks()).find(b => b.id === book.id);
+  assert.strictEqual(updated?.current_page, smaller, 'la página se recorta al nuevo total');
+  assert.strictEqual(updated?.reading_percentage, 100);
+  assert.strictEqual(updated?.status, 'COMPLETED', 'pct = 100 ⇒ COMPLETED, igual que en updateBookProgress');
 
+  // 2. Ampliar el total: el porcentaje baja y el estado vuelve a IN_PROGRESS.
+  const bigger = smaller * 10;
+  await dao.updateBookDetails(book.id, { pageCount: bigger });
+  updated = (await dao.getBooks()).find(b => b.id === book.id);
+  assert.strictEqual(updated?.current_page, smaller);
+  assert.strictEqual(updated?.reading_percentage, Number(((smaller / bigger) * 100).toFixed(1)));
+  assert.strictEqual(updated?.status, 'IN_PROGRESS');
 
+  // 3. page_count inválido no escribe nada.
+  const invalid = await dao.updateBookDetails(book.id, { pageCount: 0 });
+  assert.strictEqual(invalid.success, false);
+
+  // Estado conocido para el resto de la suite.
+  await dao.updateBookProgress(book.id, total, total);
+});
