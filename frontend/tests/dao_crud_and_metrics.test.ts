@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { dbBridge } from '../src/db/sqliteBridge.ts';
-import { dao } from '../src/db/dao.ts';
+import { dao, setDaoLanguage } from '../src/db/dao.ts';
+import { daoLang } from '../src/db/daoLanguage.ts';
 import { resolveLocalDay } from '../src/services/localDate.ts';
 import {
   generateDailyActivitySeries,
@@ -575,5 +576,28 @@ test('2.19 dao.searchKnowledge encuentra títulos con tildes en las seis tablas'
     if (note) await dao.deleteNote(note.id);
     await dao.deletePracticeWork(workId);
     await dao.deleteGoal(goalId);
+  }
+});
+
+test('2.20 dao.createModule y dao.addNote responden en el idioma activo', async () => {
+  await dbBridge.init();
+  const before = daoLang();
+
+  setDaoLanguage('de');
+  try {
+    const noCourse = await dao.createModule({ courseId: '', title: 'Módulo de prueba' });
+    assert.strictEqual(noCourse.success, false);
+    assert.strictEqual(noCourse.error, 'Wähle einen Kurs aus.', 'el error sin curso sale del diccionario, no de un literal');
+
+    const missing = await dao.createModule({ courseId: 'curso-que-no-existe', title: 'Módulo de prueba' });
+    assert.strictEqual(missing.success, false);
+    assert.strictEqual(missing.error, 'Der angegebene Kurs existiert nicht.');
+
+    await dao.addNote({ content: 'Nota creada sin título.' });
+    const created = (await dao.getNotes()).find(n => n.title === 'Neue Notiz');
+    assert.ok(created, 'el título por defecto debe redactarse en el idioma activo');
+    await dao.deleteNote(created.id);
+  } finally {
+    setDaoLanguage(before);
   }
 });

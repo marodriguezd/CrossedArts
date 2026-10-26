@@ -6,6 +6,8 @@
  * deleting the resource or lesson UNLINKS the note instead of destroying it.
  */
 import { dbBridge } from '../sqliteBridge.ts';
+import { translateKey } from '../../i18n/dictionaries.ts';
+import { daoLang } from '../daoLanguage.ts';
 import type { Note } from '../../types/models.ts';
 
 export const noteDao = {
@@ -81,7 +83,7 @@ export const noteDao = {
     // Random suffix: two notes born in the same millisecond must not collide on
     // the primary key (same pattern as every entity).
     const id = 'note-' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    const title = note.title || 'Nueva Nota';
+    const title = note.title || translateKey(daoLang(), 'dao.note.defaultTitle');
     const content = note.content || '';
     const tags = note.tags || '';
     const resourceId = note.resource_id || null;

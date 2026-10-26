@@ -1042,11 +1042,11 @@ export const dao = {
   },
   async createModule(input: { courseId: string; title: string }): Promise<{ success: boolean; id?: string; error?: string }> {
     const title = (input.title || '').trim();
-    if (!input.courseId) return { success: false, error: 'Debes seleccionar un curso.' };
+    if (!input.courseId) return { success: false, error: translateKey(daoLang(), 'dao.err.needCourse') };
     if (title.length < 2) return { success: false, error: translateKey(daoLang(), 'dao.err.moduleShort') };
     const db = dbBridge.getDatabase();
     const courseExists = db.exec('SELECT 1 FROM course WHERE id = ?', [input.courseId]);
-    if (!courseExists.length || !courseExists[0].values.length) return { success: false, error: 'El curso indicado no existe.' };
+    if (!courseExists.length || !courseExists[0].values.length) return { success: false, error: translateKey(daoLang(), 'dao.err.courseGone') };
     const id = `mod_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const orderRes = db.exec('SELECT COALESCE(MAX(order_index), 0) + 1 FROM module WHERE course_id = ?', [input.courseId]);
     const orderIndex = orderRes.length ? Number(orderRes[0].values[0][0]) : 1;
