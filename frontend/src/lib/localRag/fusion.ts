@@ -53,6 +53,10 @@ export interface RankedSemanticMatch {
     text: string;
     page?: number;
     chapter?: string;
+    /** Body content, not just a header: required by the provenance gate. */
+    substantive?: boolean;
+    resourceId?: string;
+    lessonId?: string;
   };
 }
 
@@ -92,7 +96,12 @@ export function fuseRankedCandidates(input: {
   const { lexicalCandidates, lexicalRanked, semanticRanked } = input;
 
   const mergedMap = new Map<string, FusedCandidate>();
-  const maxLexical = Math.max(...Array.from(lexicalCandidates.values()).map(c => c.score), 1);
+  // `Math.max(...)` over a spread of thousands of candidates overflows the
+  // argument stack (RangeError) on large libraries; a reduce cannot.
+  let maxLexical = 1;
+  for (const candidate of lexicalCandidates.values()) {
+    if (candidate.score > maxLexical) maxLexical = candidate.score;
+  }
   const semanticById = new Map(semanticRanked.map(item => [item.chunkId, item]));
 
   const lexicalRanks = new Map<string, number>();
@@ -120,14 +129,23 @@ export function fuseRankedCandidates(input: {
           snippet: semantic!.entry.text.slice(0, 200),
           score: semScore,
           retrievalMode: 'semantic',
-          // A semantic hit is, by definition, a content match.
-          substantive: true,
-          // Minimal provenance the chunk DOES keep: the origin artifact. The
-          // full path only exists when lexical retrieval supplied it.
-          ...(semantic!.entry.sourceType === 'lesson' ? { lessonId: semantic!.entry.sourceId } : {}),
-          ...(semantic!.entry.sourceType === 'course' || semantic!.entry.sourceType === 'book'
-            ? { resourceId: semantic!.entry.sourceId, path: [semantic!.entry.title] }
-            : {}),
+          // A high similarity does NOT imply substantive content: a header-only
+          // chunk (a resource whose body is empty) is metadata. The entry says
+          // what it really is; the gate must not be satisfied by metadata.
+          substantive: semantic!.entry.substantive === true,
+          // Provenance comes from the chunk's OWN anchors (notes, cards and
+          // practice included). The fallbacks keep older entries useful: for a
+          // lesson the anchor is its own id, for a resource its own id.
+          ...(semantic!.entry.resourceId
+            ? { resourceId: semantic!.entry.resourceId }
+            : semantic!.entry.sourceType === 'course' || semantic!.entry.sourceType === 'book'
+              ? { resourceId: semantic!.entry.sourceId, path: [semantic!.entry.title] }
+              : {}),
+          ...(semantic!.entry.lessonId
+            ? { lessonId: semantic!.entry.lessonId }
+            : semantic!.entry.sourceType === 'lesson'
+              ? { lessonId: semantic!.entry.sourceId }
+              : {}),
           ...(typeof semantic!.entry.page === 'number' ? { page: semantic!.entry.page } : {}),
           ...(typeof semantic!.entry.chapter === 'string' ? { chapter: semantic!.entry.chapter } : {})
         };

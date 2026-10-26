@@ -135,8 +135,74 @@ test('fusión: procedencia de un acierto solo semántico', () => {
   const doc = candidates[0];
   assert.strictEqual(doc.id, 'solo', 'La identidad es el artefacto de origen, no el chunk');
   assert.strictEqual(doc.lessonId, 'solo');
-  assert.strictEqual(doc.substantive, true, 'Un acierto semántico es contenido, no metadatos');
   assert.strictEqual(doc.retrievalMode, 'semantic');
+});
+
+test('fusión: la sustancia la declara el chunk, nunca la similitud', () => {
+  // Un chunk CON cuerpo es contenido sustantivo.
+  const withBody = fuseRankedCandidates({
+    lexicalCandidates: new Map(),
+    lexicalRanked: [],
+    semanticRanked: [
+      {
+        chunkId: 'lesson_body',
+        score: 0.8,
+        entry: {
+          sourceId: 'l1',
+          sourceType: 'lesson',
+          title: 'Curso › Lección',
+          text: 'cuerpo real de la lección',
+          substantive: true,
+          resourceId: 'c1',
+          lessonId: 'l1'
+        }
+      }
+    ]
+  });
+  assert.strictEqual(withBody.candidates[0].substantive, true);
+  assert.strictEqual(withBody.candidates[0].resourceId, 'c1', 'el ancla del recurso viene del chunk');
+  assert.strictEqual(withBody.candidates[0].lessonId, 'l1');
+
+  // Un chunk solo-cabecera NO es contenido sustantivo, por alta que sea la similitud.
+  const metadataOnly = fuseRankedCandidates({
+    lexicalCandidates: new Map(),
+    lexicalRanked: [],
+    semanticRanked: [
+      {
+        chunkId: 'course_header',
+        score: 0.95,
+        entry: { sourceId: 'c9', sourceType: 'course', title: 'Curso', text: 'Curso: X. Categoría: Y.', substantive: false }
+      }
+    ]
+  });
+  assert.strictEqual(metadataOnly.candidates[0].substantive, false, 'los metadatos no satisfacen la puerta de procedencia');
+  assert.strictEqual(metadataOnly.candidates[0].resourceId, 'c9');
+});
+
+test('fusión: una nota del ámbito conserva sus anclas', () => {
+  const { candidates } = fuseRankedCandidates({
+    lexicalCandidates: new Map(),
+    lexicalRanked: [],
+    semanticRanked: [
+      {
+        chunkId: 'note_n1',
+        score: 0.9,
+        entry: {
+          sourceId: 'n1',
+          sourceType: 'note',
+          title: 'Nota',
+          text: 'contenido de la nota',
+          substantive: true,
+          resourceId: 'c1',
+          lessonId: 'l2'
+        }
+      }
+    ]
+  });
+
+  assert.strictEqual(candidates[0].sourceType, 'note');
+  assert.strictEqual(candidates[0].resourceId, 'c1', 'sin anclas la nota se perdería al filtrar por ámbito');
+  assert.strictEqual(candidates[0].lessonId, 'l2');
 });
 
 test('fusión: paridad de RANKING con fuseResults(rrf) cuando el RRF domina', () => {

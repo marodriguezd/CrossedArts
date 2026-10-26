@@ -19,6 +19,28 @@ import { resolveLocalDay, computeActiveStreak } from '../../services/localDate.t
 import { generateDailyActivitySeries } from '../../services/domainLogic.ts';
 import type { LanguageCode } from '../../i18n/languages.ts';
 
+/**
+ * Session card counter without persisting.
+ *
+ * Shared by `recordStudyFlashcardReview` and the compound review operation:
+ * grading a card updates the card, the SM-2 schedule and the session counter in
+ * one shot, so the snapshot is written ONCE instead of twice.
+ */
+export function applyStudyFlashcardReviewIncrement(
+  db: ReturnType<typeof dbBridge.getDatabase>,
+  sessionId: string
+): boolean {
+  db.run(
+    `UPDATE learning_session
+     SET cards_reviewed = cards_reviewed + 1, ${SESSION_LIVE_DURATION_SQL}
+     WHERE id = ? AND status = 'active'`,
+    [sessionId]
+  );
+  // A finished session matches no row: the caller reports it without treating
+  // it as a failure.
+  return db.getRowsModified() > 0;
+}
+
 
 
 import type {
@@ -130,12 +152,7 @@ export const sessionDao = {
   },
   async recordStudyFlashcardReview(sessionId: string): Promise<void> {
     const db = dbBridge.getDatabase();
-    db.run(
-      `UPDATE learning_session
-       SET cards_reviewed = cards_reviewed + 1, ${SESSION_LIVE_DURATION_SQL}
-       WHERE id = ? AND status = 'active'`,
-      [sessionId]
-    );
+    applyStudyFlashcardReviewIncrement(db, sessionId);
     await dbBridge.persist();
   },
   async recordStudyQuestionAnswer(sessionId: string, correct: boolean): Promise<void> {

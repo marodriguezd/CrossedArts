@@ -83,6 +83,8 @@ export interface AskTutorOptions {
    * pollute the answer with foreign material.
    */
   disableRetrieval?: boolean;
+  /** Cancels the in-flight generation (the drawer stops on close). */
+  signal?: AbortSignal;
 }
 
 /** Honest description of the model behind a provider answer. */
@@ -321,7 +323,8 @@ export const aiService = {
       ragContext: rag,
       hasSubstantiveContext,
       retrievalMode: retrieval.retrievalMode,
-      onChunk
+      onChunk,
+      signal: options?.signal
     });
 
     // FINAL anti-hallucination gate: applies to EVERY conversational answer,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useReducer, useMemo, useCallback } from 'react';
-import type { Flashcard, LearningResource, LearningSession, StudySessionMode, ImageOcclusionData } from '../types/models.ts';
+import type { Flashcard, LearningResource, LearningSession, StudySessionMode } from '../types/models.ts';
 import {
   CheckCircle2,
   RotateCcw,
@@ -22,6 +22,7 @@ import {
   VolumeX
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
+import { parseImageOcclusionData } from '../services/imageOcclusion.ts';
 import { speechService } from '../services/speechService.ts';
 import confetti from 'canvas-confetti';
 import { FlashcardGenerationModal } from '../components/study/FlashcardGenerationModal.tsx';
@@ -358,10 +359,14 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
     if (!currentCard || !state.sessionId) return;
     setActionError(null);
     try {
-      const result = await dao.reviewFlashcardSM2(currentCard.id, grade);
-      try {
-        await dao.recordStudyFlashcardReview(state.sessionId);
-      } catch {
+      // One compound write: the card's SM-2 schedule and the session counter
+      // share a single snapshot export instead of exporting the database twice.
+      const { result, sessionUpdated } = await dao.reviewFlashcardInSession(
+        currentCard.id,
+        grade,
+        state.sessionId
+      );
+      if (!sessionUpdated) {
         setActionError('La tarjeta se guardó, pero no se pudo actualizar el contador de la sesión.');
       }
       const option = GRADE_OPTIONS.find(o => o.grade === grade);
@@ -784,12 +789,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                 <div className="space-y-4">
                   {currentCard.card_type === 'image_occlusion' && currentCard.extra_data ? (
                     (() => {
-                      let occlusionData: ImageOcclusionData | null = null;
-                      try {
-                        occlusionData = JSON.parse(currentCard.extra_data) as ImageOcclusionData;
-                      } catch {
-                        occlusionData = null;
-                      }
+                      const occlusionData = parseImageOcclusionData(currentCard.extra_data);
                       if (occlusionData) {
                         return (
                           <div className="space-y-4 rounded-xl border border-line bg-raised p-5 shadow-pop sm:p-7">

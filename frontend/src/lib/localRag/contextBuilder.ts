@@ -91,6 +91,31 @@ export function buildSourceCitation(doc: RetrievedDocument, index: number): RagS
 }
 
 /**
+ * Escapes a value that goes inside a quoted context attribute.
+ *
+ * A title containing `"` used to end the attribute early and let the rest of
+ * the title be read as instructions; `<`/`>` could forge a closing delimiter.
+ */
+export function escapeContextAttribute(value: string): string {
+  return (value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Neutralizes forged source delimiters inside a snippet.
+ *
+ * Retrieved text is DATA, never instructions: a document containing
+ * `<<<FIN_FUENTE_1>>>` must not be able to close the block and speak as the
+ * system. Normal `<`/`>` usage (code, comparisons) is left untouched.
+ */
+export function neutralizeContextDelimiters(text: string): string {
+  return (text || '').replace(/<{3,}/g, '<<').replace(/>{3,}/g, '>>');
+}
+
+/**
  * Packs retrieved documents into a structured context block that is readable
  * and understandable for the local model, including source identifiers and
  * strict length limits to prevent context overflow or injections.
@@ -118,14 +143,14 @@ export function buildRagContext(documents: RetrievedDocument[]): BuiltRagContext
   for (let i = 0; i < boundedDocs.length; i++) {
     const doc = boundedDocs[i];
 
-    let safeSnippet = doc.snippet;
+    let safeSnippet = neutralizeContextDelimiters(doc.snippet);
     if (safeSnippet.length > MAX_CHARS_PER_SOURCE) {
       safeSnippet = safeSnippet.slice(0, MAX_CHARS_PER_SOURCE) + '... [truncado]';
     }
 
     const pageAttr = doc.page ? ` PAGINA="${doc.page}"` : '';
-    const chapterAttr = doc.chapter ? ` CAPITULO="${doc.chapter}"` : '';
-    const section = `<<<DATOS_FUENTE_${i + 1} TIPO="${doc.sourceType.toUpperCase()}" TITULO="${doc.title}"${pageAttr}${chapterAttr}>>>\n${safeSnippet}\n<<<FIN_FUENTE_${i + 1}>>>`;
+    const chapterAttr = doc.chapter ? ` CAPITULO="${escapeContextAttribute(doc.chapter)}"` : '';
+    const section = `<<<DATOS_FUENTE_${i + 1} TIPO="${doc.sourceType.toUpperCase()}" TITULO="${escapeContextAttribute(doc.title)}"${pageAttr}${chapterAttr}>>>\n${safeSnippet}\n<<<FIN_FUENTE_${i + 1}>>>`;
 
     // PROVENANCE CONTRACT: the section is built and its inclusion decided
     // BEFORE registering a title or citation. A source that does not fit the

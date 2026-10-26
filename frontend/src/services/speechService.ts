@@ -27,6 +27,8 @@ class SpeechService {
   private settings: SpeechSettings = DEFAULT_SETTINGS;
   private voices: SpeechSynthesisVoice[] = [];
   private recognitionInstance: any = null;
+  /** Monotone session id: distinguishes the live dictation from stale events. */
+  private dictationSeq = 0;
   private isCurrentlyDictating = false;
   private listeners: Array<() => void> = [];
 
@@ -185,7 +187,14 @@ class SpeechService {
       recognition.interimResults = true;
       recognition.lang = this.settings.lang || 'es-ES';
 
+      // Session tag: a previous recognition ends ASYNCHRONOUSLY after a restart,
+      // so its `onend`/`onresult` used to fire into the new session (marking it
+      // stopped or injecting old transcripts). Only the live instance counts.
+      const session = ++this.dictationSeq;
+      const isCurrent = () => this.dictationSeq === session && this.recognitionInstance === recognition;
+
       recognition.onresult = (event: any) => {
+        if (!isCurrent()) return;
         let interimTranscript = '';
         let finalTranscript = '';
 
@@ -206,6 +215,7 @@ class SpeechService {
       };
 
       recognition.onerror = (event: any) => {
+        if (!isCurrent()) return;
         let msg = translateKey(lang, 'speech.sttErr');
         if (event.error === 'not-allowed') {
           msg = translateKey(lang, 'speech.micDenied');
@@ -218,28 +228,41 @@ class SpeechService {
       };
 
       recognition.onend = () => {
+        // A stale instance ending must not turn the ACTIVE dictation off.
+        if (!isCurrent()) return;
+        this.recognitionInstance = null;
         this.isCurrentlyDictating = false;
         this.notifyListeners();
       };
 
-      recognition.start();
+      // Assigned BEFORE `start()`: the browser can fire `onend` synchronously on
+      // a failed start, and it must see a live instance.
       this.recognitionInstance = recognition;
       this.isCurrentlyDictating = true;
+      recognition.start();
       this.notifyListeners();
       return true;
     } catch (err: any) {
+      this.recognitionInstance = null;
       this.isCurrentlyDictating = false;
+      this.notifyListeners();
       onError?.(err?.message || translateKey(lang, 'speech.micFail'));
       return false;
     }
   }
 
   public stopDictation(): void {
-    if (this.recognitionInstance) {
+    const instance = this.recognitionInstance;
+    this.recognitionInstance = null;
+    if (instance) {
+      // Detach first: `stop()` triggers `onend`, which would otherwise clear the
+      // state of a dictation started right after.
+      instance.onresult = null;
+      instance.onerror = null;
+      instance.onend = null;
       try {
-        this.recognitionInstance.stop();
+        instance.stop();
       } catch {}
-      this.recognitionInstance = null;
     }
     this.isCurrentlyDictating = false;
     this.notifyListeners();

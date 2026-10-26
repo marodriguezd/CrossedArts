@@ -7,6 +7,7 @@ import { cn, Button, ProgressBar } from '../ui/index.tsx';
 import { MessageBody, SourceTitle } from './MarkdownMessage.ts';
 import { localAiRuntime, type LocalAiStatus } from '../../services/localAiRuntime.ts';
 import { detectWebGPUCapability, type WebGPUCapabilityReport } from '../../lib/localLlm/capabilities.ts';
+import { describeTrimNotice, resolveContextBudget, trimChatHistory } from '../../lib/localLlm/contextBudget.ts';
 
 interface MessageItem extends AIChatMessage {
   sources?: string[];
@@ -79,11 +80,34 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  /** Spanish notice shown when the model context forced dropping old turns. */
+  const [contextNotice, setContextNotice] = useState<string | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<LocalAiStatus>(localAiRuntime.getStatus());
   const [consentDismissed, setConsentDismissed] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<AISettings>(aiService.getSettings());
   const [gpuReport, setGpuReport] = useState<WebGPUCapabilityReport | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  /**
+   * Cancellation token of the in-flight answer.
+   *
+   * Closing the drawer (or pressing Detener) aborts REAL work: the local engine
+   * stops producing tokens and the CPU worker is discarded, instead of finishing
+   * a generation nobody is going to read.
+   */
+  const abortRef = useRef<AbortController | null>(null);
+
+  const cancelGeneration = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  };
+
+  useEffect(() => () => cancelGeneration(), []);
+
+  /** Single exit point: aborting first guarantees no orphan generations. */
+  const handleClose = () => {
+    cancelGeneration();
+    onClose();
+  };
 
   // Sync settings in real time when the user switches provider
   useEffect(() => aiService.subscribeSettings(setCurrentSettings), []);
@@ -107,13 +131,13 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
           setConsentDismissed(true);
           return;
         }
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener('keydown', onKey);
     inputRef.current?.focus();
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose, consentDismissed]);
+  }, [isOpen, handleClose, consentDismissed]);
 
   // Local AI preparation is automatic: it reflects in the UI without the user
   // managing models, WebGPU, or indexes.
@@ -153,10 +177,28 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     setInput('');
     setLoading(true);
 
+    // CONTEXT BUDGET: the local window is 2k-4k tokens. Sending the whole
+    // conversation silently overflowed it; the oldest turns are dropped here
+    // and the UI says so. Remote providers keep the full history.
+    let outgoing = newHistory.map(m => ({ role: m.role, content: m.content }));
+    if (isLocalProvider) {
+      const fitted = trimChatHistory(
+        outgoing,
+        resolveContextBudget(localLlmEngine.getLoadedModelId() || currentSettings.localModelId)
+      );
+      outgoing = fitted.messages;
+      setContextNotice(describeTrimNotice(fitted));
+    } else {
+      setContextNotice(null);
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       let streamingText = '';
       const response: AssistantResponse = await aiService.askTutor(
-        newHistory.map(m => ({ role: m.role, content: m.content })),
+        outgoing,
         activeContext,
         // STREAMING CONTRACT: each callback delivers a DELTA (new text only),
         // never the accumulated text. Hence the CONCATENATION.
@@ -171,7 +213,8 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
             }
           ]);
         },
-        retrievalScope
+        retrievalScope,
+        { signal: controller.signal }
       );
       setMessages([
         ...newHistory,
@@ -188,14 +231,19 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
         }
       ]);
     } catch (err: any) {
+      const cancelled = controller.signal.aborted || err?.name === 'AbortError';
       setMessages([
         ...newHistory,
         {
           role: 'assistant',
-          content: `Error consultando al tutor: ${err?.message || 'Error desconocido'}`
+          // A cancellation is not an error: it says exactly what happened.
+          content: cancelled
+            ? 'Respuesta detenida. Puedes volver a preguntar cuando quieras.'
+            : `Error consultando al tutor: ${err?.message || 'Error desconocido'}`
         }
       ]);
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setLoading(false);
     }
   };
@@ -249,7 +297,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
           </div>
         </div>
         <button
-          onClick={onClose}
+          onClick={handleClose}
           aria-label="Cerrar panel del tutor"
           className="rounded-lg p-1.5 text-faint transition hover:bg-canvas hover:text-ink"
         >
@@ -399,10 +447,22 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
             </div>
           </div>
         ))}
+        {contextNotice && (
+          <p className="rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-micro text-muted" role="status">
+            {contextNotice}
+          </p>
+        )}
         {loading && (
           <div className="flex items-center gap-2 p-2 text-meta text-accent">
             <RefreshCw size={14} className="animate-spin" aria-hidden="true" />
-            <span>Consultando y recuperando contexto local…</span>
+            <span className="flex-1">Consultando y recuperando contexto local…</span>
+            <button
+              type="button"
+              onClick={cancelGeneration}
+              className="shrink-0 rounded-md border border-line-strong px-2 py-0.5 text-meta font-medium text-ink transition-colors hover:bg-canvas"
+            >
+              Detener
+            </button>
           </div>
         )}
       </div>
