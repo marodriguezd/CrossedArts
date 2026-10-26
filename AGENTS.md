@@ -71,7 +71,7 @@
 cd frontend
 npm install          # Install dependencies
 npm run dev          # Start dev server (Vite)
-npm test             # Run test suite (714 tests, 63 files)
+npm test             # Run test suite (840 tests, 82 files)
 npm run typecheck    # TypeScript type checking
 npm run build        # Production build (outputs to dist/)
 ```
@@ -84,14 +84,31 @@ npx playwright install chromium          # once per machine
 npm run build
 npm run preview:qa                            # in one terminal (127.0.0.1:4173, strict)
 QA_URL=http://localhost:4173 npm run qa:visual # in another
+npm run qa:embeddings                         # opt-in: real model download + inference
 ```
 
 `frontend/scripts/visual-qa.mjs` walks the real views (Panel, Hoy, Metas,
 Análisis, Biblioteca, detalle de recurso, espacio de trabajo práctico, Grafo,
 estadística del grafo) at desktop/tablet/mobile, asserting page-level horizontal
 overflow, console/page errors and the presence of each view's key headings. It
-exits non-zero on any failure. Screenshots go to `/tmp/crossedarts-qa` and must
-never be committed.
+also smoke-tests the local ONNX runtime in a real browser (`ort/` artifacts
+served as JS modules, glue evaluated and the WASM instance created both on the
+page and in a module worker — the realm `wasm.proxy` boots), fails on any
+request to a foreign origin, and exits 2 with an explicit message when the
+preview server is unreachable. It exits non-zero on any failure. Screenshots go
+to `/tmp/crossedarts-qa` and must never be committed.
+
+`frontend/scripts/embedding-qa.mjs` (`npm run qa:embeddings`) is a separate
+OPT-IN smoke test, never part of CI: it serves `dist/` itself, downloads the real
+embedding model (~280 MB from the Hub), indexes the demo library through
+Settings → «Reindexar contenido», and verifies what a static build cannot — the
+vectors land in `CrossedArts_Embeddings` with the effective MRL dimension, unit
+L2 norm and provenance, they survive a reload, and the main thread stays
+responsive while indexing (heartbeat per phase, the evidence that `wasm.proxy`
+runs inference off the page). It also asks the tutor a paraphrased question (no
+shared words with the corpus) and asserts the correct fragment appears as the
+FIRST citation with a hybrid/semantic retrieval mode. Budget ~5 minutes and
+network access; a clean run prints a per-phase report.
 
 ### Backend
 
@@ -115,7 +132,7 @@ PYTHONPATH=. pytest backend/tests -q
 
 ## Testing Expectations
 
-The frontend test suite (714 tests, 63 files) validates:
+The frontend test suite (840 tests, 82 files) validates:
 - SQLite WASM initialization without network access
 - SM-2 algorithm accuracy
 - Study session lifecycle and persistence
@@ -137,6 +154,10 @@ The frontend test suite (714 tests, 63 files) validates:
 - Graph structural analytics: components, degree, mean+2σ thresholds, insights
 - Search and command palette integration for goals
 - RAG provenance gate: citations describe EXACTLY the visible context
+- RAG query tokenization: Spanish function words never become lexical candidates
+  (`tokenizeQuery` = closed-class filter for retrieval, `tokenizeLexical` unchanged for
+  grounding) and surviving content terms are weighted by BM25 IDF over the retrieval's own
+  document collection (`computeLexicalIdf`), so rarity ranks hits instead of a raw count
 - Semantic corpus: KnowledgeDocument boundary + incremental content manifest
 - Session scope contract (lesson / resource / global) on SQLite
 - Local LLM runtime contract: single `generate()` API and delta-only streaming
@@ -189,6 +210,8 @@ The frontend test suite (714 tests, 63 files) validates:
 
 12. **Text-transform and assertion strings:** `innerText` returns rendered text, so anything styled with `type-micro` (uppercase) reads as `MÁS CONECTADOS`. Compare UI strings case-insensitively when asserting on rendered output.
 
+13. **Lexical ranking: frequency weighting cannot replace the function-word filter.** BM25 IDF alone was measured on the demo library: `df` comes from the retrieval's own documents, so a grammatical word that happens to appear once (`sin`, df=1 of 45) weighs the maximum and makes an unrelated card the 3rd citation, while `una`/`como` still let a React lesson take 2nd place. `tokenizeQuery` decides WHAT is a candidate (closed class, Spanish); `computeLexicalIdf` decides how much each surviving content term weighs. Removing either half reopens the noise. Fusion compounds it: any lexical candidate gets most of its score from the normalized RRF term, so mere presence in the channel outranks a better-quality hit.
+
 ## File Map
 
 ```
@@ -234,7 +257,7 @@ CrossedArts/
 │   │   │   └── localMediaService.ts  # File System Access API
 │   │   └── hooks/                    # useTheme, useCommandPaletteHotkey, useGoalProgress
 │   ├── scripts/visual-qa.mjs         # Playwright visual/responsive QA (optional)
-│   └── tests/                        # 63 test files, 714 tests
+│   └── tests/                        # 82 test files, 840 tests
 ├── backend/
 │   ├── alembic/                      # Database migrations
 │   ├── app/

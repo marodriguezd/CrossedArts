@@ -141,6 +141,8 @@ AUDIT.md
 PLAN.md
 PENDIENTE.md
 pendiente.md
+# Handoff de sesión para el siguiente agente (ver AGENTS.md, "Git Hygiene").
+HANDOFF.md
 
 # --- General Logs & Temp ---
 *.log
