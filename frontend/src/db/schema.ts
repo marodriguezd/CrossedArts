@@ -1,4 +1,12 @@
 /**
+ * Canonical DDL for the browser database (13 tables).
+ *
+ * `SCHEMA_SQL` runs on EVERY open and only uses `IF NOT EXISTS`: new tables and
+ * indexes appear without touching rows. Columns added to an existing table are
+ * NOT covered by it — those are the explicit migrations in `sqliteBridge.ts`.
+ */
+
+/**
  * Canonical DDL for practice work.
  *
  * Practice work is EVIDENCE PRODUCED BY THE LEARNER: not data derived from a

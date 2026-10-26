@@ -1,30 +1,19 @@
 /**
  * Deterministic URL resolution for the SQLite WebAssembly binary.
  *
- * Context of the real production failure:
- *   Vite resolves `sql.js` with the `browser` condition from its package.json,
- *   which points at `dist/sql-wasm-browser.js`. That Emscripten build requests
- *   `sql-wasm-browser.wasm`, a file we do NOT deploy: `public/` (and therefore
- *   `dist/` and GitHub Pages) holds `sql-wasm.wasm`. The result was a WASM 404
- *   that surfaced as the user-facing "could not load the SQLite engine in
- *   WebAssembly" error.
- *
- *   On top of that, the previous `locateFile` returned `./sql-wasm.wasm`, a
- *   relative path anchored to wherever the bundle runs rather than to the
- *   deployed document. Resolving against `document.baseURI` pins the anchor to
- *   the app's real directory (`/CrossedArts/`) without hardcoding the repository
- *   name, so it stays portable across any static hosting base.
+ * Vite resolves `sql.js` through its `browser` condition, whose build requests
+ * `sql-wasm-browser.wasm` — a file we do not deploy (`public/` ships
+ * `sql-wasm.wasm`), which surfaced as a 404 in production. Resolving against
+ * `document.baseURI` pins the anchor to the deployed directory (`/CrossedArts/`)
+ * without hardcoding the repository name.
  */
 
 /** Canonical name of the binary we actually deploy in `public/`. */
 export const SQLITE_WASM_FILENAME = 'sql-wasm.wasm';
 
 /**
- * Maps the WASM filename Emscripten/sql.js requests to the deployed file.
- * The `sql-wasm.js` and `sql-wasm-browser.js` builds of sql.js share exactly
- * the same binary, so pointing at `sql-wasm.wasm` is correct whether the build
- * requests `sql-wasm.wasm` (standard) or `sql-wasm-browser.wasm` (the `browser`
- * build Vite resolves on the client).
+ * Maps the WASM filename sql.js requests to the deployed one: the standard and
+ * `browser` builds share exactly the same binary.
  */
 export function deployedSqliteWasmFilename(requested: string): string {
   return /\.wasm$/i.test(requested) ? SQLITE_WASM_FILENAME : requested;

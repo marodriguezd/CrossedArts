@@ -2,7 +2,7 @@ import { translateKey } from '../i18n/dictionaries.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 import { resolveAppLanguage } from '../i18n/resolveAppLanguage.ts';
 import initSqlJs from 'sql.js';
-import type { Database } from 'sql.js';
+import type { Database, SqlJsConfig, SqlJsStatic } from 'sql.js';
 import { SCHEMA_SQL, KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL, buildPracticeWorkTableSql, PRACTICE_WORK_INDEX_SQL } from './schema.ts';
 import { SEED_SQL } from './seedDemo.ts';
 import { resolveSqliteWasmUrl, deployedSqliteWasmFilename } from './sqliteWasmUrl.ts';
@@ -24,11 +24,8 @@ interface PersistedCoordinatorMeta {
   revision: number;
   lastWriterTabId: string;
   updatedAt: number;
-}  /**
-   * Stale-write error (concurrency conflict). Thrown by `persist()` when the
-   * persisted revision is no longer the one this tab knew. `persistedRevision`
-   * is the actually persisted (winning) revision.
-   */
+}
+
 let dbLang: LanguageCode = resolveAppLanguage();
 
 /** Module-level UI language for DB failure messages (mirrors Settings). */
@@ -36,6 +33,11 @@ export function setDbLanguage(lang: LanguageCode): void {
   dbLang = lang;
 }
 
+/**
+ * Stale-write error (concurrency conflict). Thrown by `persist()` when the
+ * persisted revision is no longer the one this tab knew. `persistedRevision`
+ * is the actually persisted (winning) revision.
+ */
 export class StaleWriteError extends Error {
   public readonly persistedRevision: number;
   constructor(persistedRevision: number) {
@@ -210,29 +212,19 @@ class SQLiteBridge {
   private remoteRevision = 0;
   private reloadPromise: Promise<void> | null = null;
   /**
-   * Cached last-export size. Avoids calling `db.export()` (which closes and
-   * reopens the SQLite connection and resets PRAGMAs like `foreign_keys`) just
-   * to report the size on every status notice.
+   * Cached last-export size: `db.export()` closes and reopens the connection,
+   * resetting PRAGMAs, which is too costly for a status notice.
    */
   private databaseSizeBytes = 0;
   private persistentStorageGranted = false;
   /**
-   * Reused IndexedDB connection.
-   *
-   * Opening one connection per operation and never closing it grew without
-   * bound over a long session (each handle holds memory and keeps other tabs'
-   * `deleteDatabase` blocked). It is memoized after first use and reopened
-   * lazily if it was closed.
+   * Reused IndexedDB connection, reopened lazily if closed: one handle per
+   * operation leaked memory and kept other tabs' `deleteDatabase` blocked.
    */
   private idbPromise: Promise<IDBDatabase> | null = null;
   /**
-   * Serialized persistence queue (single-flight).
-   *
-   * Every `persist()` exports the WHOLE database and compares-and-swaps the
-   * coordinator revision. Running two of those concurrently made the second one
-   * read a revision the first had already bumped and surface a false
-   * `StaleWriteError`. Writes are now chained: each one starts after the
-   * previous one settled, and the CAS check sees the revision it just wrote.
+   * Serialized persistence queue. Two concurrent persists made the second read
+   * a revision the first had already bumped, surfacing a false StaleWriteError.
    */
   private persistQueue: Promise<void> = Promise.resolve();
   /** Writes enqueued but not yet settled (see `pagehide` handling). */
@@ -323,7 +315,7 @@ class SQLiteBridge {
     }
   }
 
-  private async getSqlJsOptions(): Promise<any> {
+  private async getSqlJsOptions(): Promise<SqlJsConfig> {
     // In the browser, resolve the WASM against the deployed document's REAL base
     // (`document.baseURI`), not a bundle-relative path. On GitHub Pages under
     // `/CrossedArts/` the request becomes `https://.../CrossedArts/sql-wasm.wasm`
@@ -333,7 +325,7 @@ class SQLiteBridge {
     // its `browser` condition, whose build asks for `sql-wasm-browser.wasm`
     // (absent from `public/`). Both binaries are identical, so pointing at
     // `sql-wasm.wasm` is correct and deterministic.
-    let initOptions: any = {
+    let initOptions: SqlJsConfig = {
       locateFile: (file: string) =>
         resolveSqliteWasmUrl(deployedSqliteWasmFilename(file), document.baseURI)
     };
@@ -345,7 +337,9 @@ class SQLiteBridge {
         const path = await import('node:path');
         const wasmPath = path.resolve('public/sql-wasm.wasm');
         if (fs.existsSync(wasmPath)) {
-          initOptions = { wasmBinary: fs.readFileSync(wasmPath) };
+          // `wasmBinary` exige un ArrayBuffer: la copia evita depender del
+          // buffer (posiblemente compartido) que devuelve `readFileSync`.
+          initOptions = { wasmBinary: new Uint8Array(fs.readFileSync(wasmPath)).buffer as ArrayBuffer };
         }
       } catch (err) {
         console.warn('Fallback sql.js options en Node:', err);
@@ -355,20 +349,10 @@ class SQLiteBridge {
   }
 
   /**
-   * Initialize SQLite CONCURRENCY-SAFELY.
-   *
-   * Every call used to run its own full sequence (`initSqlJs`, `loadFromStorage`,
-   * migrations, `persist`) because the `if (this.db && this.isInitialized)` check
-   * is only valid with no `await` between check and assignment. Under overlapping
-   * calls (React StrictMode mount-unmount-mounts the `useAppData` effect, and
-   * lazy views like KnowledgeGraph fetch on their own), two sequences raced to
-   * write `this.db`: one could clobber the other and `getDatabase()` threw
-   * "Database not initialized" while the rest of the app was already rendered.
-   *
-   * Init is now one shared promise: the first caller creates it, the rest await
-   * it. Explicit terminal states (`ready` / `failed`) let the UI tell
-   * "initializing" from "failed" and show a controlled Spanish-language error
-   * instead of an inner exception's raw text.
+   * Initialize SQLite concurrency-safely: ONE shared promise, the first caller
+   * runs the sequence and the rest await it. Overlapping sequences used to race
+   * to write `this.db` (StrictMode mount-unmount-mount, lazy views initializing
+   * on their own) and `getDatabase()` threw while the app was already rendered.
    */
   public async init(): Promise<Database> {
     if (this.db && this.isInitialized) return this.db;
@@ -392,14 +376,11 @@ class SQLiteBridge {
 
     try {
       const options = await this.getSqlJsOptions();
-      let SQL;
-      try {
-        SQL = await initSqlJs(options);
-      } catch (err) {
-        // The WASM is a critical resource: when it fails to load, init fails
-        // terminally and in a controlled way; the app never half-renders.
+      // The WASM is a critical resource: when it fails to load, init fails
+      // terminally and in a controlled way; the app never half-renders.
+      const SQL: SqlJsStatic = await initSqlJs(options).catch((err) => {
         throw new DatabaseInitializationError(classifyInitError(err));
-      }
+      });
 
       let savedBytes: Uint8Array | null = null;
       try {
@@ -418,13 +399,11 @@ class SQLiteBridge {
             detail: msg
           });
         }
-        // Without IndexedDB we can still work in memory: not a terminal
-        // failure, report the state and carry on.
+        // Con IndexedDB presente, un fallo de lectura es terminal: seguir con
+        // una base sembrada escribiría la demo encima de la instantánea real.
+        // Sin IndexedDB no se llega aquí (loadFromStorage no lanza).
         this.setStorageState('storage-unavailable', msg || 'IndexedDB no disponible');
-        if (this.loadFromStorage !== SQLiteBridge.prototype['loadFromStorage']) {
-          // When the method is stubbed in a test to exercise storage failures.
-          throw new DatabaseInitializationError(classifyInitError(err));
-        }
+        throw new DatabaseInitializationError(classifyInitError(err));
       }
 
       if (savedBytes && savedBytes.byteLength > 0) {
@@ -472,12 +451,7 @@ class SQLiteBridge {
           }
         }
       } else {
-        this.db = new SQL.Database();
-        this.db.run('PRAGMA foreign_keys = ON;');
-        this.db.run(SCHEMA_SQL);
-        this.db.run(SEED_SQL);
-        this.db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
-        this.db.run('CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);');
+        this.db = this.buildFreshDatabase(SQL);
         this.isInitialized = true;
         this.initState = 'ready';
         this.setStorageState('ready');
@@ -502,6 +476,20 @@ class SQLiteBridge {
         ? err
         : new DatabaseInitializationError(this.initFailure);
     }
+  }
+
+  /**
+   * Fresh database with the canonical schema, the demo seed and the dependent
+   * indexes. One sequence, so first run and «restablecer demo» cannot drift.
+   */
+  private buildFreshDatabase(SQL: SqlJsStatic): Database {
+    const db = new SQL.Database();
+    db.run('PRAGMA foreign_keys = ON;');
+    db.run(SCHEMA_SQL);
+    db.run(SEED_SQL);
+    db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
+    db.run('CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);');
+    return db;
   }
 
   /** Current initialization lifecycle state. */
@@ -592,12 +580,8 @@ class SQLiteBridge {
   }
 
   /**
-   * Synchronous database access.
-   *
-   * It used to throw the raw English "Database not initialized", which leaked
-   * into the UI (the knowledge graph painted it verbatim). It now tells the two
-   * real cases apart, and both messages are known-class, Spanish-language, with
-   * an actionable recovery path.
+   * Synchronous access. Throws a classified, Spanish-language error instead of
+   * the raw English "Database not initialized" that used to reach the UI.
    */
   public getDatabase(): Database {
     if (this.remoteRevision > this.persistedRevision) {
@@ -808,6 +792,12 @@ class SQLiteBridge {
     try {
       tempDb = new SQL.Database(bytes);
       tempDb.run('PRAGMA foreign_keys = ON;');
+      // Un archivo con cabecera válida y páginas dañadas se importaría y se
+      // persistiría encima de la base buena: `init()` ya hace esta comprobación.
+      const integrity = tempDb.exec('PRAGMA quick_check;');
+      if (integrity.length && integrity[0].values.length && integrity[0].values[0][0] !== 'ok') {
+        throw new Error(`El archivo SQLite está dañado: ${String(integrity[0].values[0][0])}`);
+      }
       const markers = tempDb.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name IN ('learning_resource', 'learning_session', 'note', 'course', 'book', 'lesson')`);
       if (!markers.length || markers[0].values.length === 0) {
         throw new Error('El archivo SQLite no contiene las tablas de CrossedArts (learning_resource ausente).');
@@ -909,36 +899,44 @@ class SQLiteBridge {
   }
 
   private applyMigrationsAndCompleteSchema(db: Database): boolean {
-    // 1. Migrate existing tables before indexing new columns.
-    const migratedSession = this.migrateLearningSession(db);
-    const migratedLesson = this.migrateLessonContent(db);
-    const migratedFlashcard = this.migrateFlashcardLessonId(db);
-    const migratedOcclusion = this.migrateFlashcardOcclusion(db);
-    const migratedNote = this.migrateNoteLessonId(db);
-    const migratedGraph = this.migrateKnowledgeConnectionIndex(db);
-    const migratedPractice = this.migratePracticeWorkspace(db);
-    const migratedPracticeCascade = this.migratePracticeWorkParentCascade(db);
+    try {
+      // 1. Migrate existing tables before indexing new columns.
+      const migratedResource = this.migrateLearningResourceSourcePath(db);
+      const migratedSession = this.migrateLearningSession(db);
+      const migratedLesson = this.migrateLessonContent(db);
+      const migratedFlashcard = this.migrateFlashcardLessonId(db);
+      const migratedOcclusion = this.migrateFlashcardOcclusion(db);
+      const migratedNote = this.migrateNoteLessonId(db);
+      const migratedGraph = this.migrateKnowledgeConnectionIndex(db);
+      const migratedPractice = this.migratePracticeWorkspace(db);
+      const migratedPracticeCascade = this.migratePracticeWorkParentCascade(db);
 
-    // 2. Create any missing new base table/index (IF NOT EXISTS).
-    db.run(SCHEMA_SQL);
+      // 2. Create any missing new base table/index (IF NOT EXISTS).
+      db.run(SCHEMA_SQL);
 
-    // 3. Re-check indexes depending on migrated columns.
-    db.run('CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);');
-    db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
+      // 3. Re-check indexes depending on migrated columns.
+      db.run('CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);');
+      db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
 
-    return (
-      migratedSession ||
-      migratedLesson ||
-      migratedFlashcard ||
-      migratedOcclusion ||
-      migratedNote ||
-      migratedGraph ||
-      migratedPractice ||
-      migratedPracticeCascade
-    );
+      return (
+        migratedResource ||
+        migratedSession ||
+        migratedLesson ||
+        migratedFlashcard ||
+        migratedOcclusion ||
+        migratedNote ||
+        migratedGraph ||
+        migratedPractice ||
+        migratedPracticeCascade
+      );
+    } finally {
+      // Ninguna migración puede dejar `foreign_keys` apagado: se reasserta
+      // aunque falle a mitad, porque el resto de la sesión depende de ella.
+      db.run('PRAGMA foreign_keys = ON;');
+    }
   }
 
-  private validateDatabaseSchema(db: Database, strict = true): void {
+  private validateDatabaseSchema(db: Database): void {
     const requiredColumns: Record<string, string[]> = {
       learning_resource: ['id', 'title', 'description', 'cover_path', 'category', 'status', 'source_path', 'type', 'created_at', 'updated_at'],
       course: ['id', 'instructor', 'difficulty', 'total_duration_minutes', 'total_lessons', 'completed_lessons'],
@@ -957,11 +955,26 @@ class SQLiteBridge {
     for (const [table, columns] of Object.entries(requiredColumns)) {
       const info = db.exec(`PRAGMA table_info(${table})`);
       if (!info.length || !info[0].values.length) throw new Error(`Falta la tabla requerida: ${table}`);
-      if (!strict) continue;
       const present = new Set(info[0].values.map(row => String(row[1])));
       const missing = columns.filter(column => !present.has(column));
       if (missing.length) throw new Error(`La tabla ${table} no contiene las columnas requeridas: ${missing.join(', ')}`);
     }
+  }
+
+  /**
+   * Idempotent `learning_resource.source_path` migration.
+   *
+   * `validateDatabaseSchema` requires the column, so a database predating it
+   * could never open: the validator was stricter than the migrator. ADD COLUMN
+   * is additive and never touches existing rows.
+   * @returns true when the table was migrated and must persist.
+   */
+  private migrateLearningResourceSourcePath(db: Database): boolean {
+    const info = db.exec('PRAGMA table_info(learning_resource)');
+    if (!info.length || !info[0].values.length) return false;
+    if (info[0].values.some((row) => String(row[1]) === 'source_path')) return false;
+    db.run('ALTER TABLE learning_resource ADD COLUMN source_path TEXT;');
+    return true;
   }
 
   /**
@@ -1137,7 +1150,56 @@ class SQLiteBridge {
     }
 
     db.run('PRAGMA foreign_keys = OFF;');
-    db.run(`
+    try {
+      this.rebuildLearningSessionTable(db, columns);
+    } finally {
+      db.run('PRAGMA foreign_keys = ON;');
+    }
+    return true;
+  }
+
+  /**
+   * Rebuilds `learning_session` with the current definition keeping every row.
+   *
+   * Runs inside a transaction: a failure must not leave the half-migrated table
+   * behind for the rest of the session.
+   */
+  private rebuildLearningSessionTable(
+    db: Database,
+    columns: Array<{ name: string; notNull: boolean }>
+  ): void {
+    const legacyColumns = new Set(columns.map((c) => c.name));
+    const legacyExpr = (name: string, fallbackSql: string): string =>
+      legacyColumns.has(name) ? `COALESCE(${name}, ${fallbackSql})` : fallbackSql;
+    const modeExpr = legacyExpr('mode', "'flashcards'");
+    const cardsExpr = legacyExpr('cards_reviewed', '0');
+    const questionsExpr = legacyExpr('questions_answered', '0');
+    const correctExpr = legacyExpr('correct_answers', '0');
+    const statusExpr = legacyExpr('status', "'completed'");
+    const lessonExpr = legacyColumns.has('lesson_id') ? 'lesson_id' : 'NULL';
+    const startedExpr = legacyExpr('started_at', 'CURRENT_TIMESTAMP');
+    const endedExpr = legacyExpr('ended_at', 'NULL');
+    const durationExpr = legacyExpr('duration_minutes', '0');
+    const inactiveExpr = legacyExpr('inactive_seconds', '0');
+
+    // Scope derives from the anchors: lesson beats resource, and anchorless IS
+    // the global scope. A stored value that would violate the new CHECK (an
+    // unlinked 'resource' after ON DELETE SET NULL) is re-derived instead of
+    // aborting the whole migration.
+    const derivedScope = `CASE WHEN ${lessonExpr} IS NOT NULL THEN 'lesson' WHEN resource_id IS NOT NULL THEN 'resource' ELSE 'global' END`;
+    const scopeExpr = legacyColumns.has('scope')
+      ? `CASE
+           WHEN scope IN ('lesson', 'resource', 'global')
+            AND NOT (scope = 'global' AND (${lessonExpr} IS NOT NULL OR resource_id IS NOT NULL))
+            AND NOT (scope = 'resource' AND resource_id IS NULL)
+           THEN scope
+           ELSE ${derivedScope}
+         END`
+      : derivedScope;
+
+    db.run('BEGIN TRANSACTION;');
+    try {
+      db.run(`
       CREATE TABLE learning_session_migrated (
         id TEXT PRIMARY KEY,
         resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
@@ -1157,41 +1219,24 @@ class SQLiteBridge {
         status TEXT DEFAULT 'completed'
       );
     `);
-    // Preserve the actually persisted state: when the legacy DB already recorded
-    // mode, counters, or status, copy them verbatim (COALESCE only covers NULL).
-    // A cancelled session is thus never rebuilt as completed. Only for a missing
-    // column does the historic default apply: 'completed' keeps compatibility
-    // with old databases, whose rows were finalized study records (no
-    // cancellation concept).
-    const legacyColumns = new Set(columns.map(c => c.name));
-    const legacyExpr = (name: string, fallbackSql: string): string =>
-      legacyColumns.has(name) ? `COALESCE(${name}, ${fallbackSql})` : fallbackSql;
-    const modeExpr = legacyExpr('mode', "'flashcards'");
-    const cardsExpr = legacyExpr('cards_reviewed', '0');
-    const questionsExpr = legacyExpr('questions_answered', '0');
-    const correctExpr = legacyExpr('correct_answers', '0');
-    const statusExpr = legacyExpr('status', "'completed'");
-    const lessonExpr = legacyColumns.has('lesson_id') ? 'lesson_id' : 'NULL';
-    const startedExpr = legacyExpr('started_at', 'CURRENT_TIMESTAMP');
-    const endedExpr = legacyExpr('ended_at', 'NULL');
-    const durationExpr = legacyExpr('duration_minutes', '0');
-    const inactiveExpr = legacyExpr('inactive_seconds', '0');
-    // Scope derives from anchors: lesson beats resource, and anchorless IS the
-    // global scope (explicit cross-cutting review).
-    const scopeExpr = legacyColumns.has('scope')
-      ? "COALESCE(scope, CASE WHEN lesson_id IS NOT NULL THEN 'lesson' WHEN resource_id IS NOT NULL THEN 'resource' ELSE 'global' END)"
-      : `CASE WHEN ${lessonExpr} IS NOT NULL THEN 'lesson' WHEN resource_id IS NOT NULL THEN 'resource' ELSE 'global' END`;
-    db.run(`
+      // Preserve the actually persisted state: when the legacy DB already
+      // recorded mode, counters or status, copy them verbatim (COALESCE only
+      // covers NULL). A cancelled session is never rebuilt as completed; the
+      // historic default applies only to a missing column.
+      db.run(`
       INSERT INTO learning_session_migrated
         (id, resource_id, lesson_id, scope, started_at, ended_at, duration_minutes, inactive_seconds, mode, cards_reviewed, questions_answered, correct_answers, status)
       SELECT id, resource_id, ${lessonExpr}, ${scopeExpr}, ${startedExpr}, ${endedExpr}, ${durationExpr}, ${inactiveExpr},
              ${modeExpr}, ${cardsExpr}, ${questionsExpr}, ${correctExpr}, ${statusExpr}
       FROM learning_session;
     `);
-    db.run('DROP TABLE learning_session;');
-    db.run('ALTER TABLE learning_session_migrated RENAME TO learning_session;');
-    db.run('PRAGMA foreign_keys = ON;');
-    return true;
+      db.run('DROP TABLE learning_session;');
+      db.run('ALTER TABLE learning_session_migrated RENAME TO learning_session;');
+      db.run('COMMIT;');
+    } catch (err) {
+      try { db.run('ROLLBACK;'); } catch { /* ya revertida */ }
+      throw err;
+    }
   }
 
   /**
@@ -1228,11 +1273,7 @@ class SQLiteBridge {
     if (this.db) {
       try { this.db.close(); } catch {}
     }
-    this.db = new SQL.Database();
-    this.db.run('PRAGMA foreign_keys = ON;');
-    this.db.run(SCHEMA_SQL);
-    this.db.run(SEED_SQL);
-    this.db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
+    this.db = this.buildFreshDatabase(SQL);
     this.isInitialized = true;
     await this.persist();
   }

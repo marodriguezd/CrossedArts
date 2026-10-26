@@ -14,7 +14,7 @@ setDaoLanguage('es');
 // de datos local SQLite en IndexedDB / WebAssembly.
 // ---------------------------------------------------------------------------
 
-test('31.1 Fresh database creation initializes all 12 tables and seed data', async () => {
+test('31.1 Fresh database creation initializes all 13 tables and seed data', async () => {
   const fresh = new (dbBridge.constructor as any)();
   const db = await fresh.init();
   assert.ok(db, 'La base de datos debe inicializarse');
@@ -34,6 +34,7 @@ test('31.1 Fresh database creation initializes all 12 tables and seed data', asy
     'learning_resource',
     'learning_session',
     'lesson',
+    'media_asset',
     'module',
     'note',
     'practice_work'
@@ -496,6 +497,146 @@ test('31.10 Multiple parallel init() calls with legacy database resolve determin
   assert.equal(res2, res3);
   assert.equal(res3, res4);
   assert.equal(bridge.getInitState(), 'ready');
+});
+
+test('31.12 REGRESIÓN: un fallo de lectura con IndexedDB presente es terminal y nunca siembra la demo', async () => {
+  const bridge = new (dbBridge.constructor as any)();
+  let writes = 0;
+  bridge.loadFromStorage = async () => {
+    throw new Error('IndexedDB transaction blocked');
+  };
+  bridge.saveToStorage = async () => { writes += 1; };
+  bridge.saveToStorageWithCas = async () => { writes += 1; return true; };
+
+  let thrown: any = null;
+  try {
+    await bridge.init();
+  } catch (err) {
+    thrown = err;
+  }
+
+  assert.ok(thrown instanceof DatabaseInitializationError, 'el fallo de lectura debe propagarse');
+  assert.equal(bridge.getInitState(), 'failed');
+  assert.equal(bridge.getInitFailure()?.code, 'storage-unavailable');
+  assert.equal(
+    writes,
+    0,
+    'seguir con una base sembrada escribiría la demo encima de la instantánea ilegible'
+  );
+});
+
+test('31.13 REGRESIÓN: una sesión legacy con scope incoherente se normaliza en vez de abortar la migración', async () => {
+  // Esquema anterior: sin `lesson_id` ni `mode`, pero con `scope`. Una fila
+  // 'resource' sin recurso (posible tras ON DELETE SET NULL) violaría el CHECK
+  // de la tabla nueva si se copiara tal cual.
+  const SQL = await initSqlJs();
+  const legacy = new SQL.Database();
+  legacy.run(`
+    CREATE TABLE learning_resource (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      cover_path TEXT,
+      category TEXT DEFAULT 'General',
+      status TEXT DEFAULT 'NOT_STARTED',
+      source_path TEXT,
+      type TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE learning_session (
+      id TEXT PRIMARY KEY,
+      resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
+      scope TEXT,
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME,
+      duration_minutes INTEGER DEFAULT 0,
+      inactive_seconds INTEGER DEFAULT 0,
+      cards_reviewed INTEGER DEFAULT 0,
+      questions_answered INTEGER DEFAULT 0,
+      correct_answers INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'completed'
+    );
+    INSERT INTO learning_session (id, resource_id, scope, duration_minutes, cards_reviewed, status)
+    VALUES ('s-old', NULL, 'resource', 30, 7, 'cancelled');
+  `);
+  const bytes = legacy.export();
+  legacy.close();
+
+  const bridge = new (dbBridge.constructor as any)();
+  bridge.loadFromStorage = async () => bytes;
+
+  const db = await bridge.init();
+  assert.equal(bridge.getInitState(), 'ready', 'la migración no puede abortar la apertura');
+
+  const rows = db.exec("SELECT scope, duration_minutes, cards_reviewed, status, lesson_id FROM learning_session WHERE id = 's-old'");
+  assert.equal(rows.length, 1, 'la fila histórica se conserva');
+  assert.deepEqual(rows[0].values[0], ['global', 30, 7, 'cancelled', null]);
+
+  const fk = db.exec('PRAGMA foreign_keys;');
+  assert.equal(Number(fk[0].values[0][0]), 1, 'foreign_keys debe quedar activo tras la migración');
+});
+
+test('31.14 REGRESIÓN: una base sin `source_path` se migra en vez de fallar la validación', async () => {
+  const SQL = await initSqlJs();
+  const legacy = new SQL.Database();
+  legacy.run(`
+    CREATE TABLE learning_resource (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      cover_path TEXT,
+      category TEXT DEFAULT 'General',
+      status TEXT DEFAULT 'NOT_STARTED',
+      type TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO learning_resource (id, title, type) VALUES ('r-old', 'Recurso antiguo', 'pdf');
+  `);
+  const bytes = legacy.export();
+  legacy.close();
+
+  const bridge = new (dbBridge.constructor as any)();
+  bridge.loadFromStorage = async () => bytes;
+
+  const db = await bridge.init();
+  assert.equal(bridge.getInitState(), 'ready');
+
+  const info = db.exec('PRAGMA table_info(learning_resource)');
+  const columns = info[0].values.map((row: any[]) => String(row[1]));
+  assert.ok(columns.includes('source_path'), 'la columna se añade de forma aditiva');
+
+  const rows = db.exec("SELECT title, source_path FROM learning_resource WHERE id = 'r-old'");
+  assert.deepEqual(rows[0].values[0], ['Recurso antiguo', null]);
+});
+
+test('31.15 REGRESIÓN: importDatabase rechaza un archivo con páginas dañadas en vez de persistirlo', async () => {
+  const SQL = await initSqlJs();
+  const damaged = new SQL.Database();
+  damaged.run(`
+    CREATE TABLE learning_resource (id TEXT PRIMARY KEY, title TEXT, type TEXT);
+    CREATE TABLE learning_session (id TEXT PRIMARY KEY, scope TEXT);
+    CREATE TABLE note (id TEXT PRIMARY KEY, title TEXT, content TEXT);
+    CREATE TABLE course (id TEXT PRIMARY KEY);
+    CREATE TABLE book (id TEXT PRIMARY KEY);
+    CREATE TABLE lesson (id TEXT PRIMARY KEY);
+    INSERT INTO learning_resource (id, title, type) VALUES ('r1', 'Dañada', 'pdf');
+  `);
+  const bytes = new Uint8Array(damaged.export());
+  damaged.close();
+  // Cabecera intacta, páginas interiores corruptas: `quick_check` debe verlo.
+  bytes.fill(0xff, 100, 500);
+
+  const bridge = new (dbBridge.constructor as any)();
+  await bridge.init();
+
+  await assert.rejects(
+    () => bridge.importDatabase(bytes),
+    /dañado|malformed|not a database/i,
+    'un archivo corrupto no puede sustituir a la base buena'
+  );
+  assert.equal(bridge.getInitState(), 'ready', 'la base actual sigue en pie');
 });
 
 test('31.11 Stale write error in persist preserves remote snapshot and sets stale-other-tab', async () => {
