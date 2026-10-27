@@ -1526,17 +1526,6 @@ export const dao = {
       return { ...item, title: s?.title || item.id, type: s?.type || 'resource' };
     });
   },
-  async getRelatedConcepts(nodeIds: string[]): Promise<Array<{ id: string; name: string }>> {
-    const found = new Map<string, string>();
-    for (const id of nodeIds) {
-      if (!id) continue;
-      const items = await this.getRelatedKnowledge(id);
-      for (const item of items) {
-        if (item.type === 'concept') found.set(item.id, item.title);
-      }
-    }
-    return Array.from(found.entries()).map(([id, name]) => ({ id, name }));
-  },
   async getResourceDetail(resourceId: string): Promise<ResourceDetail | null> {
     const db = dbBridge.getDatabase();
 
