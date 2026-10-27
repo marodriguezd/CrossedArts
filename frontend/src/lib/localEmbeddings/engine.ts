@@ -96,6 +96,20 @@ function stripKnownEmbeddingPrefix(text: string): string {
   );
 }
 
+/**
+ * Thrown when an in-flight operation lost the load session that owned it
+ * (`unload()` or a newer `loadModel()` completed first).
+ *
+ * Kept distinct from a real failure: the engine's current state — possibly a
+ * healthy newer load of the same model — must NOT be flagged as 'error'.
+ */
+export class EmbeddingCancelledError extends Error {
+  constructor(message = 'Operación de embeddings cancelada: la sesión de carga cambió.') {
+    super(message);
+    this.name = 'EmbeddingCancelledError';
+  }
+}
+
 /** Normalized request to the embeddings engine (model, dtype, device). */
 export interface EmbeddingPipelineRequest {
   modelId: string;
@@ -390,17 +404,25 @@ export class LocalEmbeddingEngine {
    * ran.
    */
   private async runPipeline(input: string, modelId: string): Promise<any> {
+    // The pipeline belongs to the load session that created it: an `unload()`
+    // or a newer `loadModel()` interleaved with a slow CPU fallback must win.
+    const sessionId = this.loadSessionId;
     try {
       return await this.pipelineInstance(input, { pooling: 'mean', normalize: false });
     } catch (err) {
       if (this.backend !== 'webgpu' || !isWebGpuFatalError(err) || !this.lastPipelineFactory) {
         throw err;
       }
+      if (sessionId !== this.loadSessionId) throw new EmbeddingCancelledError();
       console.warn('Inferencia de embeddings en WebGPU falló; se reintenta en CPU/WASM:', err);
 
-      await this.disposePipeline(this.pipelineInstance);
+      // Detached BEFORE the await: a superseding load installs its own instance
+      // meanwhile, and it must never be disposed on this one's behalf.
+      const failedPipeline = this.pipelineInstance;
       this.pipelineInstance = null;
-      this.backend = 'wasm';
+      await this.disposePipeline(failedPipeline);
+      if (sessionId !== this.loadSessionId) throw new EmbeddingCancelledError();
+
       const modelDef = getEmbeddingModelById(modelId);
 
       const cpuPipeline = await this.lastPipelineFactory({
@@ -409,7 +431,18 @@ export class LocalEmbeddingEngine {
         device: 'wasm',
         onProgress: () => undefined
       });
+
+      // A fallback that resolves after the session changed is an ORPHAN: it
+      // belongs to a model the cache no longer targets, so publishing it would
+      // make every later vector come from the wrong pipeline while being stored
+      // under the new model's identity.
+      if (sessionId !== this.loadSessionId) {
+        await this.disposePipeline(cpuPipeline);
+        throw new EmbeddingCancelledError();
+      }
+
       this.pipelineInstance = cpuPipeline;
+      this.backend = 'wasm';
       this.notify();
 
       // A second failure is a real error, not a device quirk: propagate it.
@@ -481,6 +514,9 @@ export class LocalEmbeddingEngine {
       }
       return vector;
     } catch (err: any) {
+      // A cancelled operation belongs to a load session that no longer exists:
+      // the engine's current state (possibly a healthy newer load) stays intact.
+      if (err instanceof EmbeddingCancelledError) throw err;
       if (this.currentModelId === modelId) {
         this.status = 'error';
         this.lastError = err?.message || 'Error generando embedding.';

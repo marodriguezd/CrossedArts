@@ -181,3 +181,47 @@ test('P1.4: un navegador sin WebGPU no cambia de modelo, avisa', async () => {
     await localLlmEngine.unload();
   }
 });
+test('P1.4: un fallback CPU obsoleto no secuestra el pipeline de la carga siguiente', async () => {
+  const engine = new LocalEmbeddingEngine();
+  let releaseFallback: () => void = () => {};
+  const fallbackGate = new Promise<void>((resolve) => { releaseFallback = resolve; });
+  let wasmBuilds = 0;
+
+  const createPipeline = async ({ device }: { device: 'webgpu' | 'wasm' }) => {
+    if (device === 'webgpu') {
+      const gpuPipe: any = async () => { throw new Error('Device lost while executing compute stage'); };
+      gpuPipe.dispose = async () => undefined;
+      return gpuPipe;
+    }
+    wasmBuilds += 1;
+    const build = wasmBuilds;
+    // El primer CPU es lento: sigue construyéndose mientras el motor se
+    // descarga y se vuelve a cargar.
+    if (build === 1) await fallbackGate;
+    const pipe: any = async () => {
+      const vector = new Float32Array(384);
+      vector[build === 1 ? 0 : 383] = 1;
+      return { data: vector };
+    };
+    pipe.dispose = async () => undefined;
+    return pipe;
+  };
+
+  await engine.loadModel(FLEXIBLE_MODEL, { detectCapabilities: async () => GPU_CAPS, createPipeline });
+
+  const inflight = engine.embedText('consulta', true).catch(() => 'cancelado');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  await engine.unload();
+  await engine.loadModel(FLEXIBLE_MODEL, { detectCapabilities: async () => GPU_CAPS, createPipeline });
+
+  releaseFallback();
+  assert.equal(await inflight, 'cancelado', 'el embedding de la sesión anterior no se publica');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  assert.equal(engine.getStatus(), 'ready', 'una operación cancelada no marca el motor como roto');
+
+  const vector = await engine.embedText('otra', true);
+  assert.equal(vector[383], 1, 'la inferencia corre en el pipeline de la carga vigente');
+  assert.equal(vector[0], 0, 'el CPU obsoleto no se reinstala');
+});
