@@ -668,3 +668,107 @@ test('2.22 dao lee la misma nota de la misma manera por todos los caminos', asyn
     if (leftover) await dao.deleteNote(leftover.id);
   }
 });
+
+test('2.24 dao lee un curso y un libro legados igual por todos los caminos', async () => {
+  await dbBridge.init();
+  const db = dbBridge.getDatabase();
+
+  // Fila heredada: la app actual siempre escribe `category` y `status`, pero
+  // una base antigua los dejó NULL. Los dos caminos de lectura deben coincidir
+  // y resolver el NULL al default declarado por el esquema.
+  db.run("INSERT INTO learning_resource (id, title, type) VALUES ('legacy-map-course', 'Curso Legado Mapeo', 'course')");
+  db.run('INSERT INTO course (id) VALUES (?)', ['legacy-map-course']);
+  db.run("INSERT INTO learning_resource (id, title, type) VALUES ('legacy-map-book', 'Libro Legado Mapeo', 'book')");
+  db.run('INSERT INTO book (id) VALUES (?)', ['legacy-map-book']);
+  await dbBridge.persist();
+
+  try {
+    const listed = (await dao.getCourses()).find(c => c.id === 'legacy-map-course');
+    const byId = await dao.getCourseById('legacy-map-course');
+    assert.ok(listed, 'el curso legado aparece en el listado');
+    assert.ok(byId, 'el curso legado se encuentra por id');
+
+    const { modules, ...courseFields } = byId;
+    assert.deepStrictEqual(listed, courseFields, 'getCourses() y getCourseById() leen la misma fila igual');
+
+    // Un NULL heredado significa el default del esquema: la UI hace
+    // `course.category.toLowerCase()` y un null la tumbaría.
+    assert.strictEqual(listed.category, 'General');
+    assert.strictEqual(listed.status, 'NOT_STARTED');
+    assert.strictEqual(listed.difficulty, 'BEGINNER');
+    assert.strictEqual(listed.description, undefined, 'un opcional ausente es undefined, no null');
+
+    const book = (await dao.getBooks()).find(b => b.id === 'legacy-map-book');
+    assert.ok(book, 'el libro legado aparece en el listado');
+    assert.deepStrictEqual(book, await dao.getBookById('legacy-map-book'), 'getBooks() y getBookById() leen la misma fila igual');
+    assert.strictEqual(book.page_count, undefined, 'un número de páginas desconocido no se convierte en 0');
+    assert.strictEqual(book.reading_percentage, 0, 'el porcentaje declarado no opcional sí cae al default numérico');
+  } finally {
+    db.run("DELETE FROM learning_resource WHERE id IN ('legacy-map-course', 'legacy-map-book')");
+    await dbBridge.persist();
+  }
+});
+
+test('2.25 dao lee la misma tarjeta igual por los tres caminos', async () => {
+  await dbBridge.init();
+  const db = dbBridge.getDatabase();
+  const created = await dao.createFlashcard({
+    resource_id: 'c1-react',
+    lesson_id: 'l1',
+    front: '¿Una sola proyección?',
+    back: 'Sí: mapFlashcardRow.'
+  });
+  assert.ok(created.success && created.id, 'la tarjeta de prueba se crea');
+
+  // Vencida ayer: el camino de repaso no depende de que el reloj no cruce un segundo.
+  db.run("UPDATE flashcard SET due_date = datetime('now', '-1 day') WHERE id = ?", [created.id]);
+
+  try {
+    const listed = (await dao.getFlashcards()).find(c => c.id === created.id);
+    const due = (await dao.getDueFlashcards()).find(c => c.id === created.id);
+    const byLesson = (await dao.getFlashcardsForLesson('l1')).find(c => c.id === created.id);
+
+    assert.ok(listed && due && byLesson, 'la tarjeta se lee por listado, por vencimiento y por lección');
+    assert.deepStrictEqual(due, listed, 'getDueFlashcards() y getFlashcards() leen la misma fila igual');
+    assert.deepStrictEqual(byLesson, listed, 'la lectura por lección no pierde ni reordena columnas');
+    assert.strictEqual(listed.extra_data, undefined);
+    assert.strictEqual(listed.last_reviewed, undefined);
+    assert.strictEqual(listed.interval_days, 1);
+  } finally {
+    await dao.deleteFlashcard(created.id!);
+  }
+});
+
+test('2.26 dao lee un fragmento igual desde la nota y desde el detalle del recurso', async () => {
+  await dbBridge.init();
+  await dao.addNote({
+    resource_id: 'r1-srs',
+    title: 'Fragmento de mapeo',
+    content: 'Texto del fragmento.',
+    tags: ''
+  });
+
+  try {
+    const note = (await dao.getNotes()).find(n => n.title === 'Fragmento de mapeo');
+    assert.ok(note, 'la nota debe existir');
+
+    const detail = await dao.getResourceDetail('r1-srs');
+    assert.ok(detail, 'el recurso de la nota debe tener detalle');
+    const fragment = detail.fragments.find(f => f.id === note.id);
+    assert.ok(fragment, 'la nota aparece como fragmento del recurso');
+
+    // Los dos caminos leen la MISMA fila de `note`: antes uno colapsaba la
+    // cadena vacía a undefined y el otro la conservaba.
+    assert.deepStrictEqual(fragment, {
+      id: note.id,
+      title: note.title,
+      content: note.content,
+      tags: note.tags,
+      created_at: note.created_at
+    });
+    assert.strictEqual(fragment.tags, '');
+  } finally {
+    const leftover = (await dao.getNotes()).find(n => n.title === 'Fragmento de mapeo');
+    if (leftover) await dao.deleteNote(leftover.id);
+  }
+});

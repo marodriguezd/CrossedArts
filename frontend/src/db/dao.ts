@@ -17,7 +17,14 @@ import {
   validateStudySessionScope,
   type StudySessionScope
 } from '../services/sessionScope.ts';
-import { asNullableString, asNullableNumber } from './dao/sqlRows.ts';
+import {
+  asNullableString,
+  asNullableNumber,
+  mapBookRow,
+  mapCourseRow,
+  mapFlashcardRow,
+  mapResourceFragmentRow
+} from './dao/sqlRows.ts';
 import { translateKey } from '../i18n/dictionaries.ts';
 import { daoLang, setDaoLanguage } from './daoLanguage.ts';
 import { goalKindLabel } from '../services/goals.ts';
@@ -189,20 +196,7 @@ export const dao = {
       ? db.exec(`${base} AND resource_id = ? ORDER BY datetime(due_date) ASC, id ASC`, [resourceId])
       : db.exec(`${base} ORDER BY datetime(due_date) ASC, id ASC`);
     if (!res.length) return [];
-    return res[0].values.map((r: any[]) => ({
-      id: String(r[0]),
-      resource_id: r[1] ?? undefined,
-      front: String(r[2]),
-      back: String(r[3]),
-      repetition_count: Number(r[4]) || 0,
-      interval_days: Number(r[5]) || 1,
-      ease_factor: Number(r[6]) || 2.5,
-      due_date: String(r[7]),
-      last_reviewed: r[8] ?? undefined,
-      lesson_id: r[9] ? String(r[9]) : undefined,
-      card_type: (r[10] as FlashcardType) || 'standard',
-      extra_data: r[11] ? String(r[11]) : undefined
-    }));
+    return res[0].values.map(mapFlashcardRow);
   },
   async startStudySession(params: {
     mode: StudySessionMode;
@@ -245,21 +239,7 @@ export const dao = {
       ORDER BY r.created_at DESC
     `);
     if (!res.length) return [];
-    return res[0].values.map((row: any[]) => ({
-      id: row[0],
-      title: row[1],
-      description: row[2],
-      cover_path: row[3],
-      category: row[4],
-      status: row[5],
-      source_path: row[6],
-      type: 'course',
-      instructor: row[8],
-      difficulty: row[9],
-      total_duration_minutes: row[10],
-      total_lessons: row[11],
-      completed_lessons: row[12]
-    }));
+    return res[0].values.map(mapCourseRow);
   },
   async getCourseById(id: string): Promise<Course | null> {
     const db = dbBridge.getDatabase();
@@ -272,22 +252,7 @@ export const dao = {
     `, [id]);
     if (!res.length || !res[0].values.length) return null;
 
-    const row = res[0].values[0];
-    const course: Course = {
-      id: row[0] as string,
-      title: row[1] as string,
-      description: row[2] as string,
-      cover_path: row[3] as string,
-      category: row[4] as string,
-      status: row[5] as any,
-      source_path: row[6] as string,
-      type: 'course',
-      instructor: row[8] as string,
-      difficulty: row[9] as any,
-      total_duration_minutes: row[10] as number,
-      total_lessons: row[11] as number,
-      completed_lessons: row[12] as number
-    };
+    const course = mapCourseRow(res[0].values[0]);
     attachCourseHierarchy(db, [course]);
     return course;
   },
@@ -398,21 +363,7 @@ export const dao = {
       ORDER BY r.created_at DESC
     `);
     if (!res.length) return [];
-    return res[0].values.map((row: any[]) => ({
-      id: row[0],
-      title: row[1],
-      description: row[2],
-      cover_path: row[3],
-      category: row[4],
-      status: row[5],
-      source_path: row[6],
-      type: 'book',
-      author: row[8],
-      isbn: row[9],
-      page_count: row[10],
-      current_page: row[11],
-      reading_percentage: row[12]
-    }));
+    return res[0].values.map(mapBookRow);
   },
   async getLearningResources(): Promise<LearningResource[]> {
     const db = dbBridge.getDatabase();
@@ -510,20 +461,7 @@ export const dao = {
     const db = dbBridge.getDatabase();
     const res = db.exec('SELECT id, resource_id, front, back, repetition_count, interval_days, ease_factor, due_date, last_reviewed, lesson_id, card_type, extra_data FROM flashcard');
     if (!res.length) return [];
-    return res[0].values.map((r: any[]) => ({
-      id: String(r[0]),
-      resource_id: r[1] ? String(r[1]) : undefined,
-      front: String(r[2]),
-      back: String(r[3]),
-      repetition_count: Number(r[4]) || 0,
-      interval_days: Number(r[5]) || 1,
-      ease_factor: Number(r[6]) || 2.5,
-      due_date: String(r[7]),
-      last_reviewed: r[8] ? String(r[8]) : undefined,
-      lesson_id: r[9] ? String(r[9]) : undefined,
-      card_type: (r[10] as FlashcardType) || 'standard',
-      extra_data: r[11] ? String(r[11]) : undefined
-    }));
+    return res[0].values.map(mapFlashcardRow);
   },
   async reviewFlashcardSM2(id: string, grade: number): Promise<SM2Result | null> {
     const db = dbBridge.getDatabase();
@@ -605,28 +543,16 @@ export const dao = {
   },
   async getFlashcardsForLesson(lessonId: string): Promise<Flashcard[]> {
     const db = dbBridge.getDatabase();
+    // Same column order as every other flashcard read, so ONE mapper reads them.
     const res = db.exec(
-      `SELECT id, resource_id, lesson_id, front, back, repetition_count, interval_days, ease_factor, due_date, last_reviewed, card_type, extra_data
+      `SELECT id, resource_id, front, back, repetition_count, interval_days, ease_factor, due_date, last_reviewed, lesson_id, card_type, extra_data
        FROM flashcard
        WHERE lesson_id = ?
        ORDER BY rowid DESC`,
       [lessonId]
     );
     if (!res.length || !res[0].values.length) return [];
-    return res[0].values.map((r: any[]) => ({
-      id: String(r[0]),
-      resource_id: r[1] ? String(r[1]) : undefined,
-      lesson_id: r[2] ? String(r[2]) : undefined,
-      front: String(r[3]),
-      back: String(r[4]),
-      repetition_count: Number(r[5]) || 0,
-      interval_days: Number(r[6]) || 1,
-      ease_factor: Number(r[7]) || 2.5,
-      due_date: String(r[8]),
-      last_reviewed: r[9] ? String(r[9]) : undefined,
-      card_type: (r[10] as FlashcardType) || 'standard',
-      extra_data: r[11] ? String(r[11]) : undefined
-    }));
+    return res[0].values.map(mapFlashcardRow);
   },
   async createFlashcard(card: { resource_id?: string; lesson_id?: string; front: string; back: string; card_type?: FlashcardType; extra_data?: string | null }): Promise<{ success: boolean; id?: string; error?: string }> {
     const front = card.front.trim();
@@ -1489,14 +1415,7 @@ export const dao = {
              b.author, b.isbn, b.page_count, b.current_page, b.reading_percentage
       FROM learning_resource r JOIN book b ON r.id = b.id WHERE r.id = ?`, [id]);
     if (!res.length || !res[0].values.length) return null;
-    const row = res[0].values[0];
-    return {
-      id: String(row[0]), title: String(row[1]), description: row[2] ? String(row[2]) : undefined,
-      cover_path: row[3] ? String(row[3]) : undefined, category: String(row[4]), status: row[5] as any,
-      source_path: row[6] ? String(row[6]) : undefined, type: 'book', author: row[8] ? String(row[8]) : undefined,
-      isbn: row[9] ? String(row[9]) : undefined, page_count: Number(row[10]) || 0,
-      current_page: Number(row[11]) || 0, reading_percentage: Number(row[12]) || 0
-    };
+    return mapBookRow(res[0].values[0]);
   },
   async getConceptById(id: string): Promise<{ id: string; name: string; description?: string } | null> {
     const db = dbBridge.getDatabase();
@@ -1641,9 +1560,7 @@ export const dao = {
     const book = kind === 'book' ? await this.getBookById(resourceId) || undefined : undefined;
 
     const fragRes = db.exec('SELECT id, title, content, tags, created_at FROM note WHERE resource_id = ? ORDER BY created_at ASC, title ASC', [resourceId]);
-    const fragments: ResourceFragment[] = fragRes.length ? fragRes[0].values.map((r: any[]) => ({
-      id: String(r[0]), title: String(r[1]), content: String(r[2]), tags: r[3] ? String(r[3]) : undefined, created_at: r[4] ? String(r[4]) : undefined
-    })) : [];
+    const fragments: ResourceFragment[] = fragRes.length ? fragRes[0].values.map(mapResourceFragmentRow) : [];
 
     const hasSource = meta.sourceType && meta.sourceType !== 'learning_resource' && meta.sourceType !== 'book';
     return {

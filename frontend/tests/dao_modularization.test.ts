@@ -13,7 +13,14 @@ import { practiceWorkDao } from '../src/db/dao/practiceWork.ts';
 import { goalDao } from '../src/db/dao/goals.ts';
 import { SESSION_SELECT, SESSION_LIVE_DURATION_SQL } from '../src/db/dao/sessionQueries.ts';
 import { PRACTICE_WORK_ORDER_SQL, PRACTICE_WORK_COLUMNS } from '../src/db/dao/practiceWorkQueries.ts';
-import { mapLearningSessionRow, mapPracticeWorkRow } from '../src/db/dao/sqlRows.ts';
+import {
+  mapBookRow,
+  mapCourseRow,
+  mapFlashcardRow,
+  mapLearningSessionRow,
+  mapPracticeWorkRow,
+  mapResourceFragmentRow
+} from '../src/db/dao/sqlRows.ts';
 
 const read = (relative: string) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 
@@ -104,6 +111,46 @@ test('dao: el mapeo de filas es único y compartido', () => {
     'la lectura por id pasa por el mismo mapper'
   );
   assert.ok(!notesSource.includes('(r: any[])'), 'notes.ts no proyecta filas a mano');
+});
+
+test('dao: tarjetas, cursos, libros y fragmentos se leen con el mapper canónico', () => {
+  // Los cuatro mappers comparten la semántica de `SqlRow`. Sus proyecciones
+  // declaran el orden de columnas que el DAO selecciona.
+  const card = mapFlashcardRow(['fc1', null, 'Frente', 'Reverso', 0, 1, 2.5, '2026-01-01', null, null, null, null]);
+  assert.strictEqual(card.resource_id, undefined);
+  assert.strictEqual(card.lesson_id, undefined);
+  assert.strictEqual(card.card_type, 'standard');
+  assert.strictEqual(card.extra_data, undefined);
+
+  const course = mapCourseRow(['c1', 'Curso', null, null, null, null, null, 'course', null, null, null, null, null]);
+  assert.strictEqual(course.category, 'General');
+  assert.strictEqual(course.status, 'NOT_STARTED');
+  assert.strictEqual(course.difficulty, 'BEGINNER');
+  assert.strictEqual(course.total_lessons, undefined);
+
+  const book = mapBookRow(['b1', 'Libro', null, null, null, null, null, 'book', null, null, null, null, null]);
+  assert.strictEqual(book.page_count, undefined);
+  assert.strictEqual(book.current_page, undefined);
+  assert.strictEqual(book.reading_percentage, 0);
+
+  const fragment = mapResourceFragmentRow(['n1', 'Nota', 'Texto', null, null]);
+  assert.strictEqual(fragment.tags, undefined);
+  assert.strictEqual(fragment.created_at, undefined);
+
+  // Y el DAO no proyecta ninguna de esas cuatro entidades a mano: si volviera
+  // la proyección artesanal, habría dos lecturas posibles de la misma fila.
+  const daoSource = read('../src/db/dao.ts');
+  assert.strictEqual((daoSource.match(/values\.map\(mapFlashcardRow\)/g) || []).length, 3);
+  assert.strictEqual((daoSource.match(/values\.map\(mapCourseRow\)/g) || []).length, 1);
+  assert.ok(daoSource.includes('mapCourseRow(res[0].values[0])'), 'la lectura por id usa el mismo mapper de curso');
+  assert.strictEqual((daoSource.match(/values\.map\(mapBookRow\)/g) || []).length, 1);
+  assert.ok(daoSource.includes('mapBookRow(res[0].values[0])'), 'la lectura por id usa el mismo mapper de libro');
+  assert.ok(daoSource.includes('values.map(mapResourceFragmentRow)'));
+  // Las proyecciones artesanales de esas cuatro entidades (el resto del DAO
+  // proyecta índices y meta del grafo, que no son filas de entidad).
+  for (const leftover of ['ease_factor: Number(', 'difficulty: row[9]', 'author: row[8]', 'page_count: Number(row[10])']) {
+    assert.ok(!daoSource.includes(leftover), `la proyección artesanal \`${leftover}\` no sobrevive`);
+  }
 });
 
 test('dao: la fachada no expone escrituras que no persisten', () => {

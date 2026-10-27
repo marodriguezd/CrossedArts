@@ -71,7 +71,7 @@
 cd frontend
 npm install          # Install dependencies
 npm run dev          # Start dev server (Vite)
-npm test             # Run test suite (855 tests, 82 files)
+npm test             # Run test suite (859 tests, 82 files)
 npm run typecheck    # TypeScript type checking
 npm run build        # Production build (outputs to dist/)
 ```
@@ -132,7 +132,7 @@ PYTHONPATH=. pytest backend/tests -q
 
 ## Testing Expectations
 
-The frontend test suite (855 tests, 82 files) validates:
+The frontend test suite (859 tests, 82 files) validates:
 - SQLite WASM initialization without network access
 - SM-2 algorithm accuracy
 - Study session lifecycle and persistence
@@ -257,7 +257,7 @@ CrossedArts/
 │   │   │   └── localMediaService.ts  # File System Access API
 │   │   └── hooks/                    # useTheme, useCommandPaletteHotkey, useGoalProgress
 │   ├── scripts/visual-qa.mjs         # Playwright visual/responsive QA (optional)
-│   └── tests/                        # 82 test files, 855 tests
+│   └── tests/                        # 82 test files, 859 tests
 ├── backend/
 │   ├── alembic/                      # Database migrations
 │   ├── app/

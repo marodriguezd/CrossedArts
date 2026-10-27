@@ -15,11 +15,18 @@ import {
   type StudySessionScope
 } from '../../services/sessionScope.ts';
 import type {
+  Book,
+  Course,
+  CourseDifficulty,
+  Flashcard,
+  FlashcardType,
   LearningSession,
   Note,
   PracticeWork,
   PracticeWorkKind,
   PracticeWorkStatus,
+  ResourceFragment,
+  ResourceStatus,
   StudySessionMode,
   StudySessionStatus
 } from '../../types/models.ts';
@@ -50,6 +57,11 @@ export class SqlRow {
     const v = this.row[index];
     const n = typeof v === 'number' ? v : Number(v);
     return Number.isFinite(n) ? n : fallback;
+  }
+
+  /** An absent number stays absent instead of becoming `0`. */
+  optionalNum(index: number): number | undefined {
+    return this.optionalStr(index) === undefined ? undefined : this.num(index);
   }
 
   bool(index: number): boolean {
@@ -85,12 +97,104 @@ export function mapPracticeWorkRow(row: readonly unknown[]): PracticeWork {
     status: (r.optionalStr(7) as PracticeWorkStatus) || 'PLANNED',
     artifact_url: r.optionalStr(8),
     notes: r.optionalStr(9),
-    self_rating: r.optionalStr(10) === undefined ? undefined : r.num(10),
+    self_rating: r.optionalNum(10),
     completed_at: r.optionalStr(11),
     created_at: r.optionalStr(12),
     updated_at: r.optionalStr(13),
     content: r.optionalStr(14),
     checklist: parsePracticeChecklist(r.optionalStr(15)) ?? undefined
+  };
+}
+
+/**
+ * Canonical flashcard projection:
+ * `id, resource_id, front, back, repetition_count, interval_days, ease_factor,
+ * due_date, last_reviewed, lesson_id, card_type, extra_data`.
+ */
+export function mapFlashcardRow(row: readonly unknown[]): Flashcard {
+  const r = new SqlRow(row);
+  return {
+    id: r.str(0),
+    resource_id: r.optionalStr(1),
+    front: r.str(2),
+    back: r.str(3),
+    repetition_count: r.num(4),
+    // SM-2 cannot schedule a zero-day interval and its ease factor has a 1.30
+    // floor: a stored zero (legacy import) keeps the previous defaults.
+    interval_days: r.num(5) || 1,
+    ease_factor: r.num(6) || 2.5,
+    due_date: r.str(7),
+    last_reviewed: r.optionalStr(8),
+    lesson_id: r.optionalStr(9),
+    card_type: (r.optionalStr(10) as FlashcardType) || 'standard',
+    extra_data: r.optionalStr(11)
+  };
+}
+
+/**
+ * Canonical course projection:
+ * `r.id, r.title, r.description, r.cover_path, r.category, r.status,
+ * r.source_path, r.type, c.instructor, c.difficulty, c.total_duration_minutes,
+ * c.total_lessons, c.completed_lessons`.
+ *
+ * `category` and `status` are nullable columns whose schema default is the
+ * meaning of a NULL written by an older database (the app always inserts both);
+ * returning that default is what keeps `course.category.toLowerCase()` from
+ * throwing on legacy rows.
+ */
+export function mapCourseRow(row: readonly unknown[]): Course {
+  const r = new SqlRow(row);
+  return {
+    id: r.str(0),
+    title: r.str(1),
+    description: r.optionalStr(2),
+    cover_path: r.optionalStr(3),
+    category: r.optionalStr(4) ?? 'General',
+    status: (r.optionalStr(5) as ResourceStatus) || 'NOT_STARTED',
+    source_path: r.optionalStr(6),
+    type: 'course',
+    instructor: r.optionalStr(8),
+    difficulty: (r.optionalStr(9) as CourseDifficulty) || 'BEGINNER',
+    total_duration_minutes: r.optionalNum(10),
+    total_lessons: r.optionalNum(11),
+    completed_lessons: r.optionalNum(12)
+  };
+}
+
+/**
+ * Canonical book projection:
+ * `r.id, r.title, r.description, r.cover_path, r.category, r.status,
+ * r.source_path, r.type, b.author, b.isbn, b.page_count, b.current_page,
+ * b.reading_percentage`.
+ */
+export function mapBookRow(row: readonly unknown[]): Book {
+  const r = new SqlRow(row);
+  return {
+    id: r.str(0),
+    title: r.str(1),
+    description: r.optionalStr(2),
+    cover_path: r.optionalStr(3),
+    category: r.optionalStr(4) ?? 'General',
+    status: (r.optionalStr(5) as ResourceStatus) || 'NOT_STARTED',
+    source_path: r.optionalStr(6),
+    type: 'book',
+    author: r.optionalStr(8),
+    isbn: r.optionalStr(9),
+    page_count: r.optionalNum(10),
+    current_page: r.optionalNum(11),
+    reading_percentage: r.num(12)
+  };
+}
+
+/** Canonical fragment projection: `id, title, content, tags, created_at` of a note. */
+export function mapResourceFragmentRow(row: readonly unknown[]): ResourceFragment {
+  const r = new SqlRow(row);
+  return {
+    id: r.str(0),
+    title: r.str(1),
+    content: r.str(2),
+    tags: r.optionalStr(3),
+    created_at: r.optionalStr(4)
   };
 }
 
