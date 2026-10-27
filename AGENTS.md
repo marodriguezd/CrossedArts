@@ -71,7 +71,7 @@
 cd frontend
 npm install          # Install dependencies
 npm run dev          # Start dev server (Vite)
-npm test             # Run test suite (859 tests, 82 files)
+npm test             # Run test suite (861 tests, 82 files)
 npm run typecheck    # TypeScript type checking
 npm run build        # Production build (outputs to dist/)
 ```
@@ -132,7 +132,7 @@ PYTHONPATH=. pytest backend/tests -q
 
 ## Testing Expectations
 
-The frontend test suite (859 tests, 82 files) validates:
+The frontend test suite (861 tests, 82 files) validates:
 - SQLite WASM initialization without network access
 - SM-2 algorithm accuracy
 - Study session lifecycle and persistence
@@ -159,6 +159,10 @@ The frontend test suite (859 tests, 82 files) validates:
   grounding) and surviving content terms are weighted by BM25 IDF over the retrieval's own
   document collection (`computeLexicalIdf`), so rarity ranks hits instead of a raw count
 - Semantic corpus: KnowledgeDocument boundary + incremental content manifest
+- Bounded semantic chunking: fragment boundaries are measured relative to the chunk's
+  start, so no document collapses into hundreds of degenerate fragments
+- Embedding engine lifecycle: a WebGPU→CPU fallback that resolves after `unload()` or a
+  newer `loadModel()` is discarded instead of hijacking the active pipeline
 - Session scope contract (lesson / resource / global) on SQLite
 - Local LLM runtime contract: single `generate()` API and delta-only streaming
 - Task-aware, deterministic local model selection
@@ -212,6 +216,8 @@ The frontend test suite (859 tests, 82 files) validates:
 
 13. **Lexical ranking: frequency weighting cannot replace the function-word filter.** BM25 IDF alone was measured on the demo library: `df` comes from the retrieval's own documents, so a grammatical word that happens to appear once (`sin`, df=1 of 45) weighs the maximum and makes an unrelated card the 3rd citation, while `una`/`como` still let a React lesson take 2nd place. `tokenizeQuery` decides WHAT is a candidate (closed class, Spanish); `computeLexicalIdf` decides how much each surviving content term weighs. Removing either half reopens the noise. Fusion compounds it: any lexical candidate gets most of its score from the normalized RRF term, so mere presence in the channel outranks a better-quality hit.
 
+14. **Chunk boundaries are offsets, not absolute positions.** `splitAtBoundary` receives the chunk's `cursor` and measures every candidate cut *inside* the window that starts there. Comparing the absolute index of a line break against half the absolute limit held trivially from the second fragment on, and the cut landed on the very break the overlap had just re-read: a 2.4 KB note of ~590-character paragraphs became 211 fragments of 11–80 characters (one vector and one citation each). Any change to the boundary rules keeps that relative measurement.
+
 ## File Map
 
 ```
@@ -257,7 +263,7 @@ CrossedArts/
 │   │   │   └── localMediaService.ts  # File System Access API
 │   │   └── hooks/                    # useTheme, useCommandPaletteHotkey, useGoalProgress
 │   ├── scripts/visual-qa.mjs         # Playwright visual/responsive QA (optional)
-│   └── tests/                        # 82 test files, 859 tests
+│   └── tests/                        # 82 test files, 861 tests
 ├── backend/
 │   ├── alembic/                      # Database migrations
 │   ├── app/
