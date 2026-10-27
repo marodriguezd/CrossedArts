@@ -283,11 +283,30 @@ export class LocalEmbeddingEngine {
       this.lastError = null;
       this.notify();
 
-      const caps = await (options?.detectCapabilities ?? detectEmbeddingCapabilities)();
+      let caps: EmbeddingCapabilitiesReport;
+      try {
+        caps = await (options?.detectCapabilities ?? detectEmbeddingCapabilities)();
+      } catch (err: any) {
+        if (sessionId !== this.loadSessionId) return;
+        // Every terminal state stays reachable even when detection itself fails:
+        // without this the engine was left at 'checking' forever, announcing a
+        // model that would never load.
+        this.status = 'error';
+        this.lastError = err?.message || 'Error detectando las capacidades de ejecución.';
+        this.currentModelId = null;
+        this.notify();
+        throw err;
+      }
       if (sessionId !== this.loadSessionId) return; // session superseded during detection
+
+      // `currentModelId` is what `getLoadedModelId()` reports and what the
+      // vector cache and the embedding backups key on, so it is cleared on every
+      // path that ends WITHOUT a usable pipeline. Reporting the requested id
+      // there sent readers looking for vectors of a model that owns none.
       if (caps.state !== 'supported') {
         this.status = 'unsupported';
         this.lastError = 'Entorno sin soporte para ejecución de embeddings.';
+        this.currentModelId = null;
         this.notify();
         throw new Error(this.lastError);
       }
@@ -296,6 +315,7 @@ export class LocalEmbeddingEngine {
       if (!modelDef) {
         this.status = 'error';
         this.lastError = `Modelo de embedding desconocido: ${modelId}`;
+        this.currentModelId = null;
         this.notify();
         throw new Error(this.lastError);
       }
@@ -350,6 +370,9 @@ export class LocalEmbeddingEngine {
         this.status = 'error';
         this.lastError = err?.message || 'Error cargando modelo de embeddings.';
         this.pipelineInstance = null;
+        // The previous pipeline was already disposed above, so nothing is
+        // loaded: the id must not survive as a phantom identity for the cache.
+        this.currentModelId = null;
         this.notify();
         throw err;
       }

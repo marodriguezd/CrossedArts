@@ -188,6 +188,75 @@ test('Concurrency 5: un fallo de carga deja el motor en error recuperable para o
   assert.strictEqual(engine.getLoadedModelId(), MODEL_B);
 });
 
+test('Concurrency 5b: un fallo de carga no anuncia un modelo que no quedó cargado', async () => {
+  const engine = new LocalEmbeddingEngine();
+  const disposed: string[] = [];
+
+  await engine.loadModel(MODEL_A, {
+    detectCapabilities: async () => wasmCaps,
+    createPipeline: async () => makePipe('A', disposed)
+  });
+
+  // El usuario cambia de modelo y la descarga se interrumpe a mitad.
+  await assert.rejects(
+    engine.loadModel(MODEL_B, {
+      detectCapabilities: async () => wasmCaps,
+      createPipeline: async () => {
+        throw new Error('descarga interrumpida');
+      }
+    }),
+    /descarga interrumpida/
+  );
+
+  assert.strictEqual(engine.getStatus(), 'error');
+  assert.strictEqual(
+    engine.getLoadedModelId(),
+    null,
+    'tras el fallo no hay modelo cargado: anunciar B hace que la caché y los backups busquen vectores que no existen'
+  );
+
+  // Y el motor se recupera sin recargar la página.
+  await engine.loadModel(MODEL_A, {
+    detectCapabilities: async () => wasmCaps,
+    createPipeline: async () => makePipe('A', disposed)
+  });
+  assert.strictEqual(engine.getStatus(), 'ready');
+  assert.strictEqual(engine.getLoadedModelId(), MODEL_A);
+});
+
+test('Concurrency 5c: un id de modelo ya inexistente no queda anunciado como cargado', async () => {
+  const engine = new LocalEmbeddingEngine();
+
+  await assert.rejects(
+    engine.loadModel('modelo-eliminado-del-registro', {
+      detectCapabilities: async () => wasmCaps,
+      createPipeline: async () => makePipe('X', [])
+    }),
+    /Modelo de embedding desconocido/
+  );
+
+  assert.strictEqual(engine.getStatus(), 'error');
+  assert.strictEqual(engine.getLoadedModelId(), null);
+});
+
+test('Concurrency 5d: un detector de capacidades que falla deja un estado terminal, no «checking»', async () => {
+  const engine = new LocalEmbeddingEngine();
+
+  await assert.rejects(
+    engine.loadModel(MODEL_A, {
+      detectCapabilities: async () => {
+        throw new Error('detección caída');
+      },
+      createPipeline: async () => makePipe('A', [])
+    }),
+    /detección caída/
+  );
+
+  assert.strictEqual(engine.getStatus(), 'error', 'el motor no puede quedarse en «checking» para siempre');
+  assert.match(engine.getLastError() ?? '', /detección caída/);
+  assert.strictEqual(engine.getLoadedModelId(), null);
+});
+
 test('Concurrency 6: indexChunks aborta si el modelo activo cambia a mitad de indexación', async () => {
   await embeddingCache.clearCache();
   const engine = new LocalEmbeddingEngine();
