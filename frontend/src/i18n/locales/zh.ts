@@ -204,6 +204,7 @@ export const zh: Record<LocaleKey, string> = {
   'goals.validate.targetNumber': '目标值必须是大于零的数字。',
   'goals.validate.studyMinutes': '请设定学习目标的目标分钟数。',
   'goals.validate.badDate': '目标日期不是有效日期。',
+  'goals.validate.descriptionBlob': '描述中不能包含临时 URL（blob:）。',
   'analytics.range.7d': '7 天',
   'analytics.range.30d': '30 天',
   'analytics.range.90d': '90 天',

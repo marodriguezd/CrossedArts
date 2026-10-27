@@ -204,6 +204,7 @@ export const de: Record<LocaleKey, string> = {
   'goals.validate.targetNumber': 'Der Zielwert muss eine Zahl größer als null sein.',
   'goals.validate.studyMinutes': 'Lege die Zielminuten für das Lernziel fest.',
   'goals.validate.badDate': 'Das Zieldatum ist kein gültiges Datum.',
+  'goals.validate.descriptionBlob': 'Die Beschreibung darf keine temporären URLs (blob:) enthalten.',
   'analytics.range.7d': '7 Tage',
   'analytics.range.30d': '30 Tage',
   'analytics.range.90d': '90 Tage',

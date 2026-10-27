@@ -207,6 +207,7 @@ export const en = {
   'goals.validate.targetNumber': 'The target value must be a number greater than zero.',
   'goals.validate.studyMinutes': 'Set the target minutes for the study goal.',
   'goals.validate.badDate': 'The target date is not a valid date.',
+  'goals.validate.descriptionBlob': 'The description cannot contain temporary URLs (blob:).',
   'analytics.range.7d': '7 days',
   'analytics.range.30d': '30 days',
   'analytics.range.90d': '90 days',

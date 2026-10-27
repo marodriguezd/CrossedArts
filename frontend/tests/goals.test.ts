@@ -88,6 +88,28 @@ test('goals: validación de borradores', () => {
     validateGoalDraft({ title: 'Meta', kind: 'custom', target_date: '2026-02-30' }).ok,
     false
   );
+
+  // Regla 6: una URL temporal de un fichero local nunca llega a SQLite (§5 de
+  // `AGENTS.md`); la descripción se persiste tal cual en `learning_goal`.
+  const temporaryUrl = validateGoalDraft({
+    title: 'Meta',
+    kind: 'custom',
+    description: 'Abrir blob:http://localhost:5173/9f2c1'
+  });
+  assert.strictEqual(temporaryUrl.ok, false, 'una URL blob: en la descripción se rechaza');
+  assert.strictEqual(
+    temporaryUrl.error,
+    'La descripción no puede contener URLs temporales (blob:).'
+  );
+  assert.strictEqual(
+    validateGoalDraft({
+      title: 'Meta',
+      kind: 'custom',
+      description: 'Apuntes sobre qué es un blob en Git y por qué no se versiona.'
+    }).ok,
+    true,
+    'mencionar la palabra en prosa no es una URL temporal'
+  );
 });
 
 test('goals: normalizeGoalDate admite formatos reales y rechaza basura', () => {

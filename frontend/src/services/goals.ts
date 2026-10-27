@@ -126,6 +126,12 @@ export function validateGoalDraft(draft: GoalDraft, lang: LanguageCode = 'es'): 
     }
   }
 
+  // A `blob:` URL is a temporary handle to a local file (AGENTS.md §5), so it
+  // must never reach SQLite through a description.
+  if (draft.description && /\bblob:\S+/i.test(draft.description)) {
+    return { ok: false, error: translateKey(lang, 'goals.validate.descriptionBlob') };
+  }
+
   return { ok: true };
 }
 
