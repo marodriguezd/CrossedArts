@@ -223,17 +223,30 @@ const CHUNK_OVERLAP_CHARS = 80;
 /** A tail shorter than this merges into the previous chunk (avoids crumbs). */
 const MIN_TAIL_CHARS = 60;
 
-function splitAtBoundary(text: string, limit: number): number {
-  if (text.length <= limit) return text.length;
-  const window = text.slice(0, limit + 1);
+/**
+ * Absolute end index of the chunk starting at `cursor`.
+ *
+ * The search window starts AT the cursor, so every candidate boundary is
+ * compared as an offset INSIDE that window: a boundary is only accepted when
+ * it still leaves a chunk of at least half the target size. Measuring the
+ * boundary against the absolute limit instead accepted, from the second chunk
+ * on, the very line break the overlap had just re-read: those chunks were
+ * 11–80 characters long and the loop advanced one character per iteration, so
+ * a 2 KB note produced hundreds of near-duplicate fragments (one vector and
+ * one citation each).
+ */
+function splitAtBoundary(text: string, cursor: number, limit: number): number {
+  const maxEnd = cursor + limit;
+  if (text.length <= maxEnd) return text.length;
+  const window = text.slice(cursor, maxEnd + 1);
   // Prefer paragraph boundary, then sentence end, then space.
   const paragraph = window.lastIndexOf('\n');
-  if (paragraph >= Math.floor(limit * 0.5)) return paragraph + 1;
+  if (paragraph >= Math.floor(limit * 0.5)) return cursor + paragraph + 1;
   const sentence = Math.max(window.lastIndexOf('. '), window.lastIndexOf('.\n'), window.lastIndexOf('? '), window.lastIndexOf('! '));
-  if (sentence >= Math.floor(limit * 0.5)) return sentence + 1;
+  if (sentence >= Math.floor(limit * 0.5)) return cursor + sentence + 1;
   const space = window.lastIndexOf(' ');
-  if (space >= Math.floor(limit * 0.4)) return space + 1;
-  return limit; // Hard cut: no usable spaces.
+  if (space >= Math.floor(limit * 0.4)) return cursor + space + 1;
+  return maxEnd; // Hard cut: no usable spaces.
 }
 
 /**
@@ -248,7 +261,7 @@ export function splitIntoBoundedParts(text: string): string[] {
   const parts: string[] = [];
   let cursor = 0;
   while (cursor < trimmed.length) {
-    const end = splitAtBoundary(trimmed, cursor + CHUNK_CHAR_LIMIT);
+    const end = splitAtBoundary(trimmed, cursor, CHUNK_CHAR_LIMIT);
     const part = trimmed.slice(cursor, end).trim();
     if (part) parts.push(part);
     if (end >= trimmed.length) break;

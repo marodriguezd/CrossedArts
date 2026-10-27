@@ -298,6 +298,21 @@ test('I.3 IDs y orden deterministas; contenido cambiado invalida solo su fragmen
   assert.equal(edited[0].contentHash, chunks1[0].contentHash, 'Los fragmentos no afectados conservan su hash');
 });
 
+test('I.5 Párrafos cercanos al límite no degeneran en decenas de fragmentos mínimos', () => {
+  // Párrafos de 589 caracteres: el corte aceptaba el salto de línea sobre el
+  // que arrancaba el solape, así que cada vuelta avanzaba UN carácter y emitía
+  // un fragmento de 11-80 caracteres. Este texto rendía 211 fragmentos.
+  const paragraph = 'a'.repeat(589);
+  const text = [paragraph, paragraph, paragraph, paragraph].join('\n');
+  const parts = splitIntoBoundedParts(text);
+
+  assert.ok(parts.length <= 6, `Un texto de ${text.length} caracteres no puede rendir ${parts.length} fragmentos`);
+  for (const part of parts.slice(0, -1)) {
+    assert.ok(part.length >= 300, `Cada fragmento intermedio supera medio límite (recibido: ${part.length})`);
+  }
+  assert.ok(parts[parts.length - 1].includes(text.slice(-40)), 'El final del texto queda cubierto');
+});
+
 test('I.4 Lecciones largas se trocean; los otros recursos siguen generando 1 fragmento', async () => {
   const chunks = await createSemanticChunksFromResourcesAsync({
     courses: [{
