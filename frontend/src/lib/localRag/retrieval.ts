@@ -271,6 +271,30 @@ export interface RetrievalOptions {
   semantic?: boolean;
 }
 
+/**
+ * Retrieval mode of a RESULT, derived from the documents actually returned.
+ *
+ * It used to be derived from the candidate channels: a semantic channel whose
+ * candidates were all filtered out by scope or by the acceptance threshold made
+ * a purely lexical answer advertise itself as "hybrid". The drawer renders this
+ * value as a badge next to the citations, so it must describe the sources the
+ * user actually sees.
+ */
+export function describeRetrievalMode(
+  documents: Array<Pick<RetrievedDocument, 'retrievalMode'>>
+): RetrievalResult['retrievalMode'] {
+  let hasLexical = false;
+  let hasSemantic = false;
+  for (const doc of documents) {
+    const mode = doc.retrievalMode ?? 'lexical';
+    if (mode === 'hybrid') return 'hybrid';
+    if (mode === 'semantic') hasSemantic = true;
+    else hasLexical = true;
+  }
+  if (hasSemantic) return hasLexical ? 'hybrid' : 'semantic';
+  return 'lexical';
+}
+
 export async function retrieveLocalContext(
   query: string,
   limit: number = 4,
@@ -599,8 +623,6 @@ export async function retrieveLocalContext(
   });
 
   const allMerged = fused.candidates;
-  const lexicalRankKeys = fused.lexicalRanks;
-  const semanticRankKeys = fused.semanticRanks;
 
   // SCOPE CONTRACT (hard boundary): under a requested scope, only material
   // inside the resolved perimeter (anchors + connected graph nodes) may become
@@ -633,10 +655,7 @@ export async function retrieveLocalContext(
 
   const selected = diversified.slice(0, Math.min(limit, 5));
 
-  const finalMode: 'lexical' | 'hybrid' | 'semantic' =
-    semanticRankKeys.size === 0 ? 'lexical' :
-    lexicalRankKeys.size === 0 ? 'semantic' :
-    'hybrid';
+  const finalMode = describeRetrievalMode(selected);
 
   // `totalCandidates` is the ACCEPTED candidate set before diversification;
   // `diversifiedCandidates` is what survives it. Each count stays faithful to

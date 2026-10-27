@@ -18,6 +18,7 @@ import {
   DEFAULT_FUSION_WEIGHTS
 } from '../src/lib/localRag/fusion.ts';
 import type { RetrievedDocument } from '../src/lib/localRag/types.ts';
+import { describeRetrievalMode } from '../src/lib/localRag/retrieval.ts';
 
 function doc(overrides: Partial<RetrievedDocument> & { id: string }): RetrievedDocument {
   return {
@@ -253,4 +254,23 @@ test('fusión: pesos por defecto equilibrados y documentados', () => {
   assert.strictEqual(DEFAULT_FUSION_WEIGHTS.rrf, 0.5);
   assert.strictEqual(DEFAULT_FUSION_WEIGHTS.lexical, 0.25);
   assert.strictEqual(DEFAULT_FUSION_WEIGHTS.semantic, 0.25);
+});
+
+test('modo de recuperación: describe las fuentes devueltas, no los canales intentados', () => {
+  assert.strictEqual(describeRetrievalMode([]), 'lexical', 'sin fuentes no hay canal que anunciar');
+  assert.strictEqual(describeRetrievalMode([{ retrievalMode: 'lexical' }]), 'lexical');
+  assert.strictEqual(describeRetrievalMode([{ retrievalMode: 'semantic' }]), 'semantic');
+  assert.strictEqual(
+    describeRetrievalMode([{ retrievalMode: 'semantic' }, { retrievalMode: 'lexical' }]),
+    'hybrid',
+    'una fuente léxica y otra semántica son una respuesta híbrida'
+  );
+  // El caso que mentía: el canal semántico existió, pero ninguna de sus
+  // candidatas sobrevivió al ámbito o al umbral, así que la insignia no puede
+  // decir «híbrido» junto a citas puramente léxicas.
+  assert.strictEqual(
+    describeRetrievalMode([{ retrievalMode: 'lexical' }, { retrievalMode: 'lexical' }]),
+    'lexical'
+  );
+  assert.strictEqual(describeRetrievalMode([{ retrievalMode: 'hybrid' }, { retrievalMode: 'lexical' }]), 'hybrid');
 });
