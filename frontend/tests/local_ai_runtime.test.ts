@@ -6,7 +6,7 @@ import {
   LOCAL_AI_CACHED_MODEL_KEY,
   type LocalAiRuntimeDeps
 } from '../src/services/localAiRuntime.ts';
-import { selectBestLocalModel, selectRuntimeProfile } from '../src/lib/localLlm/selection.ts';
+import { selectBestLocalModelForTask } from '../src/lib/localLlm/selection.ts';
 import { getLocalModelById, LOCAL_MODELS_REGISTRY } from '../src/lib/localLlm/registry.ts';
 
 /* -------------------------------------------------------------------------- */
@@ -103,16 +103,16 @@ function makeRuntime(overrides: Partial<LocalAiRuntimeDeps> = {}, opts: {
 /* -------------------------------------------------------------------------- */
 
 test('26.1 Unsupported WebGPU yields no local model (handled without crash)', () => {
-  assert.strictEqual(selectBestLocalModel({ webgpu: 'unsupported' }), null);
-  assert.strictEqual(selectBestLocalModel({ webgpu: 'unknown' }), null);
+  assert.strictEqual(selectBestLocalModelForTask({ webgpu: 'unsupported' }), null);
+  assert.strictEqual(selectBestLocalModelForTask({ webgpu: 'unknown' }), null);
 });
 
 test('26.2 Unknown adapter features never assume support: models with feature requirements are excluded', () => {
-  const model = selectBestLocalModel({ webgpu: 'supported', supportedFeatures: null, deviceTier: 'high' });
+  const model = selectBestLocalModelForTask({ webgpu: 'supported', supportedFeatures: null, deviceTier: 'high' });
   assert.ok(model);
   assert.ok(!model!.requiredFeatures?.length, 'Con features desconocidas no se elige un modelo con requisitos');
 
-  const withFeatures = selectBestLocalModel({
+  const withFeatures = selectBestLocalModelForTask({
     webgpu: 'supported',
     supportedFeatures: ['shader-f16'],
     deviceTier: 'unknown'
@@ -122,25 +122,24 @@ test('26.2 Unknown adapter features never assume support: models with feature re
 
 test('26.3 Selection is deterministic and conservative', () => {
   const caps = { webgpu: 'supported' as const, supportedFeatures: [] as string[], deviceTier: 'unknown' as const };
-  const first = selectBestLocalModel(caps);
-  const second = selectBestLocalModel(caps);
+  const first = selectBestLocalModelForTask(caps);
+  const second = selectBestLocalModelForTask(caps);
   assert.strictEqual(first?.id, second?.id, 'Mismo input -> misma selección');
 
   // Conservador: el modelo viable de menor huella estimada para WebGPU.
   const eligible = LOCAL_MODELS_REGISTRY.filter((m) => m.runtimeBackend === 'webgpu' && !m.requiredFeatures?.length);
-  const smallest = [...eligible].sort((a, b) => a.vramRequiredMB - b.vramRequiredMB || a.id.localeCompare(b.id))[0];
-  assert.strictEqual(first?.id, smallest.id);
+  const minVram = Math.min(...eligible.map((m) => m.vramRequiredMB));
+  assert.strictEqual(first?.vramRequiredMB, minVram);
 });
 
 test('26.4 Clearly capable devices prefer the recommended model', () => {
-  const profile = selectRuntimeProfile({
+  const model = selectBestLocalModelForTask({
     webgpu: 'supported',
     supportedFeatures: ['shader-f16'],
     deviceTier: 'high'
   });
-  assert.ok(profile);
-  assert.strictEqual(profile!.reason, 'recommended-capable');
-  assert.strictEqual(profile!.model.recommended, true);
+  assert.ok(model);
+  assert.strictEqual(model!.recommended, true);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -203,7 +202,7 @@ test('26.9 An already-ready model is reused without reloading', async () => {
 });
 
 test('26.10 Offline with a previously cached model still prepares from cache', async () => {
-  const selected = selectBestLocalModel({ webgpu: 'supported', supportedFeatures: [], deviceTier: 'unknown' })!;
+  const selected = selectBestLocalModelForTask({ webgpu: 'supported', supportedFeatures: [], deviceTier: 'unknown' })!;
   const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted', [LOCAL_AI_CACHED_MODEL_KEY]: selected.id });
   const { runtime, llmEngine } = makeRuntime({}, { storage, online: false });
   const status = await runtime.ensureLocalAiReady({ provider: 'local' });
@@ -352,7 +351,7 @@ test('26.21 High-capability device falls back to a lighter model after resource 
 });
 
 test('26.22 Cached model registry accepts old single-id values and upgrades to a multi-model list', async () => {
-  const selected = selectBestLocalModel({ webgpu: 'supported', supportedFeatures: [], deviceTier: 'unknown' })!;
+  const selected = selectBestLocalModelForTask({ webgpu: 'supported', supportedFeatures: [], deviceTier: 'unknown' })!;
   const storage = makeStorage({ [LOCAL_AI_CONSENT_KEY]: 'granted', [LOCAL_AI_CACHED_MODEL_KEY]: selected.id });
   const { runtime, llmEngine } = makeRuntime({}, { storage });
   await runtime.ensureLocalAiReady({ provider: 'local' });
@@ -362,14 +361,13 @@ test('26.22 Cached model registry accepts old single-id values and upgrades to a
 });
 
 test('26.23 WASM Fallback: Device without WebGPU but with WASM selects lightweight CPU model', () => {
-  const profile = selectRuntimeProfile({
+  const model = selectBestLocalModelForTask({
     webgpu: 'unsupported',
-    hasWasm: true,
+    hasWasm: true
   });
-  assert.ok(profile);
-  assert.strictEqual(profile!.reason, 'cpu-wasm-fallback');
-  assert.strictEqual(profile!.model.runtimeBackend, 'wasm');
-  assert.strictEqual(profile!.model.id, 'onnx-community/Qwen2.5-0.5B-Instruct');
+  assert.ok(model);
+  assert.strictEqual(model!.runtimeBackend, 'wasm');
+  assert.strictEqual(model!.id, 'onnx-community/Qwen2.5-0.5B-Instruct');
 });
 
 test('26.24 WASM Fallback: Runtime loads WASM model successfully when WebGPU is absent', async () => {

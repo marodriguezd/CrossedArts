@@ -3,7 +3,7 @@ import { LOCAL_MODELS_REGISTRY, type LocalModelDefinition } from './registry.ts'
 /**
  * Tutoring tasks local AI can run. The task influences WHICH model fits, never
  * WHETHER the hardware supports it: eligibility always comes from
- * `selectBestLocalModel` (real capabilities); the task only orders preferences
+ * `eligibleModelsFor` (real capabilities); the task only orders preferences
  * among already eligible models.
  */
 export type AIModelTask =
@@ -40,86 +40,6 @@ export interface LocalAiCapabilities {
    */
   deviceTier?: 'high' | 'unknown';
 }
-
-export interface LocalRuntimeProfile {
-  model: LocalModelDefinition;
-  /** Internal reason (advanced diagnostics only). */
-  reason: 'recommended-capable' | 'conservative-fallback' | 'cpu-wasm-fallback';
-}
-
-/**
- * Returns the best model for the given capabilities. With WebGPU available it
- * picks the optimal WebGPU model; without WebGPU but with WebAssembly it picks
- * the light CPU/WASM model.
- */
-export function selectBestLocalModel(
-  capabilities: LocalAiCapabilities
-): LocalModelDefinition | null {
-  const isWebGpuSupported = capabilities.webgpu === 'supported';
-  const hasWasm = capabilities.hasWasm === true;
-
-  if (isWebGpuSupported) {
-    const knownFeatures = capabilities.supportedFeatures;
-
-    // WebGPU models satisfying the reported features
-    const eligible = LOCAL_MODELS_REGISTRY.filter((model) => {
-      if (model.runtimeBackend !== 'webgpu') return false;
-      if (!model.requiredFeatures || model.requiredFeatures.length === 0) return true;
-      if (!knownFeatures) return false;
-      return model.requiredFeatures.every((feature) => knownFeatures.includes(feature));
-    });
-
-    if (eligible.length > 0) {
-      const clearlySuitable =
-        capabilities.deviceTier === 'high' &&
-        Array.isArray(knownFeatures) &&
-        knownFeatures.length > 0;
-
-      if (clearlySuitable) {
-        const recommended = eligible.find((model) => model.recommended);
-        if (recommended) return recommended;
-      }
-
-      // Conservative: viable model with the smallest estimated footprint (id tiebreak)
-      return [...eligible].sort(
-        (a, b) => a.vramRequiredMB - b.vramRequiredMB || a.id.localeCompare(b.id)
-      )[0];
-    }
-  }
-
-  // CPU / WebAssembly fallback without WebGPU but with WASM support.
-  // Preference order is the canonical one (`wasmModelsInPreferenceOrder`).
-  if (hasWasm) {
-    const wasmModels = wasmModelsInPreferenceOrder();
-    if (wasmModels.length > 0) return wasmModels[0];
-  }
-
-  return null;
-}
-
-/** Same as `selectBestLocalModel` but exposes the reason for diagnostics. */
-export function selectRuntimeProfile(
-  capabilities: LocalAiCapabilities
-): LocalRuntimeProfile | null {
-  const model = selectBestLocalModel(capabilities);
-  if (!model) return null;
-
-  if (model.runtimeBackend === 'wasm') {
-    return {
-      model,
-      reason: 'cpu-wasm-fallback'
-    };
-  }
-
-  const knownFeatures = capabilities.supportedFeatures;
-  const clearlySuitable =
-    capabilities.deviceTier === 'high' && Array.isArray(knownFeatures) && knownFeatures.length > 0;
-  return {
-    model,
-    reason: clearlySuitable && model.recommended ? 'recommended-capable' : 'conservative-fallback'
-  };
-}
-
 
 /* -------------------------------------------------------------------------- */
 /* Per-task selection (single implementation)                            */

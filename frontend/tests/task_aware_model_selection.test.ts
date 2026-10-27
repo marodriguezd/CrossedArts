@@ -12,8 +12,6 @@ import test from 'node:test';
 import assert from 'node:assert';
 
 import {
-  selectBestLocalModel,
-  selectRuntimeProfile,
   selectBestLocalModelForTask,
   eligibleModelsFor,
   type AIModelTask
@@ -63,7 +61,9 @@ test('selección por tarea: es determinista', () => {
 });
 
 test('selección por tarea: con capacidad incierta se conserva el criterio conservador', () => {
-  const conservative = selectBestLocalModel(UNCERTAIN)!;
+  const eligible = eligibleModelsFor(UNCERTAIN);
+  const minVram = Math.min(...eligible.map(m => m.vramRequiredMB));
+  const conservative = eligible.find(m => m.vramRequiredMB === minVram)!;
   for (const task of ['tutor', 'summarization', 'flashcard_generation', 'question_generation', 'light_assistance'] as AIModelTask[]) {
     assert.strictEqual(
       selectBestLocalModelForTask(UNCERTAIN, task)?.id,
@@ -94,11 +94,9 @@ test('selección por tarea: sin soporte devuelve null (degradación honesta)', (
 });
 
 test('selección por tarea: el runtime usa la misma política que la función canónica', () => {
-  // `selectBestLocalModelForTask` es la política; `selectRuntimeProfile` sigue
-  // exponiendo el motivo de diagnóstico de la MISMA elegibilidad.
-  const profile = selectRuntimeProfile(CAPABLE);
-  assert.ok(profile);
+  // La política canónica nunca elige fuera del conjunto ELEGIBLE por hardware.
   const taskModel = selectBestLocalModelForTask(CAPABLE, 'tutor');
+  assert.ok(taskModel);
   assert.ok(eligibleModelsFor(CAPABLE).some(m => m.id === taskModel!.id));
-  assert.ok(eligibleModelsFor(CAPABLE).some(m => m.id === profile!.model.id));
+  assert.strictEqual(taskModel!.recommended, true, 'Un dispositivo capaz recibe el modelo recomendado');
 });
