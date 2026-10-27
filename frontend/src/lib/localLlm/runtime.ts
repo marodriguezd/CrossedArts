@@ -28,14 +28,21 @@ export interface GenerationOptions {
    *
    * STREAMING CONTRACT (single one for all backends): each invocation delivers a
    * DELTA, that is ONLY the new text. Never the accumulated text nor the full
-   * final answer. Therefore:
+   * final answer. Backends that naturally produce accumulated text
+   * (Transformers.js on WASM, in the main thread and in a worker alike) compute
+   * the delta BEFORE invoking the callback, and the final answer is NOT emitted
+   * a second time. Backends that already emit deltas (WebGPU) pass them through
+   * unchanged.
    *
-   *   chunks.join('') === final answer
+   * RECONSTRUCTION GUARANTEE, stated exactly:
    *
-   * Backends that naturally produce accumulated text (Transformers.js on WASM,
-   * in the main thread and in a worker alike) compute the delta BEFORE invoking
-   * the callback, and the final answer is NOT emitted a second time. Backends
-   * that already emit deltas (WebGPU) pass them through unchanged.
+   *   chunks.join('') === final answer   (monotonic snapshots)
+   *
+   * Monotonic means every accumulated snapshot extends the previous text, which
+   * is what the WASM backends emit. An append-only stream cannot retract text a
+   * backend has already sent, so when it REWRITES what was streamed the deltas
+   * are no longer a faithful reconstruction: the answer returned by `generate()`
+   * is authoritative (see `DeltaStream` for the precise per-case behavior).
    */
   onChunk?: (delta: string) => void;
   signal?: AbortSignal;
@@ -79,11 +86,23 @@ export interface LocalModelRuntime {
 /**
  * Delta emitter for backends that can only produce ACCUMULATED text.
  *
- * It turns a sequence of accumulated snapshots into real deltas and guarantees
- * that concatenating everything emitted reproduces exactly the final text (once
- * normalized). When the accumulated text is "corrected" (the backend rewrites
- * the tail), the emitter emits only the suffix not yet delivered and discards
- * the already-emitted prefix, so content is never duplicated or lost.
+ * It turns accumulated snapshots into real deltas. What it guarantees, stated
+ * per case instead of as one blanket promise:
+ *
+ *  - MONOTONIC snapshots (each one extends the previous text, what
+ *    Transformers.js emits): concatenating the deltas reproduces the final
+ *    answer EXACTLY. Held-back trailing whitespace is dropped at `finish`,
+ *    matching the trimmed value `generate()` returns.
+ *  - A snapshot that does NOT extend what was already emitted (equal, shorter,
+ *    or a same-length rewrite) emits nothing. The stream cannot retract text, so
+ *    it keeps the earlier version and the answer returned by `generate()` is the
+ *    authoritative one.
+ *  - A LONGER snapshot whose prefix diverges from the emitted text delivers only
+ *    the part after the common prefix. The already-streamed text stays, so the
+ *    concatenation can keep stale text and even repeat a fragment (e.g. emitted
+ *    "Hola mundo" + rewritten "Hola Mundo!!" join as "Hola mundoMundo!!"); it is
+ *    not a faithful reconstruction, and the returned answer is the corrected
+ *    one.
  *
  * Deterministic with no global state: each generation uses its own instance.
  */
@@ -108,8 +127,9 @@ export class DeltaStream {
    *
    * Trailing whitespace of each snapshot is HELD BACK until more content arrives
    * (or until `finish`), so a word split does not force emitting a
-   * space-terminated delta that is later trimmed: deltas reconstruct the answer
-   * EXACTLY.
+   * space-terminated delta that is later trimmed. With monotonic snapshots the
+   * emitted deltas therefore reconstruct the answer exactly; see the class
+   * contract for what happens when a backend rewrites streamed text.
    *
    * Idempotent with the same accumulated content and never emits empty output.
    */
@@ -118,8 +138,9 @@ export class DeltaStream {
     if (normalized.length <= this.emitted.length) return;
 
     if (!normalized.startsWith(this.emitted)) {
-      // The backend rewrote already-emitted text: only the genuinely new suffix
-      // is delivered, never the duplicated prefix.
+      // The backend rewrote already-emitted text. An append-only stream cannot
+      // retract it, so only the part after the common prefix is delivered and
+      // the concatenation may keep stale text; `generate()`'s return wins.
       const commonPrefix = commonPrefixLength(normalized, this.emitted);
       this.emitted = normalized;
       this.pendingWhitespace = '';
@@ -147,6 +168,10 @@ export class DeltaStream {
    * emitted, it is delivered as a final delta; the complete answer that already
    * arrived via deltas is never re-emitted. The held-back whitespace is dropped
    * because the final answer is normalized (no outer whitespace).
+   *
+   * `finish` does NOT repair a non-monotonic stream: if the backend rewrote
+   * text that was already delivered, the concatenated deltas and `finalText`
+   * can differ, and the value `generate()` returns is the authoritative answer.
    */
   finish(finalText: string): void {
     this.push(this.normalize(finalText));
