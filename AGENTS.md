@@ -71,7 +71,7 @@
 cd frontend
 npm install          # Install dependencies
 npm run dev          # Start dev server (Vite)
-npm test             # Run test suite (861 tests, 82 files)
+npm test             # Run test suite (871 tests, 82 files)
 npm run typecheck    # TypeScript type checking
 npm run build        # Production build (outputs to dist/)
 ```
@@ -132,7 +132,7 @@ PYTHONPATH=. pytest backend/tests -q
 
 ## Testing Expectations
 
-The frontend test suite (861 tests, 82 files) validates:
+The frontend test suite (871 tests, 82 files) validates:
 - SQLite WASM initialization without network access
 - SM-2 algorithm accuracy
 - Study session lifecycle and persistence
@@ -162,9 +162,16 @@ The frontend test suite (861 tests, 82 files) validates:
 - Bounded semantic chunking: fragment boundaries are measured relative to the chunk's
   start, so no document collapses into hundreds of degenerate fragments
 - Embedding engine lifecycle: a WebGPU→CPU fallback that resolves after `unload()` or a
-  newer `loadModel()` is discarded instead of hijacking the active pipeline
+  newer `loadModel()` is discarded instead of hijacking the active pipeline, and a failed load
+  leaves NO model announced (`getLoadedModelId()` is null, never a phantom the cache would key on)
+- Embedding cache handle: it yields on `versionchange`, so another tab's `deleteDatabase` or
+  `IDB_VERSION` bump is never blocked forever by our memoized connection
+- Streaming rewrites: `onChunk` stays append-only, a rewritten tail travels as a replacement
+  event, a deltas-only consumer keeps the previous fallback, and the end-to-end path
+  (service → provider → engine) forwards the event to the consumer
 - Session scope contract (lesson / resource / global) on SQLite
-- Local LLM runtime contract: single `generate()` API and delta-only streaming
+- Local LLM runtime contract: single `generate()` API, delta-only streaming plus an explicit
+  replacement event (`onReplace`) that retracts already-streamed text when a WASM backend rewrites it
 - Task-aware, deterministic local model selection
 - DAO modularisation: façade + domain modules, single row mapper
 
@@ -263,7 +270,7 @@ CrossedArts/
 │   │   │   └── localMediaService.ts  # File System Access API
 │   │   └── hooks/                    # useTheme, useCommandPaletteHotkey, useGoalProgress
 │   ├── scripts/visual-qa.mjs         # Playwright visual/responsive QA (optional)
-│   └── tests/                        # 82 test files, 861 tests
+│   └── tests/                        # 82 test files, 871 tests
 ├── backend/
 │   ├── alembic/                      # Database migrations
 │   ├── app/
