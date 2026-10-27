@@ -310,14 +310,6 @@ export type GoalDeadlineState = 'completed' | 'overdue' | 'due_soon' | 'upcoming
 /** Days within which a goal counts as "due soon". */
 export const GOAL_DUE_SOON_DAYS = 7;
 
-export const GOAL_DEADLINE_LABELS: Record<GoalDeadlineState, string> = {
-  completed: 'Completada',
-  overdue: 'Vencida',
-  due_soon: 'Por vencer',
-  upcoming: 'Próxima',
-  no_deadline: 'Sin fecha'
-};
-
 /**
  * Localized deadline label. Defaults to Spanish to preserve the historic
  * behavior (existing callers and tests omit the language).

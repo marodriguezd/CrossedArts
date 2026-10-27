@@ -13,7 +13,7 @@
  *    tests stay deterministic in any timezone.
  */
 import type { Book, Course, LearningSession, PracticeWork, TimeRangeFilter } from '../types/models.ts';
-import { resolveLocalDay, shiftIsoDay, computeActiveStreak } from './localDate.ts';
+import { resolveLocalDay, shiftIsoDay } from './localDate.ts';
 import { generateDailyActivitySeries } from './domainLogic.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 import { summarizePracticeWork, type PracticeWorkSummary } from './practiceWork.ts';
@@ -25,12 +25,6 @@ export type AnalyticsRange = TimeRangeFilter;
 export const ANALYTICS_RANGES: AnalyticsRange[] = ['7d', '30d', '90d', 'all'];
 
 import { translateKey } from '../i18n/dictionaries.ts';
-export const ANALYTICS_RANGE_LABELS: Record<AnalyticsRange, string> = {
-  '7d': '7 días',
-  '30d': '30 días',
-  '90d': '90 días',
-  all: 'Todo'
-};
 
 /** Localized range label. Defaults to Spanish (existing callers omit it). */
 export function analyticsRangeLabel(range: AnalyticsRange, lang: LanguageCode = 'es'): string {
@@ -312,21 +306,6 @@ export function buildDailySeries(
     .map(([date, data]) => ({ date, minutes: data.minutes, reviews: data.reviews }));
 
   return generateDailyActivitySeries(history, range, today, lang);
-}
-
-/** Active streak over local days with recorded study. */
-export function computeStreakFromSessions(
-  sessions: readonly LearningSession[],
-  today: string,
-  utcOffset?: string
-): number {
-  const days = new Set<string>();
-  for (const session of sessions) {
-    if ((session.duration_minutes || 0) <= 0) continue;
-    const day = sessionLocalDay(session.started_at, utcOffset);
-    if (day) days.add(day);
-  }
-  return computeActiveStreak(days, today);
 }
 
 /* -------------------------------------------------------------------------- */

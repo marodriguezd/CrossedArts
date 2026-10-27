@@ -154,6 +154,12 @@ test('2.7 dao.getActiveStreak calculates real streak based on calendar days with
     db.run('DELETE FROM learning_session WHERE date(started_at, ?) = ?', [utcOffsetModifier, localToday]);
     streak = await dao.getActiveStreak();
     assert.strictEqual(streak, 2, 'Streak counts backwards from yesterday if no session has been recorded yet today');
+
+    // 7. Caso: una sesión sin minutos no convierte el día en día de estudio.
+    //    La regla vive en `getActiveStreak` (`duration_minutes > 0`).
+    db.run("INSERT INTO learning_session (id, resource_id, scope, started_at, duration_minutes) VALUES ('test-s0', 'c1-react', 'resource', datetime('now'), 0)");
+    streak = await dao.getActiveStreak();
+    assert.strictEqual(streak, 2, 'A zero-minute session must not count as a study day');
   } finally {
     // Restaurar sesiones originales
     db.run('DELETE FROM learning_session');

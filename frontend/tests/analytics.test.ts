@@ -9,7 +9,6 @@ import {
   computeContentProgress,
   computeRangeComparison,
   computeResourceActivity,
-  computeStreakFromSessions,
   filterSessionsByWindow,
   rangeDayCount,
   recentActivity,
@@ -188,17 +187,6 @@ test('analytics: serie diaria continua rellena los días vacíos', () => {
   assert.strictEqual(emptyDay.reviews, 0);
   const total = series.reduce((sum, p) => sum + p.minutes, 0);
   assert.strictEqual(total, 40);
-});
-
-test('analytics: la racha se calcula sobre días locales con minutos registrados', () => {
-  const sessions = [
-    onDay('2026-10-06', { duration_minutes: 20 }),
-    onDay('2026-10-05', { duration_minutes: 10 }),
-    onDay('2026-10-03', { duration_minutes: 10 }), // hueco el 4 → racha de 2
-    onDay('2026-10-01', { duration_minutes: 0 })   // sin minutos → no cuenta
-  ];
-  assert.strictEqual(computeStreakFromSessions(sessions, TODAY, UTC), 2);
-  assert.strictEqual(computeStreakFromSessions([], TODAY, UTC), 0);
 });
 
 test('analytics: progreso de contenido nunca mezcla unidades ni divide por cero', () => {
