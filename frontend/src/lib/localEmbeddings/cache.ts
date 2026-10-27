@@ -119,15 +119,21 @@ class LocalEmbeddingCache {
 
   private openIDB(): Promise<IDBDatabase> {
     if (this.idbPromise) return this.idbPromise;
-    this.idbPromise = this.openIDBConnection().catch((err) => {
+    let promise: Promise<IDBDatabase>;
+    /** Drops the memoized handle so the next operation reopens it lazily. */
+    const forget = () => {
+      if (this.idbPromise === promise) this.idbPromise = null;
+    };
+    promise = this.openIDBConnection(forget).catch((err) => {
       // A transient failure must not be memoized: the next retry reopens.
-      this.idbPromise = null;
+      forget();
       throw err;
     });
-    return this.idbPromise;
+    this.idbPromise = promise;
+    return promise;
   }
 
-  private openIDBConnection(): Promise<IDBDatabase> {
+  private openIDBConnection(onVersionChange: () => void): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(IDB_NAME, IDB_VERSION);
       req.onupgradeneeded = () => {
@@ -163,7 +169,24 @@ class LocalEmbeddingCache {
           };
         }
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        // A version change (another tab deleting the database or bumping
+        // IDB_VERSION) stays BLOCKED while any handle is open: ours never
+        // yielded, so that tab's `open`/`deleteDatabase` never completed and its
+        // cache operations queued forever. Releasing here is what makes the
+        // memoized handle compatible with other tabs; the next operation
+        // reopens it.
+        db.onversionchange = () => {
+          try {
+            db.close();
+          } catch {
+            /* already closed */
+          }
+          onVersionChange();
+        };
+        resolve(db);
+      };
       req.onerror = () => reject(req.error);
     });
   }

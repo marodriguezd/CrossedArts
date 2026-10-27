@@ -182,6 +182,50 @@ test('A.4 Migración legacy: registros del almacén antiguo se conservan con cla
   await embeddingCache.clearCache();
 });
 
+test('A.4b la conexión memoizada se libera cuando otra pestaña pide la base', async () => {
+  // Una base de vectores borrada o versionada desde OTRA pestaña queda
+  // «blocked» mientras alguna conexión siga abierta: la nuestra nunca cedía, así
+  // que la petición ajena no terminaba nunca y su caché quedaba en cola.
+  const { indexedDB } = globalThis as any;
+  const DB = 'CrossedArts_Embeddings';
+
+  embeddingCache.close();
+  await new Promise<void>((resolve) => {
+    const del = indexedDB.deleteDatabase(DB);
+    del.onsuccess = () => resolve();
+    del.onerror = () => resolve();
+    del.onblocked = () => resolve();
+  });
+
+  // Abre la conexión memoizada con una escritura real.
+  await embeddingCache.setEntry(makeEntry({ chunkId: 'hold-1' }));
+  assert.ok(await embeddingCache.getEntry('hold-1', MODEL_A), 'la caché está sirviendo');
+
+  const outcome = await new Promise<string>((resolve) => {
+    const req = indexedDB.deleteDatabase(DB);
+    req.onsuccess = () => resolve('success');
+    req.onerror = () => resolve('error');
+    req.onblocked = () => resolve('blocked');
+    setTimeout(() => resolve('timeout'), 1000);
+  });
+
+  assert.equal(outcome, 'success', 'la petición de otra pestaña no puede quedar bloqueada por nuestra conexión');
+
+  // Y la caché se recompone sola: el handle se olvida, la base se recrea vacía y
+  // las escrituras vuelven a funcionar. La copia en memoria sigue sirviendo, que
+  // es lo que promete el LRU (la memoria es caché, no fuente de verdad).
+  assert.deepEqual(
+    (await embeddingCache.getAllEntriesForModel(MODEL_A)).map(e => e.chunkId),
+    [],
+    'la base de vectores recreada está vacía'
+  );
+  await embeddingCache.setEntry(makeEntry({ chunkId: 'hold-2' }));
+  assert.ok(await embeddingCache.getEntry('hold-2', MODEL_A), 'la caché reabre y vuelve a escribir');
+  assert.ok(await embeddingCache.getEntry('hold-1', MODEL_A), 'la entrada ya en memoria sigue sirviendo');
+
+  await embeddingCache.clearCache();
+});
+
 test('A.5 deleteEntry con modelo elimina solo esa entrada lógica', async () => {
   await embeddingCache.clearCache();
 
