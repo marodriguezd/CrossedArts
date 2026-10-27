@@ -41,8 +41,6 @@ export function applyStudyFlashcardReviewIncrement(
   return db.getRowsModified() > 0;
 }
 
-
-
 import type {
   DailyActivityPoint,
   KPIMetrics,

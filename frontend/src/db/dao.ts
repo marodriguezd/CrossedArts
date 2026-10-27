@@ -22,20 +22,6 @@ import { translateKey } from '../i18n/dictionaries.ts';
 import { daoLang, setDaoLanguage } from './daoLanguage.ts';
 import { goalKindLabel } from '../services/goals.ts';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { sessionDao, applyStudyFlashcardReviewIncrement } from './dao/sessions.ts';
 import { noteDao } from './dao/notes.ts';
 import { practiceWorkDao } from './dao/practiceWork.ts';
@@ -96,6 +82,98 @@ function applySm2Review(
     [updated.repetitionCount, updated.intervalDays, updated.easeFactor, updated.intervalModifier, id]
   );
   return updated;
+}
+
+/**
+ * Recomputes the denormalized course totals after a lesson or module change.
+ *
+ * Deliberately NOT part of the `dao` façade: it writes without persisting, and
+ * invariant §2 says every modification persists. Every internal caller
+ * persists right after, so the recalculation travels with the operation that
+ * caused it — exposing it would offer a write that silently dies on reload.
+ */
+async function recalculateCourseTotals(courseId: string): Promise<void> {
+  const db = dbBridge.getDatabase();
+  const res = db.exec(`
+    SELECT COUNT(l.id), COALESCE(SUM(CASE WHEN l.is_completed = 1 THEN 1 ELSE 0 END), 0), COALESCE(SUM(l.duration_minutes), 0)
+    FROM module m LEFT JOIN lesson l ON l.module_id = m.id
+    WHERE m.course_id = ?
+  `, [courseId]);
+  const row = res.length ? res[0].values[0] : [0, 0, 0];
+  db.run(
+    'UPDATE course SET total_lessons = ?, completed_lessons = ?, total_duration_minutes = ? WHERE id = ?',
+    [Number(row[0]) || 0, Number(row[1]) || 0, Number(row[2]) || 0, courseId]
+  );
+}
+
+/**
+ * Attaches modules and lessons to the given courses with exactly TWO queries,
+ * whatever the number of courses. `getCoursesWithModules` already promised
+ * that bound (the suite counts its queries); `getCourseById` used to run one
+ * query per module.
+ */
+function attachCourseHierarchy(
+  db: ReturnType<typeof dbBridge.getDatabase>,
+  courses: Course[]
+): void {
+  if (!courses.length) return;
+  const ids = courses.map(c => c.id);
+  const placeholders = ids.map(() => '?').join(',');
+
+  const modRes = db.exec(
+    `SELECT id, course_id, title, order_index FROM module WHERE course_id IN (${placeholders}) ORDER BY order_index ASC, id ASC`,
+    ids
+  );
+  const lesRes = db.exec(
+    `SELECT id, module_id, title, content, order_index, duration_minutes, lesson_type, media_url, is_completed
+     FROM lesson
+     WHERE module_id IN (SELECT id FROM module WHERE course_id IN (${placeholders}))
+     ORDER BY order_index ASC, id ASC`,
+    ids
+  );
+
+  const lessonsByModule = new Map<string, Lesson[]>();
+  if (lesRes.length) {
+    for (const row of lesRes[0].values) {
+      const modId = String(row[1]);
+      const lesson: Lesson = {
+        id: String(row[0]),
+        module_id: modId,
+        title: String(row[2]),
+        content: row[3] ? String(row[3]) : undefined,
+        order_index: Number(row[4]) || 0,
+        duration_minutes: Number(row[5]) || 0,
+        lesson_type: row[6] as LessonType,
+        media_url: row[7] ? String(row[7]) : undefined,
+        is_completed: Boolean(row[8])
+      };
+      const list = lessonsByModule.get(modId) || [];
+      list.push(lesson);
+      lessonsByModule.set(modId, list);
+    }
+  }
+
+  const modulesByCourse = new Map<string, Module[]>();
+  if (modRes.length) {
+    for (const row of modRes[0].values) {
+      const modId = String(row[0]);
+      const courseId = String(row[1]);
+      const mod: Module = {
+        id: modId,
+        course_id: courseId,
+        title: String(row[2]),
+        order_index: Number(row[3]) || 0,
+        lessons: lessonsByModule.get(modId) || []
+      };
+      const list = modulesByCourse.get(courseId) || [];
+      list.push(mod);
+      modulesByCourse.set(courseId, list);
+    }
+  }
+
+  for (const c of courses) {
+    c.modules = modulesByCourse.get(c.id) || [];
+  }
 }
 
 export const dao = {
@@ -210,44 +288,7 @@ export const dao = {
       total_lessons: row[11] as number,
       completed_lessons: row[12] as number
     };
-    const modRes = db.exec(
-      'SELECT id, title, order_index FROM module WHERE course_id = ? ORDER BY order_index ASC',
-      [id]
-    );
-    if (modRes.length) {
-      course.modules = [];
-      for (const modRow of modRes[0].values) {
-        const modId = modRow[0] as string;
-        const modTitle = modRow[1] as string;
-        const modOrder = modRow[2] as number;
-
-        const lesRes = db.exec(
-          `SELECT id, title, content, order_index, duration_minutes, lesson_type, media_url, is_completed 
-           FROM lesson WHERE module_id = ? ORDER BY order_index ASC, id ASC`,
-          [modId]
-        );
-
-        const lessons: Lesson[] = lesRes.length ? lesRes[0].values.map((l: any[]) => ({
-          id: l[0],
-          module_id: modId,
-          title: l[1],
-          content: l[2] ? String(l[2]) : undefined,
-          order_index: l[3],
-          duration_minutes: l[4],
-          lesson_type: l[5],
-          media_url: l[6],
-          is_completed: Boolean(l[7])
-        })) : [];
-
-        course.modules.push({
-          id: modId,
-          course_id: id,
-          title: modTitle,
-          order_index: modOrder,
-          lessons
-        });
-      }
-    }
+    attachCourseHierarchy(db, [course]);
     return course;
   },
   async getCoursesWithModules(): Promise<Course[]> {
@@ -255,56 +296,7 @@ export const dao = {
     if (!courses.length) return [];
 
     const db = dbBridge.getDatabase();
-    const modRes = db.exec('SELECT id, course_id, title, order_index FROM module ORDER BY order_index ASC, id ASC');
-    const lesRes = db.exec(`
-      SELECT id, module_id, title, content, order_index, duration_minutes, lesson_type, media_url, is_completed
-      FROM lesson
-      ORDER BY order_index ASC, id ASC
-    `);
-
-    const lessonsByModule = new Map<string, Lesson[]>();
-    if (lesRes.length) {
-      for (const row of lesRes[0].values) {
-        const modId = String(row[1]);
-        const lesson: Lesson = {
-          id: String(row[0]),
-          module_id: modId,
-          title: String(row[2]),
-          content: row[3] ? String(row[3]) : undefined,
-          order_index: Number(row[4]) || 0,
-          duration_minutes: Number(row[5]) || 0,
-          lesson_type: row[6] as any,
-          media_url: row[7] ? String(row[7]) : undefined,
-          is_completed: Boolean(row[8])
-        };
-        const list = lessonsByModule.get(modId) || [];
-        list.push(lesson);
-        lessonsByModule.set(modId, list);
-      }
-    }
-
-    const modulesByCourse = new Map<string, Module[]>();
-    if (modRes.length) {
-      for (const row of modRes[0].values) {
-        const modId = String(row[0]);
-        const courseId = String(row[1]);
-        const mod: Module = {
-          id: modId,
-          course_id: courseId,
-          title: String(row[2]),
-          order_index: Number(row[3]) || 0,
-          lessons: lessonsByModule.get(modId) || []
-        };
-        const list = modulesByCourse.get(courseId) || [];
-        list.push(mod);
-        modulesByCourse.set(courseId, list);
-      }
-    }
-
-    for (const c of courses) {
-      c.modules = modulesByCourse.get(c.id) || [];
-    }
-
+    attachCourseHierarchy(db, courses);
     return courses;
   },
   async getLessonIndex(): Promise<Array<{
@@ -380,7 +372,7 @@ export const dao = {
     // Keep the course denormalized totals in sync
     const courseRes = db.exec('SELECT m.course_id FROM lesson l JOIN module m ON l.module_id = m.id WHERE l.id = ?', [lessonId]);
     if (courseRes.length && courseRes[0].values.length) {
-      await this.recalculateCourseTotals(String(courseRes[0].values[0][0]));
+      await recalculateCourseTotals(String(courseRes[0].values[0][0]));
     }
     await dbBridge.persist();
   },
@@ -392,7 +384,7 @@ export const dao = {
     );
     const modRes = db.exec('SELECT course_id FROM module WHERE id = ?', [moduleId]);
     if (modRes.length && modRes[0].values.length) {
-      await this.recalculateCourseTotals(String(modRes[0].values[0][0]));
+      await recalculateCourseTotals(String(modRes[0].values[0][0]));
     }
     await dbBridge.persist();
   },
@@ -1051,7 +1043,7 @@ export const dao = {
     const orderRes = db.exec('SELECT COALESCE(MAX(order_index), 0) + 1 FROM module WHERE course_id = ?', [input.courseId]);
     const orderIndex = orderRes.length ? Number(orderRes[0].values[0][0]) : 1;
     db.run('INSERT INTO module (id, course_id, title, order_index) VALUES (?, ?, ?, ?)', [id, input.courseId, title, orderIndex]);
-    await this.recalculateCourseTotals(input.courseId);
+    await recalculateCourseTotals(input.courseId);
     await dbBridge.persist();
     return { success: true, id };
   },
@@ -1071,7 +1063,7 @@ export const dao = {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       [id, input.moduleId, title, input.content ?? null, orderIndex, Math.max(0, input.durationMinutes || 0), input.lessonType || 'VIDEO', input.mediaUrl || null]
     );
-    await this.recalculateCourseTotals(courseId);
+    await recalculateCourseTotals(courseId);
     await dbBridge.persist();
     return { success: true, id };
   },
@@ -1140,7 +1132,7 @@ export const dao = {
     );
     const courseRes = db.exec('SELECT m.course_id FROM lesson l JOIN module m ON l.module_id = m.id WHERE l.id = ?', [id]);
     if (courseRes.length && courseRes[0].values.length) {
-      await this.recalculateCourseTotals(String(courseRes[0].values[0][0]));
+      await recalculateCourseTotals(String(courseRes[0].values[0][0]));
     }
     await dbBridge.persist();
     return { success: true };
@@ -1265,7 +1257,7 @@ export const dao = {
     const courseRes = db.exec('SELECT course_id FROM module WHERE id = ?', [id]);
     const courseId = courseRes.length && courseRes[0].values.length ? String(courseRes[0].values[0][0]) : null;
     db.run('DELETE FROM module WHERE id = ?', [id]);
-    if (courseId) await this.recalculateCourseTotals(courseId);
+    if (courseId) await recalculateCourseTotals(courseId);
     await this.pruneDanglingConnections();
     await dbBridge.persist();
   },
@@ -1274,7 +1266,7 @@ export const dao = {
     const courseRes = db.exec('SELECT m.course_id FROM lesson l JOIN module m ON l.module_id = m.id WHERE l.id = ?', [id]);
     const courseId = courseRes.length && courseRes[0].values.length ? String(courseRes[0].values[0][0]) : null;
     db.run('DELETE FROM lesson WHERE id = ?', [id]);
-    if (courseId) await this.recalculateCourseTotals(courseId);
+    if (courseId) await recalculateCourseTotals(courseId);
     await this.pruneDanglingConnections();
     await dbBridge.persist();
   },
@@ -1283,19 +1275,6 @@ export const dao = {
     db.run('DELETE FROM learning_resource WHERE id = ?', [id]);
     await this.pruneDanglingConnections();
     await dbBridge.persist();
-  },
-  async recalculateCourseTotals(courseId: string): Promise<void> {
-    const db = dbBridge.getDatabase();
-    const res = db.exec(`
-      SELECT COUNT(l.id), COALESCE(SUM(CASE WHEN l.is_completed = 1 THEN 1 ELSE 0 END), 0), COALESCE(SUM(l.duration_minutes), 0)
-      FROM module m LEFT JOIN lesson l ON l.module_id = m.id
-      WHERE m.course_id = ?
-    `, [courseId]);
-    const row = res.length ? res[0].values[0] : [0, 0, 0];
-    db.run(
-      'UPDATE course SET total_lessons = ?, completed_lessons = ?, total_duration_minutes = ? WHERE id = ?',
-      [Number(row[0]) || 0, Number(row[1]) || 0, Number(row[2]) || 0, courseId]
-    );
   },
   async updateBookDetails(id: string, fields: { title?: string; description?: string; category?: string; author?: string; isbn?: string; pageCount?: number }): Promise<{ success: boolean; error?: string }> {
     const db = dbBridge.getDatabase();

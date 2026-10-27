@@ -281,7 +281,7 @@ test('2.10 domainLogic pure calculations for book progress and SM-2 work determi
   assert.ok(failPass.easeFactor >= 1.3);
 });
 
-test('2.10 generateDailyActivitySeries: Generates continuous 7d/30d series filling empty days with zeros', () => {
+test('2.10b generateDailyActivitySeries: Generates continuous 7d/30d series filling empty days with zeros', () => {
   const history = [
     { date: '2026-10-02', minutes: 25, reviews: 15 },
     { date: '2026-10-04', minutes: 40, reviews: 30 }
@@ -522,6 +522,30 @@ test('2.18 dao.updateBookDetails keeps page, percentage and status coherent when
 
   // Estado conocido para el resto de la suite.
   await dao.updateBookProgress(book.id, total, total);
+});
+
+test('2.23 dao.getCourseById carga la jerarquía en un número acotado de consultas', async () => {
+  await dbBridge.init();
+  const db = dbBridge.getDatabase();
+  const origExec = db.exec.bind(db);
+  let queryCount = 0;
+  db.exec = (sql: string, params?: any[]) => {
+    queryCount++;
+    return origExec(sql, params);
+  };
+
+  try {
+    const course = await dao.getCourseById('c1-react');
+    assert.ok(course, 'El curso React debe existir');
+    assert.ok(course.modules && course.modules.length > 1, 'la jerarquía debe venir completa');
+    assert.ok(course.modules!.some(m => m.lessons.length > 0), 'con sus lecciones');
+    // 1 (curso) + 2 (módulos y lecciones agrupados). Antes: una consulta por
+    // módulo, el N+1 que el estándar del test 2.17 ya vedaba para el camino
+    // masivo.
+    assert.strictEqual(queryCount, 3, 'Debe realizar exactamente 3 consultas sin importar el número de módulos');
+  } finally {
+    db.exec = origExec;
+  }
 });
 
 test('2.19 dao.searchKnowledge encuentra títulos con tildes en las seis tablas', async () => {

@@ -105,3 +105,14 @@ test('dao: el mapeo de filas es único y compartido', () => {
   );
   assert.ok(!notesSource.includes('(r: any[])'), 'notes.ts no proyecta filas a mano');
 });
+
+test('dao: la fachada no expone escrituras que no persisten', () => {
+  // `recalculateCourseTotals` escribe sin persistir (sus llamadores internos
+  // persisten después), así que no puede vivir en la fachada pública: ahí
+  // sería un método que incumple el contrato §2 de `AGENTS.md`.
+  assert.strictEqual(
+    (dao as any).recalculateCourseTotals,
+    undefined,
+    'recalculateCourseTotals no puede estar en la fachada: escribe sin persistir'
+  );
+});
