@@ -197,6 +197,16 @@ test('focus: libro en curso se ofrece solo cuando no hay continuación de curso'
   assert.ok(bookItem);
   assert.match(bookItem.reason, /página 106 de 304/);
   assert.strictEqual(bookItem.destination?.tab, 'resource');
+
+  // «Sigue leyendo» exige evidencia de lectura: un libro nadie lo ha abierto.
+  const untouched = {
+    id: 'b2', title: 'Sin abrir', category: 'X', status: 'NOT_STARTED' as const,
+    type: 'book' as const, reading_percentage: 0, page_count: 200, current_page: 0
+  };
+  assert.ok(
+    !buildFocusPlan(input({ books: [untouched] })).some(item => item.kind === 'book'),
+    'Un libro sin abrir no puede ofrecerse como lectura en curso'
+  );
 });
 
 test('focus: curso sin empezar con lecciones aparece como acción de arranque', () => {
@@ -212,6 +222,17 @@ test('focus: curso sin empezar con lecciones aparece como acción de arranque', 
     plan.filter(item => item.kind === 'start_course').length,
     1,
     'El curso sin lecciones no genera acción'
+  );
+
+  // Un curso ya iniciado pertenece a «continuar», nunca a «empezar».
+  const started = buildFocusPlan(
+    input({
+      courses: [course({ id: 'c3', title: 'Curso empezado', status: 'IN_PROGRESS', total_lessons: 8, completed_lessons: 2 })]
+    })
+  );
+  assert.ok(
+    !started.some(item => item.kind === 'start_course'),
+    'Un curso ya iniciado no se ofrece como acción de arranque'
   );
 });
 

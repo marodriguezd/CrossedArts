@@ -267,9 +267,11 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
     });
   });
 
-  // 5. In-progress book with pages left.
+  // 5. Started book with pages left. "Keep reading" needs evidence of reading:
+  //    a book nobody opened is not a reading in progress.
   const readingBook = input.books
     .filter((book) => book.status !== 'COMPLETED')
+    .filter((book) => (book.current_page ?? 0) > 0)
     .filter((book) => !book.page_count || (book.current_page ?? 0) < book.page_count)
     .sort((a, b) => a.id.localeCompare(b.id))[0];
 
@@ -290,9 +292,11 @@ export function buildFocusPlan(input: FocusInput, lang: LanguageCode = 'es'): Fo
   }
 
   // 6. Unstarted course with recorded lessons (only when nothing better exists).
+  //    "Start" is reserved for a course that has not begun: an in-progress one
+  //    belongs to `continueTarget`, never to this action.
   if (!input.continueTarget) {
     const untouched = input.courses
-      .filter((course) => course.status !== 'COMPLETED')
+      .filter((course) => course.status === 'NOT_STARTED')
       .filter((course) => (course.total_lessons ?? 0) > 0)
       .sort((a, b) => a.id.localeCompare(b.id))[0];
 
