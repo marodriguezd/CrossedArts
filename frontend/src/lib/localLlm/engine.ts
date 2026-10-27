@@ -363,6 +363,12 @@ class LocalLlmEngine {
    * produce accumulated text (WASM, main thread, or worker) go through
    * `DeltaStream`, which computes the delta before invoking the callback and
    * avoids emitting the final answer twice.
+   *
+   * `options.onReplace` is forwarded to that same emitter: Transformers.js
+   * decodes each token against the accumulated ids, so a snapshot can rewrite
+   * text already sent (a multi-byte character completing, a marker vanishing).
+   * The WebGPU path emits native deltas that never rewrite and therefore never
+   * needs it.
    */
   public async generate(
     messages: ChatMessage[],
@@ -397,8 +403,9 @@ class LocalLlmEngine {
 
         if (this.wasmWorker.isSupported() && this.engineInstance?.backend === 'wasm-worker') {
           // The worker delivers ACCUMULATED text: `DeltaStream` turns it into
-          // deltas and guarantees the final answer is not emitted twice.
-          const stream = onChunk ? new DeltaStream(onChunk) : null;
+          // deltas, guarantees the final answer is not emitted twice, and
+          // reports a rewritten tail as a replacement instead of stale text.
+          const stream = onChunk ? new DeltaStream(onChunk, undefined, options?.onReplace) : null;
           const cleanReply = await this.wasmWorker.generate(
             prompt,
             wasmMaxTokens,
@@ -415,9 +422,9 @@ class LocalLlmEngine {
         const { TextStreamer } = await import('@huggingface/transformers');
         let accumulatedText = '';
         // Same contract as in the worker: the streamer delivers deltas, they are
-        // accumulated, and `DeltaStream` decides what is really emitted to the
-        // consumer.
-        const deltaStream = onChunk ? new DeltaStream(onChunk) : null;
+        // accumulated (which is where a rewritten tail can appear), and
+        // `DeltaStream` decides what is really emitted to the consumer.
+        const deltaStream = onChunk ? new DeltaStream(onChunk, undefined, options?.onReplace) : null;
 
         const streamer = new TextStreamer(this.engineInstance.tokenizer, {
           skip_prompt: true,
@@ -555,6 +562,11 @@ class LocalLlmEngine {
   /**
    * Delta iterator with the same contract as `onChunk`: each element is the new
    * text, never the accumulated text.
+   *
+   * An iterator CANNOT retract: once an element is yielded the consumer has it.
+   * A backend rewrite therefore has no representation here, and any
+   * `onReplace` in `options` is deliberately not forwarded (see the assignment
+   * below); the value `generate()` returns stays the authoritative answer.
    */
   public async *generateStream(
     messages: ChatMessage[],
@@ -575,7 +587,10 @@ class LocalLlmEngine {
       onChunk: (delta: string) => {
         queue.push(delta);
         wake();
-      }
+      },
+      // Explicitly dropped: a replacement is not a delta and cannot be yielded
+      // as one without lying about the iterator's contract.
+      onReplace: undefined
     }).then(
       () => { finished = true; wake(); },
       (err) => { finished = true; wake(); throw err; }

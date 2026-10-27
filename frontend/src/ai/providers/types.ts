@@ -13,6 +13,14 @@ export interface ProviderExecutionRequest {
    * only), never the accumulated text or the full final answer.
    */
   onChunk?: (delta: string) => void;
+  /**
+   * Replacement event (delta contract preserved): the text already delivered for
+   * this generation was rewritten, so the consumer discards it and continues
+   * from `text`. Only providers that stream ACCUMULATED snapshots can emit it;
+   * the one-shot providers (demo, Ollama, OpenAI) send a single delta and never
+   * rewrite.
+   */
+  onReplace?: (text: string) => void;
   /** Cancellation token for a long generation (aborted stream). */
   signal?: AbortSignal;
 }

@@ -214,7 +214,23 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
           ]);
         },
         retrievalScope,
-        { signal: controller.signal }
+        {
+          signal: controller.signal,
+          // REPLACEMENT EVENT: the on-device backend rewrote text already
+          // streamed, so what has been accumulated is discarded instead of
+          // rendering stale characters next to the corrected ones.
+          onReplace: (replacement) => {
+            streamingText = replacement;
+            setMessages([
+              ...newHistory,
+              {
+                role: 'assistant',
+                content: streamingText,
+                isLocalOnDevice: true
+              }
+            ]);
+          }
+        }
       );
       setMessages([
         ...newHistory,

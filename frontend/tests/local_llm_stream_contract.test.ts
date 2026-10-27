@@ -136,3 +136,125 @@ test('runtime: `generate` es el contrato canónico y `generateChat` un alias', a
     /no está listo/
   );
 });
+// =========================================================================
+// Reescrituras del backend: retirada real sin romper el contrato de deltas
+// =========================================================================
+
+test('stream: una reescritura divergente retira lo ya emitido con un reemplazo', () => {
+  const deltas: string[] = [];
+  const replacements: string[] = [];
+  const stream = new DeltaStream(d => deltas.push(d), undefined, text => replacements.push(text));
+
+  stream.push('Hola mundo');
+  // El backend corrige la caja de una palabra ya entregada: el sufijo nuevo NO
+  // puede concatenarse sobre el viejo (antes quedaba «Hola mundoundo!!»).
+  stream.push('Hola Mundo!!');
+
+  assert.deepStrictEqual(replacements, ['Hola Mundo!!'], 'el consumidor recibe el texto corregido completo');
+  assert.deepStrictEqual(deltas, ['Hola mundo'], 'no se añade el sufijo divergente como si fuera nuevo');
+  assert.strictEqual(stream.text, 'Hola Mundo!!', 'el texto reconstruido es el del backend');
+  assert.ok(!stream.text.includes('mundoundo'), 'no queda texto obsoleto ni fragmentos repetidos');
+});
+
+test('stream: una instantánea más corta retira de verdad lo entregado', () => {
+  const replacements: string[] = [];
+  const stream = new DeltaStream(() => undefined, undefined, text => replacements.push(text));
+
+  stream.push('Respuesta provisional');
+  stream.push('Respuesta');
+
+  assert.deepStrictEqual(replacements, ['Respuesta']);
+  assert.strictEqual(stream.text, 'Respuesta', 'la versión larga ya no está en manos del consumidor');
+});
+
+test('stream: finish repara un flujo no monótono y deja el texto final exacto', () => {
+  const replacements: string[] = [];
+  const deltas: string[] = [];
+  const stream = new DeltaStream(d => deltas.push(d), undefined, text => replacements.push(text));
+
+  stream.push('Charla sobre SM-2');
+  stream.finish('Resumen sobre SM-2');
+
+  assert.deepStrictEqual(replacements, ['Resumen sobre SM-2'], 'la respuesta definitiva sustituye a lo emitido');
+  assert.strictEqual(stream.text, 'Resumen sobre SM-2');
+  assert.strictEqual(deltas.join(''), 'Charla sobre SM-2');
+});
+
+test('stream: con instantáneas monótonas no hay ni un reemplazo', () => {
+  const deltas: string[] = [];
+  const replacements: string[] = [];
+  const stream = new DeltaStream(d => deltas.push(d), undefined, text => replacements.push(text));
+
+  stream.push('Hola');
+  stream.push('Hola, ');
+  stream.push('Hola, mundo');
+  stream.finish('Hola, mundo');
+
+  assert.deepStrictEqual(deltas, ['Hola', ',', ' mundo']);
+  assert.deepStrictEqual(replacements, [], 'la ruta normal no paga el coste del evento nuevo');
+  assert.strictEqual(stream.text, 'Hola, mundo');
+});
+
+test('stream: sin manejador de reemplazo el consumidor de deltas conserva el comportamiento anterior', () => {
+  const deltas: string[] = [];
+  const stream = new DeltaStream(d => deltas.push(d));
+
+  stream.push('Hola mundo');
+  stream.push('Hola Mundo!!');
+
+  // Fallback documentado: nadie puede retirar lo entregado, así que se envía
+  // sólo lo posterior al prefijo común. El valor que devuelve `generate()` es
+  // la respuesta autoritativa.
+  assert.deepStrictEqual(deltas, ['Hola mundo', 'Mundo!!']);
+  assert.strictEqual(stream.text, 'Hola mundoMundo!!', 'la concatenación conserva el fragmento obsoleto');
+  stream.finish('Hola Mundo!!');
+  assert.deepStrictEqual(deltas, ['Hola mundo', 'Mundo!!'], 'finish no puede repararlo sin manejador');
+});
+
+test('stream: el reemplazo atraviesa el servicio del tutor hasta el consumidor', async () => {
+  const { localLlmEngine } = await import('../src/lib/localLlm/engine.ts');
+  const { localAiRuntime } = await import('../src/services/localAiRuntime.ts');
+  const { aiService } = await import('../src/ai/aiService.ts');
+
+  const originalGenerate = localLlmEngine.generate;
+  const originalEnsureReady = localAiRuntime.ensureLocalAiReady;
+  const originalSettings = aiService.getSettings();
+
+  try {
+    aiService.saveSettings({ ...originalSettings, provider: 'local', localAiEnabled: true });
+    localAiRuntime.ensureLocalAiReady = async () => ({ stage: 'ready' } as any);
+    // Doble del motor on-device: entrega un delta y después reescribe lo
+    // entregado, que es lo que hace Transformers.js al decodificar el siguiente
+    // token sobre los ids acumulados.
+    localLlmEngine.generate = async (_messages: any, options: any) => {
+      const inner = new DeltaStream(options.onChunk, undefined, options.onReplace);
+      inner.push('Hola mundo');
+      inner.push('Hola Mundo!!');
+      inner.finish('Hola Mundo!!');
+      return 'Hola Mundo!!';
+    };
+
+    const deltas: string[] = [];
+    const replacements: string[] = [];
+    const response = await aiService.askTutor(
+      [{ role: 'user', content: 'hola' }],
+      'C1: React 18',
+      delta => deltas.push(delta),
+      undefined,
+      { onReplace: text => replacements.push(text), disableRetrieval: true }
+    );
+
+    assert.deepStrictEqual(
+      replacements,
+      ['Hola Mundo!!'],
+      'el evento de reemplazo llega al consumidor del tutor'
+    );
+    assert.strictEqual(deltas.join(''), 'Hola mundo', 'el sufijo obsoleto no se concatena');
+    assert.strictEqual(response.providerUsed, 'local');
+    assert.strictEqual(typeof response.answer, 'string');
+  } finally {
+    localLlmEngine.generate = originalGenerate;
+    localAiRuntime.ensureLocalAiReady = originalEnsureReady;
+    aiService.saveSettings(originalSettings);
+  }
+});

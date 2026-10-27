@@ -7,7 +7,7 @@ import { resolveContextBudget, trimChatHistory } from '../../lib/localLlm/contex
 
 export class LocalProviderStrategy implements AIProviderStrategy {
   async execute(req: ProviderExecutionRequest): Promise<AssistantResponse> {
-    const { messages, combinedContext, ragContext, hasSubstantiveContext, retrievalMode, onChunk, signal } = req;
+    const { messages, combinedContext, ragContext, hasSubstantiveContext, retrievalMode, onChunk, onReplace, signal } = req;
     const lastUserQuery = messages[messages.length - 1]?.content || '';
 
     const readiness = await localAiRuntime.ensureLocalAiReady({ provider: 'local' });
@@ -52,6 +52,10 @@ export class LocalProviderStrategy implements AIProviderStrategy {
       const answer = await localLlmEngine.generate(fitted.messages, {
         stream: !!onChunk,
         onChunk,
+        // The on-device WASM backend streams accumulated snapshots, so it is the
+        // one that can rewrite already-delivered text; the event travels to the
+        // consumer so a replacement retracts it instead of leaving stale content.
+        onReplace,
         signal
       });
 

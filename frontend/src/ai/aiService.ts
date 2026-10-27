@@ -85,6 +85,16 @@ export interface AskTutorOptions {
   disableRetrieval?: boolean;
   /** Cancels the in-flight generation (the drawer stops on close). */
   signal?: AbortSignal;
+  /**
+   * Replacement event of the streaming contract: the text already delivered for
+   * this answer was rewritten, so the caller discards it and renders `text`.
+   *
+   * It lives here rather than as a positional parameter because `onChunk` is
+   * already the third argument of `askTutor` and every existing caller passes
+   * the positional form; this keeps that signature stable. Ignoring it is valid:
+   * deltas alone still render, and `AssistantResponse.answer` is authoritative.
+   */
+  onReplace?: (text: string) => void;
 }
 
 /** Honest description of the model behind a provider answer. */
@@ -324,6 +334,7 @@ export const aiService = {
       hasSubstantiveContext,
       retrievalMode: retrieval.retrievalMode,
       onChunk,
+      onReplace: options?.onReplace,
       signal: options?.signal
     });
 
