@@ -2,39 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-/* =============================================================================
-   CrossedArts — Semantic design system
-   -----------------------------------------------------------------------------
-   Every color lives here as a CSS variable (RGB triplets so Tailwind opacity
-   modifiers work). The light/cream theme is the default; the dark/charcoal theme
-   is defined explicitly, never as an inversion of the light one. Components use
-   only the semantic tokens: canvas, surface, raised, line, ink, muted, faint,
-   accent...
-   ============================================================================= */
+/**
+ * CrossedArts — Semantic design system
+ *
+ * Every color lives here as a CSS variable (RGB triplets so Tailwind opacity
+ * modifiers work). The light/cream theme is the default; the dark/charcoal theme
+ * is defined explicitly, never as an inversion of the light one. Components use
+ * only the semantic tokens: canvas, surface, raised, line, ink, muted, faint,
+ * accent...
+ */
 
 :root {
   color-scheme: light;
 
-  /* --- Surfaces (light: contemporary architectural off-white) --- */
+  /* Surfaces (light) */
   --c-canvas: 246 247 249;      /* page background, clean pure soft grey */
   --c-surface: 255 255 255;     /* content surface (cards, modules) */
   --c-raised: 255 255 255;      /* raised surface (dialogs, floating menus) */
   --c-line: 226 230 238;        /* subtle 1px separators */
   --c-line-strong: 203 209 220; /* structural borders and focus */
 
-  /* --- Ink ---
-   * Values tuned to meet WCAG 2.1 AA (>=4.5:1) and AAA (>=7:1) over the three
-   * light surfaces (canvas/surface/raised). See `frontend/tests/theme_contrast.test.ts`. */
+  /* Ink: Values tuned to meet WCAG 2.1 AA (>=4.5:1) and AAA (>=7:1) over light surfaces. */
   --c-ink: 24 28 36;            /* primary text, deep architectural charcoal */
   --c-muted: 85 93 108;         /* secondary slate-grey text */
   --c-faint: 105 114 130;       /* metadata and micro-labels */
 
-  /* --- Accent (Electric Indigo / editorial-precision Iris) --- */
+  /* Accent (Electric Indigo / editorial-precision Iris) */
   --c-accent: 67 56 202;        /* #4338CA: deep indigo with >=4.5:1 as text and link */
   --c-accent-soft: 238 242 255; /* #EEF2FF: faint surface for chips and selections */
   --c-on-accent: 255 255 255;   /* pure white on a solid accent button */
 
-  /* --- Semantics (functional use, high sharpness) --- */
+  /* Semantics */
   --c-success: 22 101 52;
   --c-success-soft: 235 247 238;
   --c-warning: 146 64 14;
@@ -45,52 +43,52 @@
   --c-info-soft: 239 246 255;
   --c-focus: 67 56 202;
 
-  /* --- Shadows (architectural, sharp and soft) --- */
+  /* Shadows */
   --shadow-card: 0 1px 3px 0 rgb(24 28 36 / 0.04), 0 1px 2px -1px rgb(24 28 36 / 0.04);
   --shadow-pop: 0 12px 32px -12px rgb(24 28 36 / 0.18);
   --shadow-header: 0 1px 0 0 rgb(24 28 36 / 0.06);
 
-  /* --- Typography --- */
+  /* Typography */
   --font-ui: system-ui, -apple-system, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-editorial: system-ui, -apple-system, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
-  /* --- Radius (harmonic scale) --- */
+  /* Radius */
   --r-sm: 0.375rem;
   --r-md: 0.5rem;
   --r-lg: 0.75rem;
   --r-xl: 1rem;
 
-  /* --- Motion (haptic and precise) --- */
+  /* Motion */
   --motion-fast: 140ms;
   --motion-base: 220ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* --- Reading measure (editorial) --- */
+  /* Reading measure */
   --measure: 68ch;
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
 
-  /* --- Surfaces (dark: deep architectural charcoal, never pure black) --- */
+  /* Surfaces (dark) */
   --c-canvas: 18 20 24;
   --c-surface: 26 29 36;
   --c-raised: 36 40 50;
   --c-line: 48 54 67;
   --c-line-strong: 68 76 94;
 
-  /* --- Ink (warm, soft contrast) --- */
+  /* Ink (dark) */
   --c-ink: 241 243 249;
   --c-muted: 175 182 198;
   --c-faint: 150 158 175;
 
-  /* --- Accent in dark mode --- */
+  /* Accent (dark) */
   --c-accent: 147 151 255;      /* luminous electric iris for text and borders */
   --c-accent-soft: 33 36 67;    /* subtle surface for chips */
   --c-on-accent: 18 20 24;      /* dark text over the bright accent fill */
 
-  /* --- Semantics (low saturation, no glare) --- */
+  /* Semantics (dark) */
   --c-success: 134 239 172;
   --c-success-soft: 20 45 30;
   --c-warning: 252 211 77;
@@ -101,7 +99,7 @@
   --c-info-soft: 25 38 55;
   --c-focus: 147 151 255;
 
-  /* --- Shadows in dark mode: border dominance --- */
+  /* Shadows (dark) */
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.35);
   --shadow-pop: 0 16px 40px -16px rgb(0 0 0 / 0.7);
   --shadow-header: 0 1px 0 0 rgb(0 0 0 / 0.4);

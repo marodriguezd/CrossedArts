@@ -179,7 +179,7 @@ export async function retrieveLocalContext(
 
   const lexicalCandidates: Map<string, RetrievedDocument> = new Map();
 
-  // 1a. Courses (resource metadata, no hierarchy rebuild).
+  // Courses metadata
   for (const course of courses) {
     const courseText = `${course.title} ${course.description || ''} ${course.category}`;
     const score = scoreLexicalRelevance(tokens, courseText);
@@ -197,9 +197,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 1b. Lessons from the flat index (previously rebuilt course by course).
-  // Scored text and snippet stay byte-identical to preserve the deterministic
-  // ranking and per-source dedup.
+  // Lessons from flat index
   for (const entry of lessonIndex) {
     const lesText = `${entry.lessonTitle} ${entry.moduleTitle} ${entry.lessonContent || ''}`;
     const lScore = scoreLexicalRelevance(tokens, lesText);
@@ -220,7 +218,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 2. Books
+  // Books
   for (const book of books) {
     const bookText = `${book.title} ${book.author || ''} ${book.description || ''} ${book.category}`;
     const score = scoreLexicalRelevance(tokens, bookText);
@@ -238,7 +236,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 3. Notes
+  // Notes
   for (const note of notes) {
     const noteText = `${note.title} ${note.content}`;
     const score = scoreLexicalRelevance(tokens, noteText);
@@ -263,7 +261,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 4. Flashcards SM-2
+  // Flashcards
   for (const fc of flashcards) {
     const fcText = `${fc.front} ${fc.back}`;
     const score = scoreLexicalRelevance(tokens, fcText);
@@ -282,7 +280,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 5. Graph concepts
+  // Knowledge graph concepts
   for (const node of graph.nodes) {
     const conceptText = `${node.name} ${node.description || ''}`;
     const score = scoreLexicalRelevance(tokens, conceptText);
@@ -298,9 +296,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 5b. Practice work: student-PRODUCED evidence. Retrieved by title,
-  // description, content, and notes, keeping provenance to its resource/lesson
-  // so scope can narrow it.
+  // Learner practice work
   for (const work of practiceWork) {
     const bodySource = [work.description, work.content, work.notes]
       .map((value: string | null | undefined) => (value || '').trim())
@@ -322,7 +318,7 @@ export async function retrieveLocalContext(
     }
   }
 
-  // 6. Semantic search over the vector cache (when engine/cache available).
+  // Semantic retrieval over the vector cache
   let semanticMatches: { chunkId: string; score: number; entry: any }[] = [];
   let isSemanticReady = localEmbeddingEngine.getStatus() === 'ready';
 

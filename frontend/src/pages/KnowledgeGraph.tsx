@@ -743,7 +743,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
         </div>
       </div>
 
-      {/* --- Structural graph analytics (real topological properties) --- */}
       {isStatsOpen && (
         <section
           id="graph-analytics-panel"

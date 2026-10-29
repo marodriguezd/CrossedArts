@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from typing import Union
 from backend.app.core.compatibility import is_legacy_allowed_path_part
@@ -31,6 +32,16 @@ BLOCKED_HIDDEN_DIR_NAMES = [
     ".ssh", ".gnupg", ".aws", ".gemini", ".config", ".env", ".git"
 ]
 
+
+def _has_blocked_hidden_part(path: Path) -> bool:
+    for part in path.parts:
+        if part.startswith('.') and not is_legacy_allowed_path_part(part):
+            return True
+        if part in BLOCKED_HIDDEN_DIR_NAMES:
+            return True
+    return False
+
+
 def is_safe_path(path: Union[str, Path]) -> bool:
     """
     Check whether a file or directory path is safe, cross-platform (Windows and Linux).
@@ -49,7 +60,7 @@ def is_safe_path(path: Union[str, Path]) -> bool:
 
         resolved_path = os.path.abspath(os.path.realpath(path_str))
 
-        # 1. Check the app workspace (always allowed by definition).
+        # Check the app workspace (always allowed by definition).
         workspace_dir = os.path.abspath(os.path.realpath(str(settings.data_dir)))
         if os.name == 'nt':
             in_workspace = resolved_path.lower() == workspace_dir.lower() or resolved_path.lower().startswith(workspace_dir.lower() + os.sep)
@@ -58,15 +69,9 @@ def is_safe_path(path: Union[str, Path]) -> bool:
 
         # Inside the workspace, only check sensitive hidden components, then allow.
         if in_workspace:
-            parts = Path(resolved_path).parts
-            for part in parts:
-                if part.startswith('.') and not is_legacy_allowed_path_part(part):
-                    return False
-                if part in BLOCKED_HIDDEN_DIR_NAMES:
-                    return False
-            return True
+            return not _has_blocked_hidden_part(Path(resolved_path))
 
-        # 2. Check against blocked system directories.
+        # Check against blocked system directories.
         for blocked_dir in BLOCKED_SYSTEM_DIRS:
             blocked_resolved = os.path.abspath(os.path.realpath(blocked_dir))
             if os.name == 'nt':
@@ -76,16 +81,12 @@ def is_safe_path(path: Union[str, Path]) -> bool:
                 if resolved_path == blocked_resolved or resolved_path.startswith(blocked_resolved + os.sep):
                     return False
 
-        # 3. Reject hidden folders/files in path components: block any part
+        # Reject hidden folders/files in path components: block any part
         # starting with '.' except allowed namespaces.
-        parts = Path(resolved_path).parts
-        for part in parts:
-            if part.startswith('.') and not is_legacy_allowed_path_part(part):
-                return False
-            if part in BLOCKED_HIDDEN_DIR_NAMES:
-                return False
+        if _has_blocked_hidden_part(Path(resolved_path)):
+            return False
 
-        # 4. Allowed scope outside the workspace:
+        # Allowed scope outside the workspace:
         # - User-home subfolders (excluding the home itself for safety).
         # - External drives/media under /media or /mnt (Linux) or any drive on Windows.
         home_dir = os.path.abspath(os.path.realpath(os.path.expanduser("~")))
@@ -106,7 +107,6 @@ def is_safe_path(path: Union[str, Path]) -> bool:
         if os.name == 'nt':
             # On Windows, any drive or external storage (C:\, D:\, E:\, ...) is valid
             # as long as it is not inside protected system folders.
-            import re
             if re.match(r'^[a-zA-Z]:\\', resolved_path):
                 return True
         else:

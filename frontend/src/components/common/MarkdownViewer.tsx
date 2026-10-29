@@ -122,7 +122,6 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   while (i < lines.length) {
     const line = lines[i];
 
-    // 1. Fenced triple-backtick code block
     if (line.trim().startsWith('```')) {
       const language = line.trim().slice(3).trim();
       const codeLines: string[] = [];
@@ -142,7 +141,6 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 2. Headings
     if (line.startsWith('# ')) {
       elements.push(
         <h1 key={`h1-${i}`} className="mt-4 mb-2 font-serif text-2xl font-bold text-ink border-b border-line pb-1">
@@ -171,14 +169,12 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 3. Horizontal rule
     if (/^(\-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
       elements.push(<hr key={`hr-${i}`} className="my-4 border-line" />);
       i++;
       continue;
     }
 
-    // 4. Blockquotes
     if (line.startsWith('>')) {
       const quoteLines: string[] = [];
       while (i < lines.length && lines[i].startsWith('>')) {
@@ -197,7 +193,6 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 5. Unordered lists (- or *)
     if (/^[\-\*]\s/.test(line.trim())) {
       const listItems: string[] = [];
       while (i < lines.length && /^[\-\*]\s/.test(lines[i].trim())) {
@@ -214,7 +209,6 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 6. Ordered lists (1. 2. ...)
     if (/^\d+\.\s/.test(line.trim())) {
       const listItems: string[] = [];
       while (i < lines.length && /^\d+\.\s/.test(lines[i].trim())) {
@@ -231,14 +225,12 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       continue;
     }
 
-    // 7. Blank line
     if (!line.trim()) {
       elements.push(<div key={`sp-${i}`} className="h-2" />);
       i++;
       continue;
     }
 
-    // 8. Regular paragraph
     elements.push(
       <p key={`p-${i}`} className="leading-relaxed text-ink">
         {renderInlineMarkdown(line, onSeekTimestamp)}

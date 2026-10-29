@@ -1,5 +1,3 @@
-import { cosineSimilarity } from './engine.ts';
-
 export interface VectorMatch {
   id: string;
   score: number;

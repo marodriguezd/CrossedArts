@@ -355,9 +355,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </p>
       </header>
 
-      {/* ---------------------------------------------------------------
-          Local storage and backups
-      --------------------------------------------------------------- */}
       <section aria-labelledby="settings-storage" className="space-y-4">
         <SectionHeading
           title="Almacenamiento y respaldos"
@@ -496,9 +493,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         onConfirm={executeResetDemo}
       />
 
-      {/* ---------------------------------------------------------------
-          Appearance
-      --------------------------------------------------------------- */}
       <section aria-labelledby="settings-theme" className="space-y-4">
         <SectionHeading
           title="Apariencia"
@@ -521,9 +515,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </div>
       </section>
 
-      {/* ---------------------------------------------------------------
-          Language
-      --------------------------------------------------------------- */}
       <section aria-labelledby="settings-language" className="space-y-4">
         <SectionHeading
           title={t('settings.language.title')}
@@ -549,9 +540,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </div>
       </section>
 
-      {/* ---------------------------------------------------------------
-          Audio and Voice Accessibility (Web Speech API)
-      --------------------------------------------------------------- */}
       <section aria-labelledby="settings-speech" className="space-y-4">
         <SectionHeading
           title="Audio y Accesibilidad por Voz"
@@ -630,9 +618,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </div>
       </section>
 
-      {/* ---------------------------------------------------------------
-          Local AI and providers
-      --------------------------------------------------------------- */}
       <form onSubmit={handleSaveAi} className="space-y-4" aria-labelledby="settings-ai">
         <SectionHeading
           title="Tutor IA y proveedores"

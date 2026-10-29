@@ -554,7 +554,6 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         </p>
       </header>
 
-      {/* Pending active-session banner (resume after reload) */}
       {state.phase === 'idle' && pendingResume && (
         <InlineStatus tone="warning" className="justify-between">
           <span className="flex min-w-0 items-start gap-3">

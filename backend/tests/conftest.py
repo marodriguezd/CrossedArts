@@ -14,9 +14,7 @@ sys.path.insert(0, workspace_root)
 from backend.app.core.database import Base
 from backend.app.models import *
 
-# =============================================================================
 # TEST DATABASE ISOLATION (A-1)
-# =============================================================================
 # This file must NEVER import or use the app's real engine.
 #
 # The old behavior ran schema creation against the app's real engine, creating
@@ -35,7 +33,6 @@ from backend.app.models import *
 #   3. Boot migration validation is disabled in tests so no lifecycle code
 #      inspects the real database by accident.
 #   4. The user's real database is never wiped or recreated.
-# =============================================================================
 
 
 @pytest.fixture(name="db_engine")

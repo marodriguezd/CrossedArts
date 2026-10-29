@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from backend.app.core.utils import utc_now_naive
 from typing import List, Optional, Tuple
 from sqlalchemy import select, func
@@ -85,7 +85,6 @@ class SessionService:
             # Past 300 s (5 min) since the last heartbeat, assume the machine was
             # suspended/idle and discount that time.
             if delta_last_active.total_seconds() >= 300:
-                from datetime import timedelta
                 inactive_time = delta_last_active - timedelta(seconds=10)
                 session.inactive_seconds += int(inactive_time.total_seconds())
 

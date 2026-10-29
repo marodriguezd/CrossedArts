@@ -24,11 +24,8 @@ interface PersistedCoordinatorMeta {
   revision: number;
   lastWriterTabId: string;
   updatedAt: number;
-}  /**
-   * Stale-write error (concurrency conflict). Thrown by `persist()` when the
-   * persisted revision is no longer the one this tab knew. `persistedRevision`
-   * is the actually persisted (winning) revision.
-   */
+}
+
 let dbLang: LanguageCode = resolveAppLanguage();
 
 /** Module-level UI language for DB failure messages (mirrors Settings). */
@@ -36,6 +33,11 @@ export function setDbLanguage(lang: LanguageCode): void {
   dbLang = lang;
 }
 
+/**
+ * Stale-write error (concurrency conflict). Thrown by `persist()` when the
+ * persisted revision is no longer the one this tab knew. `persistedRevision`
+ * is the actually persisted (winning) revision.
+ */
 export class StaleWriteError extends Error {
   public readonly persistedRevision: number;
   constructor(persistedRevision: number) {
@@ -833,7 +835,6 @@ class SQLiteBridge {
   }
 
   private applyMigrationsAndCompleteSchema(db: Database): boolean {
-    // 1. Migrate existing tables before indexing new columns.
     const migratedSession = this.migrateLearningSession(db);
     const migratedLesson = this.migrateLessonContent(db);
     const migratedFlashcard = this.migrateFlashcardLessonId(db);
@@ -843,10 +844,7 @@ class SQLiteBridge {
     const migratedPractice = this.migratePracticeWorkspace(db);
     const migratedPracticeCascade = this.migratePracticeWorkParentCascade(db);
 
-    // 2. Create any missing new base table/index (IF NOT EXISTS).
     db.run(SCHEMA_SQL);
-
-    // 3. Re-check indexes depending on migrated columns.
     db.run('CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);');
     db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
 

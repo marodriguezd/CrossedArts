@@ -242,7 +242,7 @@ export const Shell: React.FC<ShellProps> = ({
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
-      {/* --- Skip to main content (keyboard accessibility) --- */}
+      {/* Skip to main content (keyboard accessibility) */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:border focus:border-line focus:bg-surface focus:px-4 focus:py-2 focus:text-meta focus:font-medium focus:text-ink focus:shadow-pop"
@@ -250,7 +250,7 @@ export const Shell: React.FC<ShellProps> = ({
         {t('shell.skipLink')}
       </a>
 
-      {/* --- Fixed sidebar (desktop) --- */}
+      {/* Fixed sidebar (desktop) */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line bg-surface lg:flex">
         <div className="px-4 py-5">{brandButton}</div>
         <div className="flex-1 overflow-y-auto px-3 pb-4">{navList('side')}</div>
@@ -262,7 +262,7 @@ export const Shell: React.FC<ShellProps> = ({
         </div>
       </aside>
 
-      {/* --- Navigation drawer (mobile / tablet) --- */}
+      {/* Navigation drawer (mobile / tablet) */}
       {isMobileNavOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
@@ -301,7 +301,7 @@ export const Shell: React.FC<ShellProps> = ({
         </div>
       )}
 
-      {/* --- Content column --- */}
+      {/* Content column */}
       <div className="flex min-h-screen flex-col lg:pl-60">
         <header className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur-sm">
           <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-2 sm:gap-3 px-3 sm:px-6 lg:px-8">

@@ -14,7 +14,7 @@ function extractPageFromTags(tags?: string | null): number | undefined {
 export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEntities): KnowledgeDocument[] {
   const docs: KnowledgeDocument[] = [];
 
-  // 1. Courses and Lessons
+  // Courses and lessons
   for (const c of entities.courses || []) {
     const courseHeader = `Curso: ${c.title}. Categoría: ${c.category || 'General'}.`;
     const courseBody = (c.description || '').trim();
@@ -67,7 +67,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     }
   }
 
-  // 2. Books
+  // Books
   for (const b of entities.books || []) {
     const bookHeader = `Libro: ${b.title}. Autor: ${b.author || 'Desconocido'}. Categoría: ${b.category || 'General'}. Progreso: ${b.reading_percentage ?? 0}%.`;
     const bookBody = (b.description || '').trim();
@@ -93,7 +93,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     });
   }
 
-  // 3. Notes
+  // Notes
   for (const n of entities.notes || []) {
     const noteHeader = `Nota: ${n.title}.`;
     const noteBody = (n.content || '').trim();
@@ -119,7 +119,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     });
   }
 
-  // 4. Flashcards
+  // Flashcards
   for (const f of entities.flashcards || []) {
     const fcHeader = 'Tarjeta mnemotécnica.';
     const fcBody = `Pregunta: ${f.front}. Respuesta: ${f.back}`.trim();
@@ -140,7 +140,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     });
   }
 
-  // 5. Concepts
+  // Concepts
   for (const con of entities.concepts || []) {
     const conceptHeader = `Concepto: ${con.name}.`;
     const conceptBody = (con.description || '').trim();
@@ -159,7 +159,7 @@ export function domainEntitiesToKnowledgeDocuments(entities: DomainKnowledgeEnti
     });
   }
 
-  // 6. Practice Work
+  // Practice work
   for (const pw of entities.practiceWork || []) {
     const practiceHeader = `Trabajo práctico: ${pw.title}. Tipo: ${pw.kind || 'exercise'}.`;
     const bodyParts = [pw.description, pw.content, pw.notes]

@@ -217,10 +217,6 @@ export function planCoursePackageImport(
   return { existing, toCreate };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Import conflicts                                                            */
-/* -------------------------------------------------------------------------- */
-
 /**
  * Deterministic fingerprint of the content an element is compared against.
  *

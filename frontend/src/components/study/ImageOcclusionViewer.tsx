@@ -25,7 +25,6 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
 
   return (
     <div className={cn('relative flex flex-col items-center w-full select-none', className)}>
-      {/* Relative container for image and masks */}
       <div className="relative inline-block max-w-full overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-canvas-subtle)] shadow-sm">
         {imageUrl ? (
           <img
@@ -39,20 +38,10 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
           </div>
         )}
 
-        {/* Mask layer */}
         {safeMasks.map((mask: OcclusionMask, idx: number) => {
           const isActive = idx === activeMaskIndex;
           const hideAll = mode === 'hide_all_reveal_one';
-
-          // Decide whether this mask must be covered
-          let isCovered = false;
-          if (isActive) {
-            isCovered = !isRevealed;
-          } else if (hideAll) {
-            isCovered = true;
-          } else {
-            isCovered = false;
-          }
+          const isCovered = isActive ? !isRevealed : hideAll;
 
           return (
             <button
@@ -91,7 +80,6 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
         })}
       </div>
 
-      {/* Bottom status bar */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 w-full px-2 text-xs text-[var(--c-ink-muted)]">
         <div className="flex items-center gap-2">
           <span className="font-medium text-[var(--c-ink)]">

@@ -86,16 +86,7 @@ export interface ChunkableResources {
   practiceWork?: PracticeChunkInput[];
 }
 
-// ---------------------------------------------------------------------------
-// Real SHA-256.
-//
-// `computeSha256ContentHash` promises SHA-256 and consumers (cache
-// invalidation, chunk identity) rely on that cryptographic property. WebCrypto
-// `crypto.subtle` is missing in some supported envs (e.g. insecure contexts or
-// restricted workers), so the fallback is a pure TypeScript SHA-256 with the
-// exact same output (byte-identical digest), never a light hash posing as 64 hex.
-// ---------------------------------------------------------------------------
-
+// SHA-256 constants and fallback for environments lacking crypto.subtle.
 const SHA256_K = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -191,15 +182,6 @@ export function computeContentHash(input: string): string {
   }
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
-
-// ---------------------------------------------------------------------------
-// Bounded semantic chunking.
-//
-// Truncating lesson/note content to a small snippet made semantic retrieval
-// ignore most of the text. Long content now splits into bounded chunks with
-// paragraph/sentence-boundary cuts, small overlap for context, deterministic
-// ids (`<base>` for part 1, `<base>_pN` for the rest), and stable order.
-// ---------------------------------------------------------------------------
 
 /** Target chars per chunk. Bounded to fit the active embedding model's context. */
 const CHUNK_CHAR_LIMIT = 600;
@@ -310,7 +292,6 @@ function notePageFromTags(tags?: string | null): number | undefined {
 export function createSemanticChunksFromResources(resources: ChunkableResources): SemanticChunk[] {
   const chunks: SemanticChunk[] = [];
 
-  // 1. Courses (and their lessons)
   for (const c of resources.courses || []) {
     const courseHeader = `Curso: ${c.title}. Categoría: ${c.category || 'General'}.`;
     chunks.push(...buildChunksForSource({
@@ -339,7 +320,6 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }
   }
 
-  // 2. Books
   for (const b of resources.books || []) {
     const bookHeader = `Libro: ${b.title}. Autor: ${b.author || 'Desconocido'}. Categoría: ${b.category || 'General'}. Progreso: ${b.reading_percentage ?? 0}%.`;
     chunks.push(...buildChunksForSource({
@@ -352,7 +332,6 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }));
   }
 
-  // 3. Notes
   for (const n of resources.notes || []) {
     const noteHeader = `Nota: ${n.title}.`;
     chunks.push(...buildChunksForSource({
@@ -366,7 +345,6 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }));
   }
 
-  // 4. Flashcards
   for (const f of resources.flashcards || []) {
     chunks.push(...buildChunksForSource({
       baseId: `flashcard_${f.id}`,
@@ -378,7 +356,6 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }));
   }
 
-  // 5. Concepts
   for (const con of resources.concepts || []) {
     chunks.push(...buildChunksForSource({
       baseId: `concept_${con.id}`,
@@ -390,7 +367,6 @@ export function createSemanticChunksFromResources(resources: ChunkableResources)
     }));
   }
 
-  // 6. Learner practice work (produced evidence, indexable).
   for (const pw of resources.practiceWork || []) {
     const practiceHeader = `Trabajo práctico: ${pw.title}. Tipo: ${pw.kind || 'exercise'}.`;
     // Fields merge into one canonical text: a change in any of them alters the

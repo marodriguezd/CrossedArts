@@ -18,13 +18,17 @@ export function getFileExtension(filename: string): string {
   return parts.length > 1 ? parts.pop()!.toLowerCase() : '';
 }
 
+const EXTENSION_TO_FILE_TYPE: Record<string, SupportedFileType> = {
+  txt: 'txt',
+  md: 'md',
+  markdown: 'md',
+  pdf: 'pdf',
+  epub: 'epub'
+};
+
 export function detectFileType(filename: string): SupportedFileType | null {
   const ext = getFileExtension(filename);
-  if (ext === 'txt') return 'txt';
-  if (ext === 'md' || ext === 'markdown') return 'md';
-  if (ext === 'pdf') return 'pdf';
-  if (ext === 'epub') return 'epub';
-  return null;
+  return EXTENSION_TO_FILE_TYPE[ext] ?? null;
 }
 
 export class LocalIngestionService {
@@ -109,7 +113,6 @@ export class LocalIngestionService {
       };
     }
 
-    // 1. Fingerprint
     options.onProgress?.({
       stage: 'hashing',
       fileName: file.name,
@@ -120,7 +123,6 @@ export class LocalIngestionService {
 
     const fingerprint = await computeFileFingerprint(file);
 
-    // Duplicate detection
     const existingResourceId = await this.findExistingResourceByFingerprint(fingerprint);
     if (existingResourceId) {
       return {
@@ -138,7 +140,6 @@ export class LocalIngestionService {
       throw new Error('La importación fue cancelada.');
     }
 
-    // 2. Parsing
     options.onProgress?.({
       stage: 'parsing',
       fileName: file.name,
@@ -153,7 +154,6 @@ export class LocalIngestionService {
       throw new Error('La importación fue cancelada.');
     }
 
-    // 3. SQLite persistence
     options.onProgress?.({
       stage: 'saving',
       fileName: file.name,
@@ -175,7 +175,6 @@ export class LocalIngestionService {
       destination: options.destination
     });
 
-    // 4. Incremental background semantic indexing only when explicitly requested or the engine is already running
     if (options.enableSemanticIndexing && localEmbeddingEngine.getStatus() === 'ready') {
       try {
         const { createSemanticChunksFromResourcesAsync } = await import('../localEmbeddings/chunking.ts');
@@ -255,7 +254,6 @@ export class LocalIngestionService {
         });
       }
 
-      // Yield to the event loop between large files
       await new Promise(resolve => setTimeout(resolve, 10));
     }
 

@@ -18,9 +18,6 @@ import { mapLearningSessionRow } from './sqlRows.ts';
 import { resolveLocalDay, computeActiveStreak } from '../../services/localDate.ts';
 import { generateDailyActivitySeries } from '../../services/domainLogic.ts';
 import type { LanguageCode } from '../../i18n/languages.ts';
-
-
-
 import type {
   DailyActivityPoint,
   KPIMetrics,

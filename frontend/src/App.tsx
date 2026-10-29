@@ -290,10 +290,7 @@ export const App: React.FC = () => {
     localAiRuntime.scheduleIndexing(aiService.getSettings().provider);
   };
 
-  /* ------------------------------------------------------------------ */
-  /* Global command palette (Ctrl+K / Cmd+K)                          */
-  /* ------------------------------------------------------------------ */
-
+  /* Global command palette (Ctrl+K / Cmd+K) */
   const [theme, toggleTheme] = useTheme();
   const [lessonIndex, setLessonIndex] = useState<LessonIndexRow[]>([]);
   const [conceptIndex, setConceptIndex] = useState<ConceptIndexRow[]>([]);

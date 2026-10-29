@@ -3,6 +3,7 @@ import re
 import json
 import uuid
 import zipfile
+import urllib.parse
 import defusedxml.ElementTree as ET
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -250,7 +251,6 @@ class EPUBExtractor(ContentExtractor):
                     if not href:
                         continue
 
-                    import urllib.parse
                     decoded_href = urllib.parse.unquote(href)
                     # Zip Slip / Directory Traversal guard before normalizing.
                     if ".." in Path(decoded_href).parts or decoded_href.startswith("/"):

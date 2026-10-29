@@ -428,15 +428,10 @@ export class LocalEmbeddingEngine {
   }
 
   /**
-   * Incrementally and asynchronously indexes a chunk set via the IndexedDB cache.
-   * Guards against concurrent indexing races and supports instant cancellation.
-   */
-  /**
    * Proactively purges vectors from non-active models/pipelines.
    *
    * Runs while preparing the semantic index: switching embedding models
-   * invalidates prior entries, which previously were freed only by manual cache
-   * clears. Never throws: a failed purge must not block indexing.
+   * invalidates prior entries. Never throws so a failed purge cannot block indexing.
    */
   public async pruneStaleCache(activeModelId?: string): Promise<number> {
     const modelId = activeModelId || this.currentModelId || DEFAULT_EMBEDDING_MODEL_ID;
@@ -447,6 +442,10 @@ export class LocalEmbeddingEngine {
     }
   }
 
+  /**
+   * Incrementally and asynchronously indexes a chunk set via the IndexedDB cache.
+   * Guards against concurrent indexing races and supports instant cancellation.
+   */
   public async indexChunks(
     chunks: SemanticChunk[],
     onProgress?: (indexed: number, total: number) => void
@@ -470,11 +469,8 @@ export class LocalEmbeddingEngine {
       assertJobCurrent();
 
       const chunk = chunks[i];
-      // Cache identity is the (chunk, model, pipeline-version) triple: two
-      // models never overwrite one chunk's vector.
       const cached = await embeddingCache.getEntry(chunk.chunkId, modelId);
 
-      // On a hit with unchanged SHA-256 hash and matching pipeline version, reuse
       if (
         cached &&
         cached.modelId === modelId &&
@@ -487,7 +483,6 @@ export class LocalEmbeddingEngine {
         continue;
       }
 
-      // Generate a fresh embedding with the passage prefix, bound to the job model
       const vector = await this.embedTextForModel(modelId, chunk.text, false);
 
       assertJobCurrent();
@@ -509,7 +504,6 @@ export class LocalEmbeddingEngine {
       newlyIndexed++;
       if (onProgress) onProgress(i + 1, chunks.length);
 
-      // Yield to keep the UI responsive
       await new Promise(r => setTimeout(r, 0));
     }
 

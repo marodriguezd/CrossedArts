@@ -30,12 +30,10 @@ export async function parseMarkdownFile(
   for (const line of lines) {
     const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
     if (headingMatch) {
-      // If this is the first H1 and no custom title is assigned yet
       if (headingMatch[1] === '#' && docTitle === defaultTitle) {
         docTitle = headingMatch[2].trim();
       }
 
-      // Close the previous section
       if (currentLines.length > 0) {
         const textContent = currentLines.join('\n').trim();
         if (textContent.length > 0) {
@@ -55,7 +53,6 @@ export async function parseMarkdownFile(
     }
   }
 
-  // Save the last pending section
   if (currentLines.length > 0) {
     const textContent = currentLines.join('\n').trim();
     if (textContent.length > 0) {
@@ -68,7 +65,6 @@ export async function parseMarkdownFile(
     }
   }
 
-  // Without headings, treat as uniform text
   if (sections.length === 0 && clean.length > 0) {
     sections.push({
       page: 1,

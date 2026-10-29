@@ -21,21 +21,6 @@ import { asNullableString, asNullableNumber } from './dao/sqlRows.ts';
 import { translateKey } from '../i18n/dictionaries.ts';
 import { daoLang, setDaoLanguage } from './daoLanguage.ts';
 import { goalKindLabel } from '../services/goals.ts';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { sessionDao } from './dao/sessions.ts';
 import { noteDao } from './dao/notes.ts';
 import { practiceWorkDao } from './dao/practiceWork.ts';
@@ -60,8 +45,6 @@ import type { SM2Result } from '../services/domainLogic.ts';
  * lives in a testable module, not inside the DAO. */
 
 export { setDaoLanguage };
-
-
 
 export const dao = {
   ...sessionDao,
@@ -654,7 +637,7 @@ export const dao = {
       nodes.push(node);
     };
 
-    // 1. Concepts
+    // Concepts
     const conceptRes = db.exec('SELECT id, name, description FROM concept');
     if (conceptRes.length) {
       for (const r of conceptRes[0].values) {
@@ -662,7 +645,7 @@ export const dao = {
       }
     }
 
-    // 2. Learning resources (course / book / resource)
+    // Learning resources (course / book / resource)
     const resRes = db.exec('SELECT id, title, description, type, category, status, source_path, created_at, updated_at FROM learning_resource');
     if (resRes.length) {
       for (const r of resRes[0].values) {
@@ -700,7 +683,7 @@ export const dao = {
       }
     }
 
-    // 3. Modules.
+    // Modules
     const modRes = db.exec('SELECT id, course_id, title, order_index FROM module');
     if (modRes.length) {
       for (const r of modRes[0].values) {
@@ -708,7 +691,7 @@ export const dao = {
       }
     }
 
-    // 4. Lecciones
+    // Lecciones
     const lesRes = db.exec('SELECT l.id, l.module_id, l.title, l.duration_minutes, l.lesson_type, m.course_id FROM lesson l JOIN module m ON l.module_id = m.id');
     if (lesRes.length) {
       for (const r of lesRes[0].values) {
@@ -721,7 +704,7 @@ export const dao = {
       }
     }
 
-    // 5. Notas
+    // Notas
     const noteRes = db.exec('SELECT id, resource_id, lesson_id, title, tags, created_at, updated_at FROM note');
     if (noteRes.length) {
       for (const r of noteRes[0].values) {
@@ -734,7 +717,7 @@ export const dao = {
       }
     }
 
-    // 5.b Practice work: student-produced evidence. It joins the graph as its own
+    // Practice work: student-produced evidence. It joins the graph as its own
     // node because the user must answer "which work proves this concept/lesson?"
     // without leaving the relation map.
     const practiceRes = db.exec(
@@ -761,7 +744,7 @@ export const dao = {
 
     const edges: ConceptEdge[] = [];
 
-    // 6. Structural edges derived from foreign keys (read-only).
+    // Structural edges derived from foreign keys (read-only).
     if (modRes.length) {
       for (const r of modRes[0].values) {
         const courseId = String(r[1]);
@@ -794,7 +777,7 @@ export const dao = {
       }
     }
 
-    // 6.b Practice-work derived edges: link evidence to what it proves
+    // Practice-work derived edges: link evidence to what it proves
     // (resource, lesson, or concept). Only when both ends exist.
     if (practiceRes.length) {
       for (const r of practiceRes[0].values) {
@@ -814,7 +797,7 @@ export const dao = {
       }
     }
 
-    // 7. Explicit user connections (only when both ends exist).
+    // Explicit user connections (only when both ends exist).
     const eRes = db.exec('SELECT id, source_id, target_id, connection_type, weight FROM knowledge_connection');
     if (eRes.length) {
       for (const r of eRes[0].values) {

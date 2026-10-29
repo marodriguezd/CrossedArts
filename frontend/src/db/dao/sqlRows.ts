@@ -56,7 +56,6 @@ export class SqlRow {
   }
 }
 
-
 /** Coerces a sql.js value to a nullable string (or null). */
 export function asNullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
@@ -68,7 +67,6 @@ export function asNullableNumber(value: unknown): number | null {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 }
-
 
 /** Maps a raw `practice_work` row to a typed domain object. */
 export function mapPracticeWorkRow(row: readonly unknown[]): PracticeWork {
@@ -127,5 +125,3 @@ export function mapLearningSessionRow(row: readonly unknown[]): LearningSession 
     lesson_title: r.optionalStr(13)
   };
 }
-
-

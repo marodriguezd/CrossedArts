@@ -132,9 +132,6 @@ class LocalLlmEngine {
         if (sessionId !== this.loadSessionId) return;
       }
 
-      // -------------------------------------------------------------
-      // CPU / WASM BACKEND VIA TRANSFORMERS.JS
-      // -------------------------------------------------------------
       if (modelDef.runtimeBackend === 'wasm') {
         this.status = 'loading';
         this.lastError = null;
@@ -204,9 +201,6 @@ class LocalLlmEngine {
         }
       }
 
-      // -------------------------------------------------------------
-      // WEBGPU BACKEND VIA MLC WEB-LLM
-      // -------------------------------------------------------------
       this.status = 'loading';
       this.lastError = null;
       this.currentModelId = modelId;
@@ -215,7 +209,6 @@ class LocalLlmEngine {
       this.notify();
 
       try {
-        // Dynamic import for code-splitting
         const webllm = await import('@mlc-ai/web-llm');
         if (sessionId !== this.loadSessionId) return;
 
@@ -309,9 +302,6 @@ class LocalLlmEngine {
     const onChunk = options?.onChunk;
 
     try {
-      // -----------------------------------------------------------
-      // CPU / WASM GENERATION VIA TRANSFORMERS.JS WITH STREAMING
-      // -----------------------------------------------------------
       if (this.currentBackend === 'wasm') {
         const prompt = messages
           .map(m => `<|im_start|>${m.role}\n${m.content}<|im_end|>`)
@@ -352,7 +342,6 @@ class LocalLlmEngine {
           }
         });
 
-        // Give the UI a breather before starting inference tensors
         await new Promise(r => setTimeout(r, 10));
 
         const out = await this.engineInstance(prompt, {
@@ -368,17 +357,12 @@ class LocalLlmEngine {
           typeof generated === 'string' ? generated : String(generated)
         );
 
-        // Only the suffix not yet delivered: the final answer is not re-emitted
-        // in full.
         deltaStream?.finish(cleanReply);
         this.status = 'ready';
         this.notify();
         return cleanReply;
       }
 
-      // -----------------------------------------------------------
-      // GPU GENERATION VIA WEB-LLM
-      // -----------------------------------------------------------
       if ((options?.stream ?? !!onChunk) && onChunk) {
         const stream = await this.engineInstance.chat.completions.create({
           messages,

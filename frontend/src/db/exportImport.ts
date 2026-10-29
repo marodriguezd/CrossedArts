@@ -100,7 +100,7 @@ export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): Ba
   const payload = data as Record<string, unknown>;
   const db = dbBridge.getDatabase();
 
-  // 3. No unknown tables (explicit compatibility: only `__meta`).
+  // Reject unknown tables (explicit compatibility: only __meta allowed).
   const known = new Set<string>([...getDatabaseTables(), META_KEY]);
   const unknownKeys = Object.keys(payload).filter(key => !known.has(key));
   if (unknownKeys.length > 0) {
@@ -110,7 +110,7 @@ export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): Ba
     };
   }
 
-  // 5. Format version: optional and backward-compatible.
+  // Format version check (optional and backward-compatible).
   const meta = payload[META_KEY];
   if (meta !== undefined) {
     if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) {
@@ -128,7 +128,7 @@ export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): Ba
     }
   }
 
-  // 2 + 4. Every known table must be a row array with real columns.
+  // Every known table must be a row array with valid columns.
   for (const table of getDatabaseTables()) {
     const rows = payload[table];
     if (rows === undefined) continue; // Absent table: not an error, keep existing rows.

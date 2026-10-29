@@ -120,11 +120,6 @@ export function selectRuntimeProfile(
   };
 }
 
-
-/* -------------------------------------------------------------------------- */
-/* Per-task selection (single implementation)                            */
-/* -------------------------------------------------------------------------- */
-
 /**
  * CPU/WASM model preference order. Qwen2.5-0.5B goes first for its Spanish
  * support and reasoning (existing product decision); the rest follows an

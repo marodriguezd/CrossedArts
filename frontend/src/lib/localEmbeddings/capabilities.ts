@@ -12,7 +12,6 @@ export interface EmbeddingCapabilitiesReport {
  * WASM/CPU.
  */
 export async function detectEmbeddingCapabilities(): Promise<EmbeddingCapabilitiesReport> {
-  // 1. Check WebGPU when available on real hardware
   if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
     try {
       const gpu = (navigator as any).gpu;
@@ -30,11 +29,10 @@ export async function detectEmbeddingCapabilities(): Promise<EmbeddingCapabiliti
         }
       }
     } catch {
-      // Timeout or adapter failure: fall through to the CPU/WASM fallback.
+      // Timeout or adapter failure: fall through to CPU/WASM fallback.
     }
   }
 
-  // 2. WebAssembly check (CPU fallback).
   if (typeof WebAssembly !== 'undefined') {
     return {
       state: 'supported',

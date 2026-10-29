@@ -279,7 +279,7 @@ export const aiService = {
     const settings = this.getSettings();
     const lastUserQuery = messages[messages.length - 1]?.content || '';
 
-    // 1. Local RAG retrieval (ONCE per answer).
+    // Local RAG retrieval (once per answer).
     //
     // When the caller already retrieved context (`prebuiltContext`), that exact
     // material and its citations are used: no second retrieval can reorder

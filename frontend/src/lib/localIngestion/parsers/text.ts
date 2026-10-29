@@ -7,10 +7,10 @@ import { computeBinarySha256 } from '../fingerprint.ts';
  */
 export function sanitizePlainText(input: string): string {
   return input
-    .replace(/\0/g, '') // Strip null bytes
-    .replace(/\r\n/g, '\n') // Normalize CRLF breaks to LF
+    .replace(/\0/g, '')
+    .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
-    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Strip non-printable control characters
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .trim();
 }
 
@@ -29,10 +29,7 @@ export async function parseTextFile(
     throw new Error(`El archivo de texto "${file.name}" está vacío o contiene sólo caracteres no válidos.`);
   }
 
-  // Title derived from the filename (without extension)
   const title = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim();
-
-  // Split into sections bounded by double paragraph breaks
   const rawParagraphs = clean.split(/\n\s*\n+/);
   const sections: DocumentSection[] = [];
   

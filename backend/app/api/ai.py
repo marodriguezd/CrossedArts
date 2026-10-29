@@ -3,6 +3,7 @@ import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from pydantic import BaseModel
 
 from backend.app.core.database import get_db
@@ -60,7 +61,6 @@ async def generate_quiz(payload: QuizGenerationRequest, db: Session = Depends(ge
     The generated quiz is stored persistently.
     """
     # Fetch resource text chunks to feed the generator.
-    from sqlalchemy import select
     stmt = (
         select(ContentIndex.content)
         .join(ContentIndex.media_asset)
@@ -112,7 +112,6 @@ def list_resource_quizzes(resource_id: uuid.UUID, db: Session = Depends(get_db))
     """
     List all previously generated quizzes for a resource.
     """
-    from sqlalchemy import select
     stmt = select(Quiz).where(Quiz.resource_id == resource_id).order_by(Quiz.created_at.desc())
     quizzes = db.scalars(stmt).all()
     return [
@@ -131,7 +130,6 @@ async def summarize_notes(payload: NotesOperationRequest, db: Session = Depends(
     """
     Group and summarize selected notes into a structured Markdown report.
     """
-    from sqlalchemy import select
     stmt = select(Note.content).where(Note.id.in_(payload.note_ids))
     contents = db.scalars(stmt).all()
 
@@ -148,7 +146,6 @@ async def generate_flashcards(payload: NotesOperationRequest, db: Session = Depe
     """
     Generate flashcards from selected note contents.
     """
-    from sqlalchemy import select
     stmt = select(Note.content).where(Note.id.in_(payload.note_ids))
     contents = db.scalars(stmt).all()
 

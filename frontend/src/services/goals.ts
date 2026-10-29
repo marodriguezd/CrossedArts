@@ -59,10 +59,6 @@ const GOAL_UNIT_BY_KIND: Record<GoalKind, GoalUnit> = {
   custom: 'ninguna'
 };
 
-/* -------------------------------------------------------------------------- */
-/* Validation                                                                  */
-/* -------------------------------------------------------------------------- */
-
 export interface GoalDraft {
   title: string;
   description?: string | null;
@@ -128,10 +124,6 @@ export function validateGoalDraft(draft: GoalDraft, lang: LanguageCode = 'es'): 
 
   return { ok: true };
 }
-
-/* -------------------------------------------------------------------------- */
-/* Derived progress                                                            */
-/* -------------------------------------------------------------------------- */
 
 /** Minimal course data for goal measurement (precomputed counters). */
 export interface GoalCourseContext {
@@ -295,10 +287,6 @@ export function computeGoalProgress(
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Target date                                                                 */
-/* -------------------------------------------------------------------------- */
-
 export type GoalDeadlineState = 'completed' | 'overdue' | 'due_soon' | 'upcoming' | 'no_deadline';
 
 /** Days within which a goal counts as "due soon". */
@@ -351,10 +339,6 @@ export function diffDays(from: string, to: string): number {
   if (Number.isNaN(a) || Number.isNaN(b)) return Number.NaN;
   return Math.round((b - a) / 86_400_000);
 }
-
-/* -------------------------------------------------------------------------- */
-/* Summary                                                                     */
-/* -------------------------------------------------------------------------- */
 
 export interface GoalSummary {
   total: number;

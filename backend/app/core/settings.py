@@ -21,7 +21,7 @@ class CrossedArtsSettings(BaseSettings):
         extra="ignore",
     )
 
-    # === Server ===
+    # Server
     port: int = Field(default=8080, description="Server port")
     host: str = Field(default="127.0.0.1", description="Server bind host")
     # Explicit opt-in to expose the API beyond loopback. The API has no auth:
@@ -35,7 +35,7 @@ class CrossedArtsSettings(BaseSettings):
     # Computed after init
     api_base_url: str = Field(default="", description="API base URL (auto-computed)")
 
-    # === CORS ===
+    # CORS
     # Comma-separated list of allowed origins. Defaults to the real local
     # frontend origins (Vite on 5173) and the backend itself.
     cors_origins: str = Field(
@@ -46,10 +46,10 @@ class CrossedArtsSettings(BaseSettings):
         description="Allowed CORS origins, comma-separated",
     )
 
-    # === Database ===
+    # Database
     database_url: str = Field(default="", description="SQLAlchemy database URL (auto-computed from data_dir)")
 
-    # === LLM ===
+    # LLM
     llm_provider: str = Field(default="mock", description="LLM provider: mock, ollama, openai")
     openai_api_key: str = Field(default="", description="OpenAI API key")
     openai_api_base: str = Field(default="https://api.openai.com/v1", description="OpenAI-compatible API base URL")
@@ -57,7 +57,7 @@ class CrossedArtsSettings(BaseSettings):
     ollama_api_url: str = Field(default="http://localhost:11434/api/generate", description="Ollama API URL")
     ollama_model: str = Field(default="llama3:8b", description="Ollama model name")
 
-    # === Embeddings ===
+    # Embeddings
     embedding_provider: str = Field(default="mock", description="Embedding provider: mock, ollama, openai, huggingface")
     # Max embedding records scanned per semantic search. The limit applies in
     # SQL (not in memory) and bounds the Python similarity cost.
@@ -68,7 +68,7 @@ class CrossedArtsSettings(BaseSettings):
     openai_embed_model: str = Field(default="text-embedding-3-small", description="OpenAI embedding model")
     huggingface_embed_model: str = Field(default="sentence-transformers/all-MiniLM-L6-v2", description="HuggingFace local embedding model")
 
-    # === LangChain (optional) ===
+    # LangChain (optional)
     langchain_tracing_v2: bool = Field(default=False, description="Enable LangSmith tracing")
     langchain_api_key: str = Field(default="", description="LangSmith API key")
     langchain_project: str = Field(default="crossedarts", description="LangSmith project name")

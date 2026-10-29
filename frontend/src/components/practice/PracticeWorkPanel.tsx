@@ -458,7 +458,6 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                     className="border-t border-line p-3"
                     aria-label={`Espacio de trabajo de ${item.title}`}
                   >
-                    {/* --- Learning context --- */}
                     <div className="mb-3 rounded-lg border border-line bg-surface p-3">
                       <p className="type-micro flex items-center gap-1.5 text-muted">
                         <ListChecks size={12} className="text-accent" aria-hidden="true" />
@@ -517,7 +516,6 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                       </p>
                     </div>
 
-                    {/* --- Checklist --- */}
                     <div className="mb-3">
                       <p className="type-micro text-muted">Lista de verificación</p>
                       {wsChecklist.length > 0 && (
@@ -583,7 +581,6 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                       </div>
                     </div>
 
-                    {/* --- Markdown workspace content --- */}
                     <div className="mb-3">
                       <div className="flex items-center justify-between gap-2">
                         <label className="type-micro text-muted" htmlFor={`content-${item.id}`}>
@@ -619,7 +616,6 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                       )}
                     </div>
 
-                    {/* --- Self-rating --- */}
                     <div className="mb-3">
                       <p className="type-micro text-muted" id={`rating-label-${item.id}`}>
                         Autoevaluación (0 a 5)

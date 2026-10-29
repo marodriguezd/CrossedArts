@@ -212,7 +212,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
 
       {overview && (
         <>
-          {/* --- Key figures: one surface, no metric cards. --- */}
           <section aria-label={t('analytics.periodLabel')} className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
             <div className="px-4 py-3.5">
               <p className="type-micro flex items-center gap-1.5"><Clock size={12} aria-hidden="true" /> {t('analytics.studyTime')}</p>
@@ -268,7 +267,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
             </Panel>
           </div>
 
-          {/* --- Daily series with an accessible text summary. --- */}
           <Panel className="p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -369,7 +367,6 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ courses, books, pr
             )}
           </Panel>
 
-          {/* --- Content progress: separate units, never blended. --- */}
           <section aria-label={t('analytics.contentLabel')} className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <Panel className="p-4">
               <p className="type-micro flex items-center gap-1.5"><Activity size={12} aria-hidden="true" /> {t('analytics.courses')}</p>

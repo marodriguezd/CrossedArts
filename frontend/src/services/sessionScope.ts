@@ -22,11 +22,10 @@
  * session whose lesson can no longer be opened.
  */
 
-/** The three canonical study-session scopes. */
 import { translateKey } from '../i18n/dictionaries.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
-import { daoLang } from '../db/daoLanguage.ts';
 
+/** The three canonical study-session scopes. */
 export type StudySessionScope = 'global' | 'resource' | 'lesson';
 
 /** Ordered set of valid scopes (for validation and the UI). */

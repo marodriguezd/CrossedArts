@@ -4,8 +4,6 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 from backend.app.schemas.common import BaseResponse
 
-# ----------------- LEARNING PATHS -----------------
-
 class LearningPathItemResponse(BaseResponse):
     id: uuid.UUID
     learning_path_id: uuid.UUID
@@ -34,8 +32,6 @@ class CreateLearningPathItemRequest(BaseModel):
     task_id: Optional[uuid.UUID] = None
     sequence_order: int = 0
 
-# ----------------- STUDY PLANS -----------------
-
 class StudyPlanResponse(BaseResponse):
     id: uuid.UUID
     title: str
@@ -54,8 +50,6 @@ class CreateStudyPlanRequest(BaseModel):
     weekly_goal_minutes: int = Field(150, ge=1)
     target_completion_date: Optional[datetime] = None
     recommended_workload: Optional[str] = None
-
-# ----------------- GOALS -----------------
 
 class GoalProgressResponse(BaseResponse):
     id: uuid.UUID
@@ -89,8 +83,6 @@ class UpdateGoalProgressRequest(BaseModel):
     value_change: float
     notes: Optional[str] = None
 
-# ----------------- HABITS -----------------
-
 class HabitRecordResponse(BaseResponse):
     id: uuid.UUID
     habit_id: uuid.UUID
@@ -122,8 +114,6 @@ class HabitStatsResponse(BaseModel):
     streak_days: int
     completion_rate: float
     weekly_count: int
-
-# ----------------- SPACED REPETITION -----------------
 
 class ReviewHistoryResponse(BaseResponse):
     id: uuid.UUID
