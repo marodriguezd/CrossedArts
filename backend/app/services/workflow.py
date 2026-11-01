@@ -12,7 +12,6 @@ from backend.app.models.workflow import (
 )
 
 class WorkflowService:
-    # ----------------- LEARNING PATHS -----------------
     @staticmethod
     def create_learning_path(db: Session, title: str, description: Optional[str] = None) -> LearningPath:
         path = LearningPath(id=uuid.uuid4(), title=title, description=description)
@@ -80,7 +79,6 @@ class WorkflowService:
         db.refresh(item)
         return item
 
-    # ----------------- STUDY PLANS -----------------
     @staticmethod
     def create_study_plan(
         db: Session,
@@ -122,7 +120,6 @@ class WorkflowService:
         db.commit()
         return True
 
-    # ----------------- GOAL SYSTEM -----------------
     @staticmethod
     def create_goal(
         db: Session,
@@ -222,7 +219,6 @@ class WorkflowService:
             db.add(progress)
         db.commit()
 
-    # ----------------- HABIT TRACKING -----------------
     @staticmethod
     def create_habit(db: Session, name: str, description: Optional[str] = None, frequency: str = "daily", target_days_per_week: int = 5) -> LearningHabit:
         habit = LearningHabit(
@@ -393,7 +389,6 @@ class WorkflowService:
             "weekly_count": weekly_count
         }
 
-    # ----------------- SPACED REPETITION (SM-2) -----------------
     @staticmethod
     def create_review_item(
         db: Session,

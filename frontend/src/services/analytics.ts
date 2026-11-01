@@ -16,6 +16,7 @@ import type { Book, Course, LearningSession, PracticeWork, TimeRangeFilter } fro
 import { resolveLocalDay, shiftIsoDay } from './localDate.ts';
 import { generateDailyActivitySeries } from './domainLogic.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
 import { summarizePracticeWork, type PracticeWorkSummary } from './practiceWork.ts';
 import type { DailyActivityPoint } from '../types/models.ts';
 
@@ -23,8 +24,6 @@ import type { DailyActivityPoint } from '../types/models.ts';
 export type AnalyticsRange = TimeRangeFilter;
 
 export const ANALYTICS_RANGES: AnalyticsRange[] = ['7d', '30d', '90d', 'all'];
-
-import { translateKey } from '../i18n/dictionaries.ts';
 
 /** Localized range label. Defaults to Spanish (existing callers omit it). */
 export function analyticsRangeLabel(range: AnalyticsRange, lang: LanguageCode = 'es'): string {
@@ -406,10 +405,6 @@ export function computeContentProgress(
 
   return { courses: course, books: book, practice: summarizePracticeWork(practice) };
 }
-
-/* -------------------------------------------------------------------------- */
-/* Recent activity                                                             */
-/* -------------------------------------------------------------------------- */
 
 export interface RecentActivityEntry {
   session: LearningSession;

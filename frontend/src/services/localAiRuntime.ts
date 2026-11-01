@@ -214,10 +214,6 @@ export class LocalAiRuntime {
     this.deps = deps;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* State                                                               */
-  /* ------------------------------------------------------------------ */
-
   public getStatus(): LocalAiStatus {
     return this.llmStatus;
   }
@@ -253,10 +249,6 @@ export class LocalAiRuntime {
     }
     return this.semanticStatus;
   }
-
-  /* ------------------------------------------------------------------ */
-  /* First-download consent (a preference, never secrets)                */
-  /* ------------------------------------------------------------------ */
 
   public hasConsent(): boolean {
     try { return this.deps.storage.getItem(LOCAL_AI_CONSENT_KEY) === 'granted'; } catch { return false; }
@@ -299,10 +291,6 @@ export class LocalAiRuntime {
       this.deps.storage.setItem(LOCAL_AI_CACHED_MODEL_KEY, JSON.stringify(Array.from(ids).sort()));
     } catch { /* not persistable */ }
   }
-
-  /* ------------------------------------------------------------------ */
-  /* Local LLM preparation (only provider `local`)                       */
-  /* ------------------------------------------------------------------ */
 
   public async ensureLocalAiReady(options?: {
     provider?: LocalProviderId;
@@ -488,10 +476,6 @@ export class LocalAiRuntime {
     return this.ensureLocalAiReady({ provider, overrideModelId, task });
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Automatic embedding / semantic-index preparation                    */
-  /* ------------------------------------------------------------------ */
-
   public async ensureSemanticIndexReady(provider: LocalProviderId = 'local'): Promise<SemanticStatus> {
     // Demo/Ollama/OpenAI must not start local AI engines.
     if (provider !== 'local') return this.semanticStatus;
@@ -632,10 +616,6 @@ export class LocalAiRuntime {
     this.deps.embeddingEngine.cancelIndexing();
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Default instance wired to the real engines                                  */
-/* -------------------------------------------------------------------------- */
 
 export const localAiRuntime = new LocalAiRuntime({
   llmEngine: localLlmEngine,

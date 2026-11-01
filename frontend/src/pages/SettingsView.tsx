@@ -454,9 +454,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </p>
       </header>
 
-      {/* ---------------------------------------------------------------
-          Local storage and backups
-      --------------------------------------------------------------- */}
       <section aria-labelledby="settings-storage" className="space-y-4">
         <SectionHeading
           id="settings-storage"
@@ -629,9 +626,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         onConfirm={executeResetDemo}
       />
 
-      {/* ---------------------------------------------------------------
-          Appearance
-      --------------------------------------------------------------- */}
       <section aria-labelledby="settings-theme" className="space-y-4">
         <SectionHeading
           id="settings-theme"
@@ -655,9 +649,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </div>
       </section>
 
-      {/* ---------------------------------------------------------------
-          Language
-      --------------------------------------------------------------- */}
       <section aria-labelledby="settings-language" className="space-y-4">
         <SectionHeading
           id="settings-language"
@@ -684,9 +675,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </div>
       </section>
 
-      {/* ---------------------------------------------------------------
-          Audio and Voice Accessibility (Web Speech API)
-      --------------------------------------------------------------- */}
       <section aria-labelledby="settings-speech" className="space-y-4">
         <SectionHeading
           id="settings-speech"
@@ -766,9 +754,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </div>
       </section>
 
-      {/* ---------------------------------------------------------------
-          Local AI and providers
-      --------------------------------------------------------------- */}
       <form onSubmit={handleSaveAi} className="space-y-4" aria-labelledby="settings-ai">
         <SectionHeading
           id="settings-ai"

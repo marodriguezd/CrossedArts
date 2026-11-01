@@ -33,9 +33,7 @@ from backend.app.services.session import SessionService
 from backend.app.services.workflow import WorkflowService
 
 
-# ===========================================================================
 # Standalone note.
-# ===========================================================================
 
 def test_note_can_be_standalone(db: Session):
     """A resourceless note is valid: a first-class concept."""
@@ -129,9 +127,7 @@ def test_note_schema_accepts_missing_resource():
     assert CreateNoteRequest(content="Sin recurso").resource_id is None
 
 
-# ===========================================================================
 # Session scope (three canonical scopes).
-# ===========================================================================
 
 def test_resolve_session_scope_table():
     assert resolve_session_scope(resource_id=uuid.uuid4()) == "resource"
@@ -182,9 +178,7 @@ def test_scope_is_kept_coherent_when_anchors_change(db: Session):
     assert session.scope == "resource"
 
 
-# ===========================================================================
 # Idempotent finalization.
-# ===========================================================================
 
 def test_end_session_is_idempotent(db: Session):
     book = Book(id=uuid.uuid4(), title="Libro Idempotencia", reading_percentage=0.0)
@@ -249,9 +243,7 @@ def test_end_session_unknown_id_still_fails(db: Session):
         SessionService.end_session(db, uuid.uuid4())
 
 
-# ===========================================================================
 # Relaciones del grafo: atomicidad e idempotencia
-# ===========================================================================
 
 def _note_edges(db: Session, note_id: uuid.UUID) -> list:
     return list(db.scalars(select(KnowledgeConnection).where(
@@ -344,9 +336,7 @@ def test_standalone_note_has_no_containment_edge(db: Session):
     assert any(e.target_type == "concept" for e in edges)
 
 
-# ===========================================================================
 # Bounded limit on /resources/recent.
-# ===========================================================================
 
 def test_recent_resources_limit_is_bounded(client: TestClient, db: Session):
     db.add(Book(id=uuid.uuid4(), title="Libro Reciente", reading_percentage=0.0))

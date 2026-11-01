@@ -110,6 +110,20 @@ export function applyGraphFilters(
   return { nodes: focusedNodes, edges: focusedEdges };
 }
 
+/** Per-node degree (incident edge count), counting each end once. */
+export function computeDegrees(
+  nodes: readonly ConceptNode[],
+  edges: readonly ConceptEdge[]
+): Map<string, number> {
+  const degree = new Map<string, number>();
+  for (const node of nodes) degree.set(node.id, 0);
+  for (const edge of edges) {
+    if (degree.has(edge.source_id)) degree.set(edge.source_id, degree.get(edge.source_id)! + 1);
+    if (degree.has(edge.target_id)) degree.set(edge.target_id, degree.get(edge.target_id)! + 1);
+  }
+  return degree;
+}
+
 export interface ConnectivityStats {
   total: number;
   connected: number;
@@ -123,12 +137,7 @@ export function computeConnectivityStats(
   nodes: readonly ConceptNode[],
   edges: readonly ConceptEdge[]
 ): ConnectivityStats {
-  const degree = new Map<string, number>();
-  for (const node of nodes) degree.set(node.id, 0);
-  for (const edge of edges) {
-    if (degree.has(edge.source_id)) degree.set(edge.source_id, degree.get(edge.source_id)! + 1);
-    if (degree.has(edge.target_id)) degree.set(edge.target_id, degree.get(edge.target_id)! + 1);
-  }
+  const degree = computeDegrees(nodes, edges);
 
   const isolatedIds: string[] = [];
   for (const [id, count] of degree.entries()) {
@@ -141,20 +150,6 @@ export function computeConnectivityStats(
     isolated: isolatedIds.length,
     isolatedIds
   };
-}
-
-/** Per-node degree (incident edge count), counting each end once. */
-export function computeDegrees(
-  nodes: readonly ConceptNode[],
-  edges: readonly ConceptEdge[]
-): Map<string, number> {
-  const degree = new Map<string, number>();
-  for (const node of nodes) degree.set(node.id, 0);
-  for (const edge of edges) {
-    if (degree.has(edge.source_id)) degree.set(edge.source_id, degree.get(edge.source_id)! + 1);
-    if (degree.has(edge.target_id)) degree.set(edge.target_id, degree.get(edge.target_id)! + 1);
-  }
-  return degree;
 }
 
 /**
@@ -201,10 +196,6 @@ export function explainIsolation(
     apparentlyIsolatedIds
   };
 }
-
-/* -------------------------------------------------------------------------- */
-/* Structural graph analytics                                                  */
-/* -------------------------------------------------------------------------- */
 
 /** Ranking entry by connection count. */
 export interface GraphDegreeEntry {

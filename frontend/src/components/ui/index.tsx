@@ -10,10 +10,6 @@ import { cn } from './primitives.ts';
 export { cn, Kbd, ProgressBar, resolveProgress, SectionHeading } from './primitives.ts';
 export type { KbdProps, ProgressBarProps, ResolvedProgress, SectionHeadingProps } from './primitives.ts';
 
-/* -------------------------------------------------------------------------- */
-/* Button                                                                      */
-/* -------------------------------------------------------------------------- */
-
 type ButtonVariant = 'solid' | 'outline' | 'quiet' | 'danger';
 type ButtonSize = 'sm' | 'md';
 
@@ -79,10 +75,6 @@ export const Button: React.FC<ButtonProps> = ({
   />
 );
 
-/* -------------------------------------------------------------------------- */
-/* Badge / Chip                                                                */
-/* -------------------------------------------------------------------------- */
-
 type BadgeTone = 'neutral' | 'accent' | 'success' | 'warning' | 'info' | 'error';
 
 interface BadgeProps {
@@ -138,10 +130,6 @@ export const Chip: React.FC<ChipProps> = ({ active = false, className, children,
     {children}
   </button>
 );
-
-/* -------------------------------------------------------------------------- */
-/* SearchInput                                                                 */
-/* -------------------------------------------------------------------------- */
 
 interface SearchInputProps {
   value: string;
@@ -209,10 +197,6 @@ export const SearchInput: React.FC<SearchInputProps> = ({
  * heading's id, which is the target `aria-labelledby` resolves against. Both are
  * re-exported above. */
 
-/* -------------------------------------------------------------------------- */
-/* EmptyState                                                                  */
-/* -------------------------------------------------------------------------- */
-
 interface EmptyStateProps {
   icon?: React.ReactNode;
   title: string;
@@ -230,10 +214,6 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, hint, actio
     {action && <div className="mt-3">{action}</div>}
   </div>
 );
-
-/* -------------------------------------------------------------------------- */
-/* InlineStatus                                                                */
-/* -------------------------------------------------------------------------- */
 
 type StatusTone = 'success' | 'error' | 'info' | 'warning';
 
@@ -260,10 +240,6 @@ export const InlineStatus: React.FC<InlineStatusProps> = ({ tone = 'info', child
     {children}
   </div>
 );
-
-/* -------------------------------------------------------------------------- */
-/* Panel / SectionHeading                                                      */
-/* -------------------------------------------------------------------------- */
 
 interface PanelProps {
   children: React.ReactNode;

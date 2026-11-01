@@ -346,7 +346,7 @@ export function validateJsonBackup(data: unknown, lang: LanguageCode = 'es'): Ba
     };
   }
 
-  // 5. Format version: optional and backward-compatible.
+  // Format version check (optional and backward-compatible).
   const meta = payload[META_KEY];
   if (meta !== undefined) {
     if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) {

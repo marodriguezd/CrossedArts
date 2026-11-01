@@ -18,7 +18,6 @@ from backend.app.models.workflow import ReviewItem
 
 router = APIRouter(prefix="/workflow", tags=["Learning Workflow Engine"])
 
-# ----------------- LEARNING PATHS -----------------
 
 @router.post("/paths", response_model=LearningPathResponse, status_code=status.HTTP_201_CREATED)
 def create_learning_path(payload: CreateLearningPathRequest, db: Session = Depends(get_db)):
@@ -63,8 +62,6 @@ def toggle_item_completion(item_id: uuid.UUID, db: Session = Depends(get_db)):
     return item
 
 
-# ----------------- STUDY PLANS -----------------
-
 @router.post("/plans", response_model=StudyPlanResponse, status_code=status.HTTP_201_CREATED)
 def create_study_plan(payload: CreateStudyPlanRequest, db: Session = Depends(get_db)):
     return WorkflowService.create_study_plan(
@@ -91,8 +88,6 @@ def delete_study_plan(plan_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Plan de estudio no encontrado.")
     return {"detail": "Plan de estudio eliminado correctamente."}
 
-
-# ----------------- GOALS -----------------
 
 @router.post("/goals", response_model=GoalResponse, status_code=status.HTTP_201_CREATED)
 def create_goal(payload: CreateGoalRequest, db: Session = Depends(get_db)):
@@ -126,8 +121,6 @@ def update_goal_progress(goal_id: uuid.UUID, payload: UpdateGoalProgressRequest,
     return goal
 
 
-# ----------------- HABIT TRACKING -----------------
-
 @router.post("/habits", response_model=LearningHabitResponse, status_code=status.HTTP_201_CREATED)
 def create_habit(payload: CreateLearningHabitRequest, db: Session = Depends(get_db)):
     return WorkflowService.create_habit(
@@ -151,8 +144,6 @@ def get_habit_stats(habit_id: uuid.UUID, db: Session = Depends(get_db)):
     return stats
 
 
-# ----------------- SPACED REPETITION -----------------
-
 @router.post("/reviews", response_model=ReviewItemResponse, status_code=status.HTTP_201_CREATED)
 def create_review_item(payload: CreateReviewItemRequest, db: Session = Depends(get_db)):
     return WorkflowService.create_review_item(
@@ -174,8 +165,6 @@ def submit_review(item_id: uuid.UUID, payload: SubmitReviewRequest, db: Session 
 def get_due_reviews(db: Session = Depends(get_db)):
     return WorkflowService.get_review_items(db, due_only=True)
 
-
-# ----------------- AI-ASSISTED REVIEW ENHANCEMENTS -----------------
 
 @router.post("/reviews/{item_id}/ai-concept-check")
 async def generate_ai_concept_check(item_id: uuid.UUID, db: Session = Depends(get_db)):

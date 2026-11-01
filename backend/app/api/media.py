@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from backend.app.core.database import get_db
+from backend.app.core.security import is_safe_path
 from backend.app.models.resource import MediaAsset
 from backend.app.models.activity import MediaProgress
 from backend.app.models.course_structure import Lesson
@@ -30,9 +31,7 @@ def get_media_info(media_id: uuid.UUID, db: Session = Depends(get_db)):
         "mime_type": asset.mime_type
     }
 
-# ==========================================
-# STREAMING CON SOPORTE HTTP RANGE REQUESTS
-# ==========================================
+
 @router.get("/{media_id}/stream")
 def stream_media(
     media_id: uuid.UUID,
@@ -47,7 +46,6 @@ def stream_media(
         raise get_http_exception("MEDIA_NOT_FOUND", f"El archivo de medios con ID {media_id} no existe.")
 
     path = asset.file_path
-    from backend.app.core.security import is_safe_path
     if not is_safe_path(path):
         raise get_http_exception("FORBIDDEN_PATH", "Acceso denegado a la ruta del archivo especificado.")
 
@@ -61,9 +59,6 @@ def stream_media(
     )
 
 
-# ==========================================
-# MEDIA (VIDEO) PROGRESS TRACKING
-# ==========================================
 @router.post("/{media_id}/progress")
 def update_media_progress(
     media_id: uuid.UUID,

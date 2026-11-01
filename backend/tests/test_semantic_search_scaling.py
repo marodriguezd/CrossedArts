@@ -76,10 +76,7 @@ def _make_book(db, title: str) -> Book:
     return book
 
 
-# --------------------------------------------------------------------------- #
-# SQLiteVectorStore                                                            #
-# --------------------------------------------------------------------------- #
-
+# SQLiteVectorStore
 
 def test_vector_store_returns_sorted_top_k(db):
     records = []
@@ -167,10 +164,7 @@ def test_cosine_similarity_edge_cases():
     assert cosine_similarity([0, 0], [1, 1]) == 0.0     # vector nulo
 
 
-# --------------------------------------------------------------------------- #
-# Escalado                                                                     #
-# --------------------------------------------------------------------------- #
-
+# Escalado
 
 def test_search_scales_with_thousands_of_embeddings(db):
     """
@@ -224,10 +218,7 @@ def test_semantic_search_applies_limit_and_offset(db):
     assert page_one[0]["score"] >= page_one[1]["score"] >= page_one[2]["score"]
 
 
-# --------------------------------------------------------------------------- #
-# A-7: tipos reales en recursos relacionados                                   #
-# --------------------------------------------------------------------------- #
-
+# A-7: tipos reales en recursos relacionados
 
 def test_related_resources_return_real_domain_types(db):
     course = _make_course(db, "Curso de Color y Luz")

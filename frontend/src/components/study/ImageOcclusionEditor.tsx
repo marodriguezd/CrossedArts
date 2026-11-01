@@ -259,7 +259,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
           </button>
         </div>
 
-        {/* Validation error banner */}
         {errorMsg && (
           <div className="mx-6 mt-4 p-3 rounded-lg border border-error/30 bg-error-soft text-meta text-error flex items-center gap-2" role="alert">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -267,10 +266,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
           </div>
         )}
 
-        {/* Two-column body */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 overflow-y-auto">
-          
-          {/* Left column: image canvas and drawing (7 cols) */}
           <div className="lg:col-span-7 flex flex-col items-center justify-center">
             {imageDataUrl ? (
               <div className="flex flex-col items-center w-full">
@@ -342,7 +338,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                 </div>
               </div>
             ) : (
-              /* Drop zone for loading an image */
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
@@ -376,10 +371,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
             )}
           </div>
 
-          {/* Right column: parameters and mask list (5 cols) */}
           <div className="lg:col-span-5 flex flex-col gap-4">
-            
-            {/* Title / front */}
             <div>
               <label className="block text-xs font-semibold text-[var(--c-ink)] mb-1">
                 Pregunta o Título del Anverso *
@@ -393,7 +385,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
               />
             </div>
 
-            {/* SM-2 reveal mode */}
             <div>
               <label className="block text-xs font-semibold text-[var(--c-ink)] mb-1">
                 Modo de Revelación SM-2
@@ -428,7 +419,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
               </div>
             </div>
 
-            {/* Mask list */}
             <div className="flex-1 flex flex-col min-h-[160px]">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-[var(--c-ink)]">
@@ -489,7 +479,6 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
               </div>
             </div>
 
-            {/* Optional back-side notes */}
             <div>
               <label className="block text-xs font-semibold text-[var(--c-ink)] mb-1">
                 Notas adicionales de explicación (opcional)

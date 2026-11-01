@@ -11,9 +11,7 @@ from backend.app.core.settings import CrossedArtsSettings
 from backend.app.main import is_loopback_host, resolve_binding
 
 
-# ---------------------------------------------------------------------------
 # Defaults declarados
-# ---------------------------------------------------------------------------
 
 def test_default_host_is_loopback_and_network_access_is_off():
     """Los valores por defecto no exponen la API: loopback y sin opt-in."""
@@ -29,9 +27,7 @@ def test_default_cors_origins_never_use_wildcard():
     assert settings.cors_origin_list, "La lista de orígenes no puede quedar vacía"
 
 
-# ---------------------------------------------------------------------------
 # Loopback detection.
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1", "  127.0.0.1  ", "LocalHost"])
 def test_is_localhost_binding_true_for_loopback(host):
@@ -49,9 +45,7 @@ def test_is_loopback_host_normalizes_whitespace_and_case():
     assert is_loopback_host("") is False
 
 
-# ---------------------------------------------------------------------------
 # resolve_binding: pure deterministic function.
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
 @pytest.mark.parametrize("allow", [False, True])

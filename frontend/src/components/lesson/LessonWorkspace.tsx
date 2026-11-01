@@ -520,7 +520,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* Lesson header */}
       <div className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -568,7 +567,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Unified study actions */}
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
           <Button size="sm" variant="solid" onClick={() => onStudyLesson(lesson.id, 'mixed')}>
             <Play size={13} aria-hidden="true" /> Estudiar esta lección
@@ -597,7 +595,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         )}
       </div>
 
-      {/* Local media player */}
       <div className={cn('relative overflow-hidden rounded-xl border border-line', playbackUrl ? 'bg-black' : 'bg-surface')}>
         {playbackUrl ? (
           <div className="relative group">
@@ -613,13 +610,12 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   try {
                     localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
                   } catch {
-                    // Ignore
+                    // Ignore storage failure
                   }
                 }
               }}
               className="max-h-[420px] w-full bg-black object-contain"
             />
-            {/* Short-feedback overlay toast when using shortcuts or changing controls */}
             {playerOverlayToast && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <span className="animate-fade-in rounded-lg bg-black/85 px-4 py-2 font-mono text-title font-bold text-white shadow-lg backdrop-blur-sm">
@@ -655,7 +651,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
                 <span className="text-line-strong" aria-hidden="true">|</span>
 
-                {/* Time jumps */}
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -677,7 +672,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   </button>
                 </div>
 
-                {/* Speed selector */}
                 <div className="flex items-center gap-0.5 rounded-lg border border-line bg-canvas px-1 py-0.5" title="Velocidad de reproducción ([ y ] para ajustar)">
                   <Gauge size={12} className="mx-1 text-muted" aria-hidden="true" />
                   {SUPPORTED_PLAYBACK_SPEEDS.map(s => (
@@ -697,7 +691,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   ))}
                 </div>
 
-                {/* Picture-in-Picture button */}
                 {typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && (
                   <button
                     type="button"
@@ -735,7 +728,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Lesson content: the main visual object (text/Markdown as data) */}
       <section className="rounded-xl border border-line bg-surface p-5 shadow-card sm:p-7" aria-label="Contenido de la lección">
         <div className="mb-4 flex items-center justify-between gap-3 border-b border-line pb-3">
           <h3 className="type-section text-ink">Contenido</h3>
@@ -809,7 +801,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         )}
       </section>
 
-      {/* Lesson study cards (SM-2) */}
       <section className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5" aria-label="Tarjetas de estudio de la lección">
         <div className="mb-4 flex flex-col gap-3 border-b border-line pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
@@ -834,7 +825,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* New-card creation form */}
         {isCreatingCard && (
           <form onSubmit={handleCreateCard} className="mb-4 space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
             <p className="text-meta font-semibold text-ink">Nueva tarjeta de estudio para esta lección</p>
@@ -877,7 +867,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           </form>
         )}
 
-        {/* Card list */}
         {flashcards.length === 0 && !isCreatingCard ? (
           <EmptyState
             title="Esta lección aún no tiene tarjetas de estudio asociadas."
@@ -979,9 +968,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         )}
       </section>
 
-      {/* Secondary area: notes, resources, concepts, and context */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Lesson notes */}
         <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Notas de la lección">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="type-section text-ink">Notas ({notes.length})</h3>
@@ -1091,7 +1078,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           )}
         </section>
 
-        {/* Related resources */}
         <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Recursos relacionados">
           <h3 className="type-section mb-3 text-ink">Recursos relacionados ({resources.length})</h3>
           {resources.length === 0 ? (
@@ -1137,7 +1123,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           )}
         </section>
 
-        {/* Concepts + context */}
         <div className="space-y-5">
           {concepts.length > 0 && (
             <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Conceptos">
@@ -1157,7 +1142,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
             </section>
           )}
 
-          {/* Related-learning panel (canonical relations only) */}
           {(relatedBooks.length > 0 || notes.length > 0 || resources.length > 0 || concepts.length > 0) && (
             <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Aprendizaje relacionado">
               <h3 className="type-section mb-2 text-ink">Aprendizaje relacionado</h3>
@@ -1176,7 +1160,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Keep learning */}
       {nextLesson && (
         <div className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent-soft/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -1191,7 +1174,6 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Accessible confirmation to delete a flashcard */}
       <ConfirmDialog
         isOpen={Boolean(deletingCardId)}
         title="Eliminar tarjeta de estudio"

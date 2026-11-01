@@ -186,9 +186,6 @@ class CourseScanner(BaseScanner):
 
         db.commit()
 
-        # ==========================================
-        # COURSE VIDEO (MEDIA ASSET) INDEXING
-        # ==========================================
         # Bounded walk: the filesystem is never traversed without a limit.
         video_files = list(iter_files_bounded(path, VIDEO_EXTENSIONS, RESOURCE_FILE_DEPTH))
 
@@ -409,9 +406,6 @@ class BookScanner(BaseScanner):
         ).all()
         existing_assets_by_path = {a.file_path: a for a in existing_assets_list}
 
-        # ==========================================
-        # BOOK FILE (MEDIA ASSET) INDEXING
-        # ==========================================
         for p in book_files:
             # Evitar duplicados por ruta resuelta.
             existing_asset = existing_assets_by_path.get(str(p.resolve()))

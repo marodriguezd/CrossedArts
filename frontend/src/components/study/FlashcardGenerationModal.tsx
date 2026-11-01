@@ -149,7 +149,6 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto p-5">
-          {/* Generation options */}
           <div className="space-y-4 rounded-xl border border-line bg-canvas p-4">
             <div>
               <label className="mb-1 block text-meta font-semibold text-muted" htmlFor="gen-topic">Tema o consulta guía</label>
@@ -218,7 +217,6 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </div>
           </div>
 
-          {/* Generation feedback / error */}
           {errorMsg && (
             <InlineStatus tone="warning">
               <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -228,7 +226,6 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </InlineStatus>
           )}
 
-          {/* Success message */}
           {saveSuccessCount !== null && (
             <InlineStatus tone="success">
               <Check size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -238,7 +235,6 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </InlineStatus>
           )}
 
-          {/* Grounding sources */}
           {sources.length > 0 && (
             <div className="space-y-1">
               <span className="type-micro">Fuentes de aprendizaje respaldadas:</span>
@@ -252,7 +248,6 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
             </div>
           )}
 
-          {/* Preview of the generated cards */}
           {previewCards.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">

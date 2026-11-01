@@ -6,8 +6,10 @@ import type {
   Note,
   ResourceDestination,
 } from '../types/models.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
 import { practiceWorkKindLabel, practiceWorkStatusLabel } from './practiceWork.ts';
-import { GOAL_KIND_LABELS, goalKindLabel } from './goals.ts';
+import { goalKindLabel } from './goals.ts';
 import { resolveArtifactContextDestination } from './domainLogic.ts';
 
 /**
@@ -131,10 +133,6 @@ export interface PaletteCatalogInput {
   /** True when the current theme is dark. */
   isDarkTheme: boolean;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Normalization and ranking                                                   */
-/* -------------------------------------------------------------------------- */
 
 /**
  * Normalize text while keeping the map to the ORIGINAL indexes.
@@ -323,10 +321,6 @@ export function scorePaletteItem(item: PaletteItem, normalizedQuery: string): nu
   return fuzzyScoreFor(item, normalizedQuery);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Match highlighting                                                          */
-/* -------------------------------------------------------------------------- */
-
 export interface TextRange {
   start: number;
   end: number;
@@ -403,13 +397,7 @@ export function bodySnippet(body: string, normalizedQuery: string, maxLength = 8
   return `${left > 0 ? '…' : ''}${slice}${left + maxLength < body.length ? '…' : ''}`;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Catalog                                                                     */
-/* -------------------------------------------------------------------------- */
-
 /** Human label per group, reused by the UI. */
-import { translateKey } from '../i18n/dictionaries.ts';
-import type { LanguageCode } from '../i18n/languages.ts';
 export const PALETTE_GROUP_LABELS: Record<PaletteGroup, string> = {
   accion: 'Acciones',
   meta: 'Metas',
@@ -836,10 +824,6 @@ export function buildPaletteCatalog(input: PaletteCatalogInput, lang: LanguageCo
   return items;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Filtering                                                                   */
-/* -------------------------------------------------------------------------- */
-
 /** Hard cap on shown results. */
 export const PALETTE_RESULT_LIMIT = 30;
 
@@ -961,10 +945,6 @@ export function groupPaletteItems<T extends PaletteItem | PaletteMatch>(
   return result;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Keyboard selection                                                          */
-/* -------------------------------------------------------------------------- */
-
 /**
  * Moves the selection index with wraparound at both ends.
  *
@@ -977,10 +957,6 @@ export function movePaletteSelection(current: number, delta: number, length: num
   const next = (current + delta) % length;
   return next < 0 ? next + length : next;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Global hotkey                                                               */
-/* -------------------------------------------------------------------------- */
 
 /** Minimal keyboard-event shape needed by the hotkey detector. */
 export interface PaletteHotkeyEvent {
@@ -1007,10 +983,6 @@ export function isPaletteHotkey(event: PaletteHotkeyEvent): boolean {
   if (event.altKey || event.shiftKey) return false;
   return (event.ctrlKey ? 1 : 0) + (event.metaKey ? 1 : 0) === 1;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Navigation                                                                  */
-/* -------------------------------------------------------------------------- */
 
 /**
  * Navigation callbacks the app already exposes for its views. Declared here

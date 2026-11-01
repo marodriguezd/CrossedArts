@@ -1,4 +1,6 @@
 import type { GraphNodeType, GraphRelationType, ResourceDestination, SearchResult, ConceptNode, DailyActivityPoint, TimeRangeFilter, Note, Flashcard, Module } from '../types/models.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
 
 export interface BookProgressCalculation {
   clampedPage: number;
@@ -254,8 +256,6 @@ export function validateKnowledgeConnection(
   return { valid: true, relation };
 }
 
-import { translateKey } from '../i18n/dictionaries.ts';
-import type { LanguageCode } from '../i18n/languages.ts';
 export const GRAPH_NODE_LABELS: Record<GraphNodeType, string> = {
   concept: 'Concepto',
   course: 'Curso',

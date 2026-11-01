@@ -59,10 +59,6 @@ export function validateStructuredJson<T>(
   return { valid: true, data: parsed as T };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Anti-hallucination gate                                                     */
-/* -------------------------------------------------------------------------- */
-
 /** Explicit signals that the model is missing real information. */
 const UNCERTAINTY_SIGNALS = [
   'no contiene suficiente informaci',

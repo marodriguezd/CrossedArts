@@ -207,7 +207,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <p className="type-secondary mt-1">{t('dashboard.subtitle')}</p>
       </header>
 
-      {/* --- Continue learning (primary action) + Today's study --- */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Panel className="lg:col-span-2 p-5 sm:p-6">
           <p className="type-micro">{t('dashboard.continueMicro')}</p>
@@ -315,7 +314,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </Panel>
       </div>
 
-      {/* --- Visual gallery: content comes BEFORE the metrics --- */}
       {hasAnyArtifact ? (
         <div className="space-y-8">
           <ResourceGallery
@@ -365,7 +363,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* --- Real metrics strip (one surface, no cards) --- */}
       <div className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">
         <div className="px-5 py-4">
           <p className="type-micro">{t('dashboard.totalResources')}</p>

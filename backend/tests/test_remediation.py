@@ -40,9 +40,7 @@ from backend.app.services.llm import LLMService
 from backend.app.services.session import SessionService
 
 
-# ===========================================================================
 # E - Study-session contract.
-# ===========================================================================
 
 def test_model_allows_lesson_scoped_session_without_resource(db: Session):
     """A lesson-only session is valid state (frontend contract)."""
@@ -227,9 +225,7 @@ def test_aggregations_ignore_null_resource_gracefully(db: Session):
     assert SessionService.get_total_study_minutes(db) >= 25
 
 
-# ===========================================================================
 # F — Historia de migraciones coherente
-# ===========================================================================
 
 def test_no_index_is_declared_by_two_migrations():
     """Each index has exactly ONE owning migration."""
@@ -312,9 +308,7 @@ def test_migration_upgrade_downgrade_roundtrip(tmp_path):
     conn.close()
 
 
-# ===========================================================================
 # G - Transcript language.
-# ===========================================================================
 
 def test_normalize_language_accepts_codes_and_rejects_free_text():
     assert normalize_language("es") == "es"
@@ -393,9 +387,7 @@ def test_transcript_json_metadata_language_is_honored(db: Session, tmp_path):
     assert len(segments) == 2
 
 
-# ===========================================================================
 # H - Backend LLM-output validation.
-# ===========================================================================
 
 VALID_QUIZ = [
     {"id": "q1", "question": "¿Qué es una matriz simétrica?", "options": ["Igual a su transpuesta", "Un vector"], "answer": "Igual a su transpuesta", "type": "multiple_choice"},
