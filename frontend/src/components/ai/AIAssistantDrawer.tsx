@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle, ArrowUpRight, Settings } from 'lucide-react';
 import { aiService, AIChatMessage, AssistantResponse, type AISettings, type AIProvider } from '../../ai/aiService.ts';
 import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
@@ -97,18 +97,18 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
    */
   const abortRef = useRef<AbortController | null>(null);
 
-  const cancelGeneration = () => {
+  const cancelGeneration = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-  };
+  }, []);
 
-  useEffect(() => () => cancelGeneration(), []);
+  useEffect(() => () => cancelGeneration(), [cancelGeneration]);
 
   /** Single exit point: aborting first guarantees no orphan generations. */
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     cancelGeneration();
     onClose();
-  };
+  }, [cancelGeneration, onClose]);
 
   // Sync settings in real time when the user switches provider
   useEffect(() => aiService.subscribeSettings(setCurrentSettings), []);
@@ -119,31 +119,34 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     void detectWebGPUCapability().then(setGpuReport);
   }, [isOpen]);
 
-  // Drawer accessibility: Escape closes it, but only while the drawer is the
-  // TOPMOST overlay (a page dialog above it must not be closed by the same
-  // keypress), and first allowing dismissal of consent while the activation
-  // modal is open.
+  // Overlay registration is tied to open/close ONLY. Re-registering on every
+  // render would push the drawer back on top of the stack, so an Escape meant
+  // for a page dialog above it (or a streaming token) would close the
+  // conversation instead.
   useEffect(() => {
     if (!isOpen) return;
     pushOverlay('ai-drawer');
+    inputRef.current?.focus();
+    return () => removeOverlay('ai-drawer');
+  }, [isOpen]);
+
+  // Escape closes the drawer only while it is the TOPMOST overlay, and first
+  // dismisses consent while the activation modal is open.
+  useEffect(() => {
+    if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isTopOverlay('ai-drawer')) {
-        const consentIsOpen =
-          localAiRuntime.getStatus().stage === 'consent-required' && !consentDismissed;
-        if (consentIsOpen) {
-          e.preventDefault();
-          setConsentDismissed(true);
-          return;
-        }
-        handleClose();
+      if (e.key !== 'Escape' || !isTopOverlay('ai-drawer')) return;
+      const consentIsOpen =
+        localAiRuntime.getStatus().stage === 'consent-required' && !consentDismissed;
+      if (consentIsOpen) {
+        e.preventDefault();
+        setConsentDismissed(true);
+        return;
       }
+      handleClose();
     };
     window.addEventListener('keydown', onKey);
-    inputRef.current?.focus();
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      removeOverlay('ai-drawer');
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, handleClose, consentDismissed]);
 
   // Local AI preparation is automatic: it reflects in the UI without the user

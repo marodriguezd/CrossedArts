@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
-from sqlalchemy import ForeignKey, String, Integer, Float, DateTime, JSON, Text
+from sqlalchemy import ForeignKey, Index, String, Integer, Float, DateTime, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
@@ -92,6 +92,12 @@ class ContentIndex(Base):
 
 class EmbeddingRecord(Base):
     __tablename__ = "embedding_record"
+
+    # Composite lookup index owned by a1b2c3d4e5f6 (orphan cleanup queries both
+    # columns together). Declared here too so create_all matches the migrations.
+    __table_args__ = (
+        Index("ix_embedding_record_entity", "entity_type", "entity_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     entity_id: Mapped[uuid.UUID] = mapped_column(GUID, nullable=False, index=True)

@@ -231,11 +231,11 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="occlusion-editor-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60 backdrop-blur-sm"
     >
-      <div className="relative flex flex-col w-full max-w-5xl max-h-[90vh] rounded-2xl border border-[var(--c-border)] bg-[var(--c-canvas)] text-[var(--c-ink)] shadow-2xl overflow-hidden">
+      <div className="relative flex flex-col w-full max-w-5xl max-h-[90vh] rounded-2xl border border-[var(--c-line)] bg-[var(--c-canvas)] text-[var(--c-ink)] shadow-2xl overflow-hidden">
         
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--c-border)] bg-[var(--c-canvas-subtle)]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--c-line)] bg-[var(--c-surface)]">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-[var(--c-accent)]/15 text-[var(--c-accent)]">
               <Layers className="w-5 h-5" />
@@ -244,7 +244,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
               <h2 id="occlusion-editor-title" className="text-base font-semibold">
                 Crear Tarjeta de Oclusión de Imagen
               </h2>
-              <p className="text-xs text-[var(--c-ink-muted)]">
+              <p className="text-xs text-[var(--c-muted)]">
                 Pega (Ctrl+V) o arrastra una imagen, dibuja rectángulos y define las respuestas.
               </p>
             </div>
@@ -252,7 +252,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[var(--c-ink-muted)] hover:bg-[var(--c-canvas-inset)] hover:text-[var(--c-ink)] cursor-pointer"
+            className="p-1.5 rounded-lg text-[var(--c-muted)] hover:bg-[var(--c-raised)] hover:text-[var(--c-ink)] cursor-pointer"
             aria-label="Cerrar editor"
           >
             <X className="w-5 h-5" />
@@ -275,7 +275,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
-                  className="relative inline-block max-w-full overflow-hidden rounded-xl border-2 border-[var(--c-border)] bg-[var(--c-canvas-subtle)] shadow-inner cursor-crosshair select-none"
+                  className="relative inline-block max-w-full overflow-hidden rounded-xl border-2 border-[var(--c-line)] bg-[var(--c-surface)] shadow-inner cursor-crosshair select-none"
                 >
                   <img
                     src={imageDataUrl}
@@ -310,8 +310,8 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                         className={cn(
                           'absolute rounded flex items-center justify-center cursor-pointer transition-all border-2 text-xs font-bold',
                           isSelected
-                            ? 'border-[var(--c-accent)] bg-[var(--c-accent)]/40 shadow-lg ring-2 ring-[var(--c-accent)]/50 text-[var(--c-accent-contrast)]'
-                            : 'border-[var(--c-border-strong,var(--c-border))] bg-[var(--c-canvas-inset)]/80 text-[var(--c-ink)] hover:bg-[var(--c-canvas-inset)]'
+                            ? 'border-[var(--c-accent)] bg-[var(--c-accent)]/40 shadow-lg ring-2 ring-[var(--c-accent)]/50 text-[var(--c-on-accent)]'
+                            : 'border-[var(--c-line-strong,var(--c-line))] bg-[var(--c-raised)]/80 text-[var(--c-ink)] hover:bg-[var(--c-raised)]'
                         )}
                       >
                         <span className="px-1.5 py-0.5 rounded bg-[var(--c-canvas)]/85 text-[11px] truncate max-w-[90%]">
@@ -322,7 +322,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                   })}
                 </div>
 
-                <div className="mt-2 flex items-center justify-between w-full text-xs text-[var(--c-ink-faint)]">
+                <div className="mt-2 flex items-center justify-between w-full text-xs text-[var(--c-faint)]">
                   <span>Arrastra el ratón sobre la imagen para crear una nueva máscara</span>
                   <button
                     type="button"
@@ -346,7 +346,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                   if (file) handleProcessImage(file);
                 }}
                 onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center justify-center w-full h-80 rounded-2xl border-2 border-dashed border-[var(--c-border)] hover:border-[var(--c-accent)] bg-[var(--c-canvas-subtle)]/50 hover:bg-[var(--c-canvas-subtle)] transition-all cursor-pointer p-6 text-center"
+                className="flex flex-col items-center justify-center w-full h-80 rounded-2xl border-2 border-dashed border-[var(--c-line)] hover:border-[var(--c-accent)] bg-[var(--c-surface)]/50 hover:bg-[var(--c-surface)] transition-all cursor-pointer p-6 text-center"
               >
                 <input
                   ref={fileInputRef}
@@ -358,14 +358,14 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                     if (file) handleProcessImage(file);
                   }}
                 />
-                <div className="p-4 rounded-full bg-[var(--c-canvas-inset)] text-[var(--c-accent)] mb-3 shadow-xs">
+                <div className="p-4 rounded-full bg-[var(--c-raised)] text-[var(--c-accent)] mb-3 shadow-sm">
                   <Upload className="w-8 h-8" />
                 </div>
                 <p className="text-sm font-semibold text-[var(--c-ink)]">
                   Arrastra una imagen aquí o haz clic para seleccionarla
                 </p>
-                <p className="text-xs text-[var(--c-ink-muted)] mt-1">
-                  También puedes presionar <kbd className="px-1.5 py-0.5 rounded border border-[var(--c-border)] bg-[var(--c-canvas)] font-mono text-[10px]">Ctrl+V</kbd> para pegar desde el portapapeles
+                <p className="text-xs text-[var(--c-muted)] mt-1">
+                  También puedes presionar <kbd className="px-1.5 py-0.5 rounded border border-[var(--c-line)] bg-[var(--c-canvas)] font-mono text-[10px]">Ctrl+V</kbd> para pegar desde el portapapeles
                 </p>
               </div>
             )}
@@ -381,7 +381,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                 value={front}
                 onChange={(e) => setFront(e.target.value)}
                 placeholder="Ej. Identifica las partes señaladas"
-                className="w-full px-3 py-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-canvas)] text-xs text-[var(--c-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--c-line)] bg-[var(--c-canvas)] text-xs text-[var(--c-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]"
               />
             </div>
 
@@ -397,7 +397,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                     'p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer',
                     mode === 'hide_all_reveal_one'
                       ? 'border-[var(--c-accent)] bg-[var(--c-accent)]/10 font-semibold text-[var(--c-accent)]'
-                      : 'border-[var(--c-border)] bg-[var(--c-canvas-subtle)] text-[var(--c-ink-muted)]'
+                      : 'border-[var(--c-line)] bg-[var(--c-surface)] text-[var(--c-muted)]'
                   )}
                 >
                   <p className="font-semibold text-xs">Ocultar todos</p>
@@ -410,7 +410,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                     'p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer',
                     mode === 'hide_one_reveal_one'
                       ? 'border-[var(--c-accent)] bg-[var(--c-accent)]/10 font-semibold text-[var(--c-accent)]'
-                      : 'border-[var(--c-border)] bg-[var(--c-canvas-subtle)] text-[var(--c-ink-muted)]'
+                      : 'border-[var(--c-line)] bg-[var(--c-surface)] text-[var(--c-muted)]'
                   )}
                 >
                   <p className="font-semibold text-xs">Ocultar uno</p>
@@ -437,7 +437,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
 
               <div className="flex-1 space-y-2 overflow-y-auto max-h-56 pr-1">
                 {masks.length === 0 ? (
-                  <div className="p-4 rounded-xl border border-dashed border-[var(--c-border)] text-center text-xs text-[var(--c-ink-faint)]">
+                  <div className="p-4 rounded-xl border border-dashed border-[var(--c-line)] text-center text-xs text-[var(--c-faint)]">
                     No hay máscaras creadas todavía. Arrastra sobre la imagen para añadir una.
                   </div>
                 ) : (
@@ -449,10 +449,10 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                         'flex items-center gap-2 p-2 rounded-lg border transition-all',
                         selectedMaskId === mask.id
                           ? 'border-[var(--c-accent)] bg-[var(--c-accent)]/5'
-                          : 'border-[var(--c-border)] bg-[var(--c-canvas-subtle)]'
+                          : 'border-[var(--c-line)] bg-[var(--c-surface)]'
                       )}
                     >
-                      <span className="w-5 h-5 flex items-center justify-center rounded-full bg-[var(--c-canvas-inset)] text-[10px] font-bold text-[var(--c-ink)] shrink-0">
+                      <span className="w-5 h-5 flex items-center justify-center rounded-full bg-[var(--c-raised)] text-[10px] font-bold text-[var(--c-ink)] shrink-0">
                         {idx + 1}
                       </span>
                       <input
@@ -460,7 +460,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                         value={mask.label || ''}
                         onChange={(e) => handleUpdateMaskLabel(mask.id, e.target.value)}
                         placeholder={`Respuesta ${idx + 1}`}
-                        className="flex-1 px-2 py-1 rounded border border-[var(--c-border)] bg-[var(--c-canvas)] text-xs text-[var(--c-ink)] focus:outline-none focus:ring-1 focus:ring-[var(--c-accent)]"
+                        className="flex-1 px-2 py-1 rounded border border-[var(--c-line)] bg-[var(--c-canvas)] text-xs text-[var(--c-ink)] focus:outline-none focus:ring-1 focus:ring-[var(--c-accent)]"
                       />
                       <button
                         type="button"
@@ -488,13 +488,13 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                 onChange={(e) => setBack(e.target.value)}
                 rows={2}
                 placeholder="Contexto adicional que aparecerá al calificar la tarjeta..."
-                className="w-full px-3 py-1.5 rounded-lg border border-[var(--c-border)] bg-[var(--c-canvas)] text-xs text-[var(--c-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)] resize-none"
+                className="w-full px-3 py-1.5 rounded-lg border border-[var(--c-line)] bg-[var(--c-canvas)] text-xs text-[var(--c-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)] resize-none"
               />
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-6 py-3 border-t border-[var(--c-border)] bg-[var(--c-canvas-subtle)]">
+        <div className="flex items-center justify-between px-6 py-3 border-t border-[var(--c-line)] bg-[var(--c-surface)]">
           <Button variant="quiet" size="sm" onClick={onClose} disabled={isSaving}>
             Cancelar
           </Button>

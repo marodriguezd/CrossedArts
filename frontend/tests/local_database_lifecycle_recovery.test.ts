@@ -658,3 +658,67 @@ test('31.11 Stale write error in persist preserves remote snapshot and sets stal
   const report = bridge.getStorageReport();
   assert.equal(report.state, 'stale-other-tab');
 });
+
+test('31.16 REGRESIÓN: una base migrada impone los mismos CHECK de ámbito que una fresca', async () => {
+  // SQLite no puede añadir un CHECK con ALTER TABLE. Una migración incremental
+  // (`ADD COLUMN scope`) dejaba una base migrada aceptando ámbitos que la
+  // fresca rechaza; sólo el rebuild completo converge.
+  const SQL = await initSqlJs();
+  const legacy = new SQL.Database();
+  legacy.run(`
+    CREATE TABLE learning_resource (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      cover_path TEXT,
+      category TEXT DEFAULT 'General',
+      status TEXT DEFAULT 'NOT_STARTED',
+      source_path TEXT,
+      type TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE learning_session (
+      id TEXT PRIMARY KEY,
+      resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME,
+      duration_minutes INTEGER DEFAULT 0,
+      inactive_seconds INTEGER DEFAULT 0,
+      mode TEXT DEFAULT 'flashcards',
+      cards_reviewed INTEGER DEFAULT 0,
+      questions_answered INTEGER DEFAULT 0,
+      correct_answers INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'completed'
+    );
+    INSERT INTO learning_resource (id, title, type) VALUES ('r1', 'Curso Legacy', 'course');
+    INSERT INTO learning_session (id, resource_id, duration_minutes) VALUES ('s-legacy', 'r1', 12);
+  `);
+  const bytes = legacy.export();
+  legacy.close();
+
+  const bridge = new (dbBridge.constructor as any)();
+  bridge.loadFromStorage = async () => bytes;
+  const db = await bridge.init();
+
+  // La fila histórica se conserva y su ámbito se deriva de las anclas.
+  const migrated = db.exec("SELECT scope, duration_minutes FROM learning_session WHERE id = 's-legacy'");
+  assert.deepEqual(migrated[0].values[0], ['resource', 12]);
+
+  // Y la tabla resultante rechaza exactamente lo que rechaza una base fresca.
+  assert.throws(
+    () => db.run("INSERT INTO learning_session (id, resource_id, scope) VALUES ('bad-value', 'r1', 'otro')"),
+    /CHECK constraint failed/,
+    'el dominio de valores de scope se impone también en una base migrada'
+  );
+  assert.throws(
+    () => db.run("INSERT INTO learning_session (id, resource_id, scope) VALUES ('bad-global', 'r1', 'global')"),
+    /CHECK constraint failed/,
+    'un ámbito global con ancla se rechaza también en una base migrada'
+  );
+  assert.throws(
+    () => db.run("INSERT INTO learning_session (id, resource_id, scope) VALUES ('bad-resource', NULL, 'resource')"),
+    /CHECK constraint failed/,
+    'un ámbito de recurso sin recurso se rechaza también en una base migrada'
+  );
+});

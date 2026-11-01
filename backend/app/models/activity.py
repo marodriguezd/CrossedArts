@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import CheckConstraint, ForeignKey, String, Integer, DateTime, Boolean, Float, event
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Integer, DateTime, Boolean, Float, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
@@ -89,9 +89,10 @@ class LearningSession(Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=utc_now_naive,
-        nullable=False
+        nullable=False,
+        index=True
     )
-    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     #: FORMAL session finalization. `ended_at` is also touched by the heartbeat
     #: as a last-activity stamp, so `SessionService.end_session` idempotency
     #: relies on this explicit flag: repeating finalization neither rewrites
@@ -134,6 +135,11 @@ class Note(Base, TimestampMixin):
     """
 
     __tablename__ = "note"
+
+    # Matches the index owned by a1b2c3d4e5f6, so create_all and migrations agree.
+    __table_args__ = (
+        Index("ix_note_created_at", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     resource_id: Mapped[Optional[uuid.UUID]] = mapped_column(

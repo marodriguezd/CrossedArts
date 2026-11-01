@@ -63,3 +63,67 @@ def test_alembic_upgrade_head_clean_database(tmp_path):
     )
     assert res.returncode == 0, f"Alembic upgrade head failed: {res.stderr}"
     assert test_db.exists()
+
+
+def test_fresh_create_all_and_migrated_schema_agree_on_indexes(tmp_path):
+    """`create_all()` and `alembic upgrade head` must build the SAME indexes.
+
+    A fresh install that lacks the indexes the migration chain creates queries
+    without them (`f3a9c2d41b57` claims the two paths converge). This compares
+    both schemas index by index instead of trusting the docstring.
+    """
+    import subprocess
+    import sys
+
+    from sqlalchemy import create_engine, inspect
+
+    import backend.app.models  # noqa: F401 - registers every table on the metadata
+    from backend.app.core.database import Base
+
+    created_path = tmp_path / "created.db"
+    migrated_path = tmp_path / "migrated.db"
+
+    created_engine = create_engine(f"sqlite:///{created_path}")
+    Base.metadata.create_all(bind=created_engine)
+    created_engine.dispose()
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = f"sqlite:///{migrated_path}"
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", "backend/alembic.ini", "upgrade", "head"],
+        env=env,
+        capture_output=True,
+        text=True,
+        cwd=os.getcwd(),
+    )
+    assert result.returncode == 0, f"Alembic upgrade head failed: {result.stderr}"
+
+    def indexes_per_table(path):
+        engine = create_engine(f"sqlite:///{path}")
+        inspector = inspect(engine)
+        schema = {
+            table: {index["name"] for index in inspector.get_indexes(table)}
+            for table in inspector.get_table_names()
+            if table != "alembic_version"
+        }
+        engine.dispose()
+        return schema
+
+    created = indexes_per_table(created_path)
+    migrated = indexes_per_table(migrated_path)
+
+    assert set(created) == set(migrated), (
+        "Tablas sólo en create_all: "
+        f"{sorted(set(created) - set(migrated))}; sólo en migraciones: "
+        f"{sorted(set(migrated) - set(created))}"
+    )
+
+    divergent = {
+        table: {
+            "faltan_en_create_all": sorted(migrated[table] - created[table]),
+            "faltan_en_migraciones": sorted(created[table] - migrated[table]),
+        }
+        for table in created
+        if created[table] != migrated[table]
+    }
+    assert divergent == {}, f"Índices divergentes entre instalación fresca y migrada: {divergent}"

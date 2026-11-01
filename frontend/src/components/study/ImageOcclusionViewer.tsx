@@ -55,7 +55,7 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
 
   return (
     <div className={cn('relative flex flex-col items-center w-full select-none', className)}>
-      <div className="relative inline-block max-w-full overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-canvas-subtle)] shadow-sm">
+      <div className="relative inline-block max-w-full overflow-hidden rounded-xl border border-[var(--c-line)] bg-[var(--c-surface)] shadow-sm">
         {resolvedUrl ? (
           <img
             src={resolvedUrl}
@@ -63,7 +63,7 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
             className="block max-h-[60vh] max-w-full object-contain pointer-events-none"
           />
         ) : (
-          <div className="flex h-64 w-96 items-center justify-center text-sm text-[var(--c-ink-faint)]">
+          <div className="flex h-64 w-96 items-center justify-center text-sm text-[var(--c-faint)]">
             Sin imagen disponible
           </div>
         )}
@@ -90,10 +90,10 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
               aria-label={`Máscara ${idx + 1}: ${isActive ? (isRevealed ? mask.label || 'Revelada' : 'Activa oculta') : 'Secundaria'}`}
               className={cn(
                 'absolute rounded flex items-center justify-center transition-all duration-150 text-xs font-semibold cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-accent)]',
-                isActive && isCovered && 'bg-[var(--c-accent)]/85 text-[var(--c-accent-contrast)] shadow-md border-2 border-[var(--c-accent)] animate-pulse',
+                isActive && isCovered && 'bg-[var(--c-accent)]/85 text-[var(--c-on-accent)] shadow-md border-2 border-[var(--c-accent)] animate-pulse',
                 isActive && !isCovered && 'bg-[var(--c-accent)]/20 text-[var(--c-ink)] border-2 border-[var(--c-accent)] shadow-inner backdrop-blur-[2px]',
-                !isActive && isCovered && 'bg-[var(--c-canvas-inset)]/90 text-[var(--c-ink-muted)] border border-[var(--c-border)] shadow-xs',
-                !isActive && !isCovered && 'bg-transparent border border-dashed border-[var(--c-border)] text-[var(--c-ink-faint)] opacity-60'
+                !isActive && isCovered && 'bg-[var(--c-raised)]/90 text-[var(--c-muted)] border border-[var(--c-line)] shadow-sm',
+                !isActive && !isCovered && 'bg-transparent border border-dashed border-[var(--c-line)] text-[var(--c-faint)] opacity-60'
               )}
             >
               {isCovered ? (
@@ -101,7 +101,7 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
                   {idx + 1}
                 </span>
               ) : (
-                <span className="px-1.5 py-0.5 rounded bg-[var(--c-canvas)]/90 text-[var(--c-ink)] shadow-xs max-w-full truncate text-[11px]">
+                <span className="px-1.5 py-0.5 rounded bg-[var(--c-canvas)]/90 text-[var(--c-ink)] shadow-sm max-w-full truncate text-[11px]">
                   {mask.label || `Área ${idx + 1}`}
                 </span>
               )}
@@ -110,12 +110,12 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
         })}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 w-full px-2 text-xs text-[var(--c-ink-muted)]">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 w-full px-2 text-xs text-[var(--c-muted)]">
         <div className="flex items-center gap-2">
           <span className="font-medium text-[var(--c-ink)]">
             Máscara {activeMaskIndex + 1} de {safeMasks.length}
           </span>
-          <span className="text-[var(--c-ink-faint)]">•</span>
+          <span className="text-[var(--c-faint)]">•</span>
           <span>
             Modo: {mode === 'hide_all_reveal_one' ? 'Ocultar todas' : 'Ocultar una'}
           </span>

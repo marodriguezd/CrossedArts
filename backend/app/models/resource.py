@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
-from sqlalchemy import ForeignKey, String, Float, Enum, Integer, DateTime
+from sqlalchemy import ForeignKey, String, Float, Enum, Integer, DateTime, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
@@ -17,6 +17,14 @@ if TYPE_CHECKING:
 class LearningResource(Base, TimestampMixin):
     __tablename__ = "learning_resource"
 
+    # Declared on the model so `Base.metadata.create_all()` produces the SAME
+    # indexes the Alembic chain builds (a1b2c3d4e5f6, d8d6741e257c). Otherwise a
+    # fresh install queries without them and only upgraded installs stay fast.
+    __table_args__ = (
+        Index("ix_learning_resource_updated_at", "updated_at"),
+        Index("ix_learning_resource_created_at", "created_at"),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
@@ -25,12 +33,13 @@ class LearningResource(Base, TimestampMixin):
     status: Mapped[ResourceStatus] = mapped_column(
         Enum(ResourceStatus),
         default=ResourceStatus.NOT_STARTED,
-        nullable=False
+        nullable=False,
+        index=True
     )
     source_path: Mapped[Optional[str]] = mapped_column(String(1024), unique=True, nullable=True, index=True)
 
     # Discriminator column for Joined Table Inheritance.
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
 
     __mapper_args__ = {
         "polymorphic_on": type,

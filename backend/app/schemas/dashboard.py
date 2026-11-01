@@ -14,7 +14,9 @@ class DashboardSummaryResponse(BaseModel):
 
 class RecentActivityItem(BaseModel):
     id: uuid.UUID
-    resource_id: uuid.UUID
+    # Nullable by contract: a standalone note has no resource and must still be
+    # representable here (see Note in models/activity.py).
+    resource_id: Optional[uuid.UUID] = None
     resource_title: str
     resource_type: str
     activity_type: str # "session" o "note"

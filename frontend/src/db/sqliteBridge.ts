@@ -1103,9 +1103,9 @@ class SQLiteBridge {
    * Idempotent `learning_session` table migration.
    *
    * Extends the study session with mode, counters, status, and `scope` without
-   * creating a second history system. Rebuilds the table only when the prior
-   * schema is incompatible (e.g. `resource_id NOT NULL`, which blocked the
-   * global scope).
+   * creating a second history system. Rebuilds the table whenever the live
+   * schema is not the current one (incompatible columns, or missing scope
+   * CHECKs), because SQLite cannot add a CHECK constraint in place.
    *
    * `scope` makes the three-scope domain explicit (global / resource / lesson;
    * see `services/sessionScope.ts`). Legacy rows that never declared it are
@@ -1129,26 +1129,16 @@ class SQLiteBridge {
     const hasScope = columns.some(c => c.name === 'scope');
     const resourceNotNull = columns.find(c => c.name === 'resource_id')?.notNull === true;
 
-    // Schema already current: mode + optional resource_id + lesson_id + scope.
-    if (hasMode && !resourceNotNull && hasLessonId && hasScope) return false;
-
-    // Incremental upgrade: only the explicit scope is missing. One ALTER TABLE
-    // suffices (no data loss) with a deterministic backfill.
-    if (hasMode && !resourceNotNull && hasLessonId && !hasScope) {
-      db.run("ALTER TABLE learning_session ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';");
-      this.backfillSessionScope(db);
-      return true;
+    // Schema already current: mode + optional resource_id + lesson_id + scope,
+    // plus the scope CHECKs that make an incoherent scope unstorable.
+    if (hasMode && !resourceNotNull && hasLessonId && hasScope && this.hasSessionScopeChecks(db)) {
+      return false;
     }
 
-    // Lesson column missing but the rest is compatible: add the explicit scope
-    // in the same pass.
-    if (hasMode && !resourceNotNull && !hasLessonId) {
-      db.run('ALTER TABLE learning_session ADD COLUMN lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL;');
-      db.run("ALTER TABLE learning_session ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';");
-      this.backfillSessionScope(db);
-      return true;
-    }
-
+    // Every other upgrade rebuilds the table. SQLite cannot add a CHECK with
+    // ALTER TABLE, so an incremental `ADD COLUMN scope` would leave a migrated
+    // database accepting `scope='lesson'` with no anchors while a fresh one
+    // rejects it. The rebuild is the only path where both converge.
     db.run('PRAGMA foreign_keys = OFF;');
     try {
       this.rebuildLearningSessionTable(db, columns);
@@ -1156,6 +1146,22 @@ class SQLiteBridge {
       db.run('PRAGMA foreign_keys = ON;');
     }
     return true;
+  }
+
+  /**
+   * Does the live table carry the three scope CHECK constraints?
+   *
+   * SQLite stores the CREATE TABLE text verbatim, so the predicates written by
+   * `SCHEMA_SQL` and by `rebuildLearningSessionTable` are findable there.
+   */
+  private hasSessionScopeChecks(db: Database): boolean {
+    const rows = db.exec("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'learning_session'");
+    const ddl = rows.length && rows[0].values.length ? String(rows[0].values[0][0] ?? '') : '';
+    return (
+      ddl.includes("scope IN ('global', 'resource', 'lesson')") &&
+      ddl.includes("scope <> 'global' OR (resource_id IS NULL AND lesson_id IS NULL)") &&
+      ddl.includes("scope <> 'resource' OR resource_id IS NOT NULL")
+    );
   }
 
   /**
@@ -1237,25 +1243,6 @@ class SQLiteBridge {
       try { db.run('ROLLBACK;'); } catch { /* ya revertida */ }
       throw err;
     }
-  }
-
-  /**
-   * Backfill `learning_session.scope` deterministically from present anchors.
-   * Idempotent: only rewrites missing or invalid values.
-   */
-  private backfillSessionScope(db: Database): void {
-    db.run(`
-      UPDATE learning_session
-      SET scope = CASE
-        WHEN lesson_id IS NOT NULL THEN 'lesson'
-        WHEN resource_id IS NOT NULL THEN 'resource'
-        ELSE 'global'
-      END
-      WHERE scope IS NULL
-         OR scope NOT IN ('global', 'resource', 'lesson')
-         OR (scope = 'global' AND (resource_id IS NOT NULL OR lesson_id IS NOT NULL))
-         OR (scope = 'resource' AND resource_id IS NULL);
-    `);
   }
 
   public exportDatabase(): Uint8Array {

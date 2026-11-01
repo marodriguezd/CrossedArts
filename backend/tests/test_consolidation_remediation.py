@@ -366,3 +366,23 @@ def test_dashboard_recent_activity_only_lists_finalized_sessions(db: Session, cl
     titles = [item.get("resource_title") for item in response.json()]
     assert "Libro Finalizado" in titles, "La sesión finalizada sí aparece"
     assert "Libro En Curso" not in titles, "Una sesión en curso no es actividad cerrada"
+
+
+def test_dashboard_recent_activity_lists_a_standalone_note(db: Session, client: TestClient):
+    """A note with no resource (resource_id NULL) is valid state, not a 500."""
+    from backend.app.models.activity import Note
+
+    standalone = Note(id=uuid.uuid4(), resource_id=None, lesson_id=None, content="Idea suelta")
+    db.add(standalone)
+    db.commit()
+
+    response = client.get("/api/v1/dashboard/recent-activity")
+    assert response.status_code == 200, response.text
+    item = next(
+        (entry for entry in response.json() if entry["id"] == str(standalone.id)),
+        None,
+    )
+    assert item is not None, "La nota suelta aparece como actividad, no se descarta"
+    assert item["resource_id"] is None, "No se inventa un recurso para colgarla"
+    assert item["resource_title"] == "Nota suelta"
+    assert item["resource_type"] == "standalone"

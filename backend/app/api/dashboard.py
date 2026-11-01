@@ -1,4 +1,5 @@
-from typing import List
+import uuid
+from typing import List, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, desc
@@ -101,15 +102,28 @@ def get_recent_activity(db: Session = Depends(get_db)):
     )
     notes = db.scalars(stmt_notes).all()
     for n in notes:
+        # A standalone note is valid state (note.resource_id IS NULL): it is
+        # reported as such instead of inventing a resource to hang it on.
+        note_resource_id: Optional[uuid.UUID]
+        if n.resource is not None:
+            note_resource_id = n.resource.id
+            note_resource_title = n.resource.title
+            note_resource_type = n.resource.type
+            note_description = f"Nota redactada en {n.resource.title}."
+        else:
+            note_resource_id = None
+            note_resource_title = "Nota suelta"
+            note_resource_type = "standalone"
+            note_description = "Nota redactada sin recurso asociado."
         recent_activity.append(
             RecentActivityItem(
                 id=n.id,
-                resource_id=n.resource_id,
-                resource_title=n.resource.title,
-                resource_type=n.resource.type,
+                resource_id=note_resource_id,
+                resource_title=note_resource_title,
+                resource_type=note_resource_type,
                 activity_type="note",
                 timestamp=n.created_at,
-                description=f"Nota redactada en {n.resource.title}."
+                description=note_description
             )
         )
 
