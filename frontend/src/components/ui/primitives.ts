@@ -106,6 +106,39 @@ export function ProgressBar({ value, max = 100, label, className, tone = 'accent
   );
 }
 
+export interface SectionHeadingProps {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+  className?: string;
+  /**
+   * Id del encabezado, para que la sección que lo rodea pueda nombrarse con
+   * `aria-labelledby`. Sin este id, una sección declarada
+   * `aria-labelledby="x"` no tiene nombre accesible: la referencia apunta a un
+   * elemento que no existe.
+   */
+  id?: string;
+}
+
+/**
+ * Section heading. Lives in a `.ts` (written with `createElement`) because the
+ * id that `aria-labelledby` resolves against must be assertable on the HTML
+ * rendered by the test runner, which cannot import `.tsx`.
+ */
+export function SectionHeading({ title, description, action, className, id }: SectionHeadingProps) {
+  return createElement(
+    'div',
+    { className: cn('mb-4 flex items-end justify-between gap-4', className) },
+    createElement(
+      'div',
+      null,
+      createElement('h2', { id, className: 'type-section text-ink' }, title),
+      description ? createElement('p', { className: 'type-meta mt-0.5' }, description) : null
+    ),
+    action
+  );
+}
+
 export interface KbdProps {
   /**
    * Optional on purpose: it reproduces `React.FC` semantics (which added

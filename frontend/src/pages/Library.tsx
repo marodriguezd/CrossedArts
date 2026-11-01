@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react';
 import { Course, Book, SearchResult, UnorganizedResource, GraphNodeType } from '../types/models.ts';
+import { isTopOverlay, pushOverlay, removeOverlay } from '../services/overlayStack.ts';
 import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ClipboardList, ArrowUpRight, UploadCloud, Target } from 'lucide-react';
 import { resolveSearchResultDestination, filterSupportedFiles, adjustBookPage } from '../services/domainLogic.ts';
 import type { MediaScanReport } from '../services/localMediaService.ts';
@@ -118,18 +119,25 @@ export const Library: React.FC<LibraryProps> = ({
   }, [deferredQuery, courses, books]);
 
   // Keyboard accessibility: Escape closes the active top dialog
-  // (preview, source viewer, or course creation).
+  // (preview, source viewer, or course creation). These dialogs sit ABOVE the
+  // AI drawer, so they are registered as one overlay and only the topmost
+  // overlay reacts to Escape.
   useEffect(() => {
     const anyOpen = !!previewDoc || sourceViewerMeta.isOpen || isCreateCourseOpen;
     if (!anyOpen) return;
+    pushOverlay('library-dialogs');
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (!isTopOverlay('library-dialogs')) return;
       if (previewDoc) setPreviewDoc(null);
       else if (sourceViewerMeta.isOpen) setSourceViewerMeta({ isOpen: false });
       else if (isCreateCourseOpen) setIsCreateCourseOpen(false);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      removeOverlay('library-dialogs');
+    };
   }, [previewDoc, sourceViewerMeta.isOpen, isCreateCourseOpen]);
 
   const handleCreateCourse = async (e: React.FormEvent) => {

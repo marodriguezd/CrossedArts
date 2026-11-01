@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { ConceptNode, ConceptEdge, GraphNodeType, GraphRelationType } from '../types/models.ts';
+import { isTopOverlay, pushOverlay, removeOverlay } from '../services/overlayStack.ts';
 // The `esnext` builds of vis-network/vis-data are used on purpose: the `peer`
 // builds bundle a core-js `Set` whose internal `Symbol.iterator` is missing,
 // breaking vis-network's transpiled private fields (`[...this.#selection]`) and
@@ -312,9 +313,16 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
 
   useEffect(() => {
     if (!isConnectionDialogOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsConnectionDialogOpen(false); };
+    pushOverlay('graph-connection-dialog');
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !isTopOverlay('graph-connection-dialog')) return;
+      setIsConnectionDialogOpen(false);
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      removeOverlay('graph-connection-dialog');
+    };
   }, [isConnectionDialogOpen]);
 
   const toggleType = (type: GraphNodeType) => {

@@ -15,6 +15,7 @@ import { EMBEDDING_MODELS_REGISTRY, getEmbeddingModelById } from '../lib/localEm
 import { getStoredEmbeddingModelId, setStoredEmbeddingModelId } from '../services/embeddingModelPreference.ts';
 import { localAiRuntime, type LocalAiStatus } from '../services/localAiRuntime.ts';
 import { dao } from '../db/dao.ts';
+import { formatLocalClockTime } from '../services/localDate.ts';
 import { assessImportCapacity, formatBytes } from '../services/storageGuards.ts';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 import { ThemeToggle } from '../components/common/ThemeToggle.tsx';
@@ -458,6 +459,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       --------------------------------------------------------------- */}
       <section aria-labelledby="settings-storage" className="space-y-4">
         <SectionHeading
+          id="settings-storage"
           title="Almacenamiento y respaldos"
           description="SQLite WASM e IndexedDB: tus datos nunca salen de este navegador."
         />
@@ -498,7 +500,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             <div>
               <dt className="text-faint">Última persistencia</dt>
               <dd className="font-mono text-ink">
-                {storageReport.lastPersistedTimestamp ? new Date(storageReport.lastPersistedTimestamp).toLocaleTimeString() : 'Al inicio'}
+                {storageReport.lastPersistedTimestamp ? formatLocalClockTime(storageReport.lastPersistedTimestamp) : 'Al inicio'}
               </dd>
             </div>
           </dl>
@@ -632,6 +634,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       --------------------------------------------------------------- */}
       <section aria-labelledby="settings-theme" className="space-y-4">
         <SectionHeading
+          id="settings-theme"
           title="Apariencia"
           description="El tema se guarda localmente y se aplica antes de la primera carga."
         />
@@ -657,6 +660,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       --------------------------------------------------------------- */}
       <section aria-labelledby="settings-language" className="space-y-4">
         <SectionHeading
+          id="settings-language"
           title={t('settings.language.title')}
           description={t('settings.language.desc')}
         />
@@ -685,6 +689,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       --------------------------------------------------------------- */}
       <section aria-labelledby="settings-speech" className="space-y-4">
         <SectionHeading
+          id="settings-speech"
           title="Audio y Accesibilidad por Voz"
           description="Lectura en voz alta de tarjetas/notas y dictado continuo 100% en tu navegador (Web Speech API)."
         />
@@ -766,6 +771,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       --------------------------------------------------------------- */}
       <form onSubmit={handleSaveAi} className="space-y-4" aria-labelledby="settings-ai">
         <SectionHeading
+          id="settings-ai"
           title="Tutor IA y proveedores"
           description="Elige el motor de inferencia. La privacidad depende del proveedor seleccionado."
         />

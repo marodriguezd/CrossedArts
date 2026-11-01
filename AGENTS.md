@@ -71,7 +71,7 @@
 cd frontend
 npm install          # Install dependencies
 npm run dev          # Start dev server (Vite)
-npm test             # Run test suite (871 tests, 82 files)
+npm test             # Run test suite (881 tests, 83 files)
 npm run typecheck    # TypeScript type checking
 npm run build        # Production build (outputs to dist/)
 ```
@@ -132,7 +132,7 @@ PYTHONPATH=. pytest backend/tests -q
 
 ## Testing Expectations
 
-The frontend test suite (871 tests, 82 files) validates:
+The frontend test suite (881 tests, 83 files) validates:
 - SQLite WASM initialization without network access
 - SM-2 algorithm accuracy
 - Study session lifecycle and persistence
@@ -169,6 +169,14 @@ The frontend test suite (871 tests, 82 files) validates:
 - Streaming rewrites: `onChunk` stays append-only, a rewritten tail travels as a replacement
   event, a deltas-only consumer keeps the previous fallback, and the end-to-end path
   (service → provider → engine) forwards the event to the consumer
+- UI ARIA resolution: every `aria-controls`/`aria-labelledby`/`aria-describedby` reference in
+  `components/` and `pages/` resolves to an id declared in the same file (checked over the sources),
+  and `SectionHeading` puts that id in the RENDERED `<h2>` (checked with `renderToStaticMarkup`;
+  `ui/primitives.ts` exists so the test runner can import it, since it cannot load `.tsx`)
+- Overlay coordination: `services/overlayStack.ts` orders open overlays by open time, keeps several
+  live instances of the same type, and makes only the top one answer `Escape`
+- Local clock presentation: `localDate.formatLocalClockTime` fixes 24 h `HH:MM:SS` (never the
+  browser's locale, never `24:00:00` from `hour12: false`)
 - Session scope contract (lesson / resource / global) on SQLite
 - Local LLM runtime contract: single `generate()` API, delta-only streaming plus an explicit
   replacement event (`onReplace`) that retracts already-streamed text when a WASM backend rewrites it
@@ -209,7 +217,7 @@ The frontend test suite (871 tests, 82 files) validates:
 
 6. **Command palette vs single-key shortcuts:** Handlers in `LessonWorkspace.tsx` and `ReviewCenter.tsx` compare `e.key` without checking modifiers. Any global shortcut handler must include `if (e.ctrlKey || e.metaKey || e.altKey) return;`.
 
-7. **Overlay z-index:** Command palette `z-[70]`, AIAssistantDrawer `z-50`, ConfirmDialog `z-[60]`. Overlays are mutually exclusive.
+7. **Overlay z-index:** Command palette `z-[70]`, page modals (Library, KnowledgeGraph, study modals) `z-50`, ConfirmDialog `z-[60]`, AIAssistantDrawer `z-[45]`. The drawer is the only NON-modal surface, so it lives BELOW any page modal: at the same layer its opaque panel covered the right-hand action buttons of the dialogs (`justify-end` footers) at viewports ≤1024 px. Overlays are mutually exclusive and coordinate through `services/overlayStack.ts`: an overlay registers on open and only the one on TOP reacts to `Escape`, so a keypress meant for a dialog never closes the drawer (and its conversation) underneath.
 
 8. **Color literal false positives:** `translate-y-` and `-translate-x-` contain substring `slate-`. Use `/\bslate-\d/` to check for actual literal palette colors.
 
@@ -270,7 +278,7 @@ CrossedArts/
 │   │   │   └── localMediaService.ts  # File System Access API
 │   │   └── hooks/                    # useTheme, useCommandPaletteHotkey, useGoalProgress
 │   ├── scripts/visual-qa.mjs         # Playwright visual/responsive QA (optional)
-│   └── tests/                        # 82 test files, 871 tests
+│   └── tests/                        # 83 test files, 881 tests
 ├── backend/
 │   ├── alembic/                      # Database migrations
 │   ├── app/

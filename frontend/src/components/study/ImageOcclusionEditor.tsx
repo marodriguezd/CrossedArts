@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Upload, Plus, Trash2, Image as ImageIcon, Eye, Layers, Check, AlertCircle } from 'lucide-react';
 import type { ImageOcclusionData, OcclusionMask } from '../../types/models.ts';
+import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
 import { dao } from '../../db/dao.ts';
 import { Button, cn } from '../ui/index.tsx';
 
@@ -79,11 +80,15 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    pushOverlay('occlusion-editor');
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && isTopOverlay('occlusion-editor')) onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      removeOverlay('occlusion-editor');
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sparkles, Trash2, Check, AlertCircle, BookOpen } from 'lucide-react';
 import type { GeneratedFlashcard, StudyDifficulty } from '../../lib/studyGeneration/types.ts';
+import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
 import { aiService } from '../../ai/aiService.ts';
 import { dao } from '../../db/dao.ts';
 import { Button, InlineStatus, cn } from '../ui/index.tsx';
@@ -34,16 +35,19 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
   const [saveSuccessCount, setSaveSuccessCount] = useState<number | null>(null);
   const topicInputRef = useRef<HTMLInputElement>(null);
 
-  // Accessibility: Escape closes the dialog and initial focus goes to the first field.
+  // Accessibility: Escape closes the dialog (only while it is the topmost
+  // overlay) and initial focus goes to the first field.
   useEffect(() => {
     if (!isOpen) return;
+    pushOverlay('flashcard-modal');
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && isTopOverlay('flashcard-modal')) onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     const focusTimer = setTimeout(() => topicInputRef.current?.focus(), 30);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
+      removeOverlay('flashcard-modal');
       clearTimeout(focusTimer);
     };
   }, [isOpen, onClose]);

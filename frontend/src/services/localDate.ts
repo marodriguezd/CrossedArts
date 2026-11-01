@@ -80,6 +80,29 @@ export function resolveLocalDay(now: Date = new Date(), utcOffset?: string): Loc
 }
 
 /**
+ * Formatea la hora del reloj local (24 h, `HH:MM:SS`) de un instante UTC.
+ *
+ * Por qué no es un `toLocaleTimeString()` pelado: sin locale explícito la forma
+ * la decide el NAVEGADOR, así que en un equipo en inglés esta app en español
+ * mostraba `6:27:01 PM` donde el resto de la interfaz usa `18:27:01`
+ * (FocusToday ya fija `es-ES`). El ciclo `h23` evita además el `24:00:00` de
+ * medianoche que produce `hour12: false` en algunas versiones de ICU.
+ *
+ * Devuelve cadena vacía para un instante inválido: el llamador decide qué
+ * mostrar en su lugar, nunca una fecha inventada.
+ */
+export function formatLocalClockTime(instant: string | number | Date): string {
+  const date = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('es-ES', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  });
+}
+
+/**
  * Shifts a `YYYY-MM-DD` calendar day by a number of days, in pure UTC.
  *
  * It works on the string, not on a local `Date`, so the day change does not

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle, ArrowUpRight, Settings } from 'lucide-react';
 import { aiService, AIChatMessage, AssistantResponse, type AISettings, type AIProvider } from '../../ai/aiService.ts';
+import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
 import type { RagSourceCitation } from '../../lib/localRag/contextBuilder.ts';
 import { localLlmEngine } from '../../lib/localLlm/engine.ts';
 import { cn, Button, ProgressBar } from '../ui/index.tsx';
@@ -118,12 +119,15 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     void detectWebGPUCapability().then(setGpuReport);
   }, [isOpen]);
 
-  // Drawer accessibility: Escape closes it, but first allows dismissing
-  // consent while the activation modal is open.
+  // Drawer accessibility: Escape closes it, but only while the drawer is the
+  // TOPMOST overlay (a page dialog above it must not be closed by the same
+  // keypress), and first allowing dismissal of consent while the activation
+  // modal is open.
   useEffect(() => {
     if (!isOpen) return;
+    pushOverlay('ai-drawer');
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && isTopOverlay('ai-drawer')) {
         const consentIsOpen =
           localAiRuntime.getStatus().stage === 'consent-required' && !consentDismissed;
         if (consentIsOpen) {
@@ -136,7 +140,10 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     };
     window.addEventListener('keydown', onKey);
     inputRef.current?.focus();
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      removeOverlay('ai-drawer');
+    };
   }, [isOpen, handleClose, consentDismissed]);
 
   // Local AI preparation is automatic: it reflects in the UI without the user
@@ -269,7 +276,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Tutor pedagógico"
-      className="fixed inset-y-0 right-0 z-50 flex w-full animate-slide-left flex-col border-l border-line bg-surface shadow-pop sm:w-[440px]"
+      className="fixed inset-y-0 right-0 z-[45] flex w-full animate-slide-left flex-col border-l border-line bg-surface shadow-pop sm:w-[440px]"
     >
       <div className="flex items-center justify-between border-b border-line bg-raised p-4">
         <div className="flex min-w-0 items-center gap-2.5">

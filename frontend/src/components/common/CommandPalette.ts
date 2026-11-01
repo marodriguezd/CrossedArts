@@ -28,6 +28,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Kbd, cn } from '../ui/primitives.ts';
+import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
 import { useLanguage } from '../../hooks/useLanguage.ts';
 import {
   groupPaletteItems,
@@ -140,8 +141,11 @@ export function CommandPalette({
     previouslyFocused.current =
       (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null;
 
+    pushOverlay('command-palette');
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      // Escape belongs to the topmost overlay only: the palette is above every
+      // dialog and the AI drawer, so it must not close them on the way out.
+      if (event.key === 'Escape' && isTopOverlay('command-palette')) {
         event.preventDefault();
         onClose();
       }
@@ -152,6 +156,7 @@ export function CommandPalette({
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      removeOverlay('command-palette');
       clearTimeout(focusTimer);
       previouslyFocused.current?.focus?.();
     };

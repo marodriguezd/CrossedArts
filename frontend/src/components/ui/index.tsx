@@ -7,8 +7,8 @@ import { cn } from './primitives.ts';
  * imported from the test runner. They are re-exported so consumers that already
  * imported them from this module keep working. See `primitives.ts`.
  */
-export { cn, Kbd, ProgressBar, resolveProgress } from './primitives.ts';
-export type { KbdProps, ProgressBarProps, ResolvedProgress } from './primitives.ts';
+export { cn, Kbd, ProgressBar, resolveProgress, SectionHeading } from './primitives.ts';
+export type { KbdProps, ProgressBarProps, ResolvedProgress, SectionHeadingProps } from './primitives.ts';
 
 /* -------------------------------------------------------------------------- */
 /* Button                                                                      */
@@ -203,9 +203,11 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   </div>
 );
 
-/* ProgressBar lives in ./primitives.ts (written with createElement) so its ARIA
- * and visual values can be asserted against the HTML rendered by the test
- * runner, which cannot import `.tsx`. It is re-exported above. */
+/* ProgressBar and SectionHeading live in ./primitives.ts (written with
+ * createElement) so their ARIA can be asserted against the HTML rendered by the
+ * test runner, which cannot import `.tsx`: the bar's value/range and the
+ * heading's id, which is the target `aria-labelledby` resolves against. Both are
+ * re-exported above. */
 
 /* -------------------------------------------------------------------------- */
 /* EmptyState                                                                  */
@@ -275,21 +277,4 @@ interface PanelProps {
  */
 export const Panel: React.FC<PanelProps> = ({ children, className, as: Tag = 'div' }) => (
   <Tag className={cn('rounded-xl border border-line bg-surface shadow-card', className)}>{children}</Tag>
-);
-
-interface SectionHeadingProps {
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-  className?: string;
-}
-
-export const SectionHeading: React.FC<SectionHeadingProps> = ({ title, description, action, className }) => (
-  <div className={cn('mb-4 flex items-end justify-between gap-4', className)}>
-    <div>
-      <h2 className="type-section text-ink">{title}</h2>
-      {description && <p className="type-meta mt-0.5">{description}</p>}
-    </div>
-    {action}
-  </div>
 );

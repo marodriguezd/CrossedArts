@@ -1,0 +1,5 @@
+Lee HANDOFF.md (el único vigente) y, antes de tocar nada, AGENTS.md y docs/ARCHITECTURE.md: persistencia, corpus y recuperación tienen contratos propios.
+Estado: rama main en 79d69c3 con el Grupo 5 del bloque 4 sin commitear (5 ficheros, verificado 855/0 y typecheck 0); no commitees ni reviertas nada sin permiso ni toques cambios ajenos.
+Sigue con la tarea pendiente del handoff: aplicar el mapper canónico de sqlRows.ts a los seis mappers inline de dao.ts (flashcards ×3, cursos, libros, fragmentos), midiendo el riesgo null→undefined por entidad y verificando por revert para que los tests nuevos fallen con el código viejo.
+Después resuelve la decisión sobre getRelatedConcepts y continúa la revisión por fases en bloques de similitud, uno a la vez, parando al acabar cada bloque para preguntar por dónde seguir.
+Verifica con los comandos de HANDOFF.md, mantén UI en español con tokens semánticos, cierra cada mensaje con CHUMBA y no subas nada al remoto; skills sugeridas: code-review, antislop-code, handoff.

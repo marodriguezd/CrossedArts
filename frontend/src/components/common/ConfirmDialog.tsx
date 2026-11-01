@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -43,8 +44,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     if (!isOpen) return;
     previouslyFocused.current = (typeof document !== 'undefined' ? document.activeElement : null) as HTMLElement | null;
 
+    pushOverlay('confirm-dialog');
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      // Only the topmost overlay consumes Escape: the drawer underneath (or a
+      // dialog) must survive a keypress meant for this confirmation.
+      if (e.key === 'Escape' && isTopOverlay('confirm-dialog')) {
         e.preventDefault();
         onCancel();
       }
@@ -55,6 +59,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
     return () => {
       window.removeEventListener('keydown', onKeyDown);
+      removeOverlay('confirm-dialog');
       clearTimeout(focusTimer);
       previouslyFocused.current?.focus?.();
     };
