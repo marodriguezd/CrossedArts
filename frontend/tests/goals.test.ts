@@ -136,7 +136,7 @@ test('goals: meta de curso mide lecciones completadas/total', () => {
   assert.strictEqual(progress.current, 4);
   assert.strictEqual(progress.target, 10);
   assert.strictEqual(progress.percent, 40);
-  assert.strictEqual(progress.unit, 'lecciones');
+  assert.strictEqual(progress.unit, 'lessons');
   assert.strictEqual(progress.reachedTarget, false);
   assert.strictEqual(progress.missingResource, false);
 });
@@ -175,7 +175,7 @@ test('goals: meta de libro usa páginas y tolera libros sin page_count', () => {
   assert.strictEqual(ok.current, 100);
   assert.strictEqual(ok.target, 300);
   assert.strictEqual(ok.percent, 33);
-  assert.strictEqual(ok.unit, 'páginas');
+  assert.strictEqual(ok.unit, 'pages');
 
   const noPages = computeGoalProgress(goal({ id: 'g2', kind: 'book', resource_id: 'b2' }), context({ books }));
   assert.strictEqual(noPages.measurable, false);
@@ -197,7 +197,7 @@ test('goals: meta de práctica mide piezas terminadas (con y sin objetivo explí
   assert.strictEqual(all.current, 2);
   assert.strictEqual(all.target, 4);
   assert.strictEqual(all.percent, 50);
-  assert.strictEqual(all.unit, 'piezas');
+  assert.strictEqual(all.unit, 'pieces');
 
   // Con recurso enlazado: solo cuenta los de ese recurso.
   const scoped = computeGoalProgress(
@@ -231,7 +231,7 @@ test('goals: meta de tiempo de estudio mide minutos desde su creación', () => {
   assert.strictEqual(progress.current, 120);
   assert.strictEqual(progress.target, 300);
   assert.strictEqual(progress.percent, 40);
-  assert.strictEqual(progress.unit, 'minutos');
+  assert.strictEqual(progress.unit, 'minutes');
 
   // Sin minutos registrados → 0 % real, no null.
   const zero = computeGoalProgress(
@@ -246,7 +246,7 @@ test('goals: meta personalizada nunca es medible', () => {
   const progress = computeGoalProgress(goal({ id: 'g1', kind: 'custom' }), context());
   assert.strictEqual(progress.measurable, false);
   assert.strictEqual(progress.percent, null);
-  assert.strictEqual(progress.unit, 'ninguna');
+  assert.strictEqual(progress.unit, 'none');
 });
 
 test('goals: progreso completo marca reachedTarget y se limita al 100 %', () => {

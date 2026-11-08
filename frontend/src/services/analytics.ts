@@ -12,13 +12,11 @@
  *  - Study days are LOCAL calendar days (services/localDate.ts), injectable so
  *    tests stay deterministic in any timezone.
  */
-import type { Book, Course, LearningSession, PracticeWork, TimeRangeFilter } from '../types/models.ts';
+import type { Book, Course, LearningSession, PracticeWork, TimeRangeFilter, DailyActivityPoint } from '../types/models.ts';
 import { resolveLocalDay, shiftIsoDay } from './localDate.ts';
-import { generateDailyActivitySeries } from './domainLogic.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 import { translateKey } from '../i18n/dictionaries.ts';
 import { summarizePracticeWork, type PracticeWorkSummary } from './practiceWork.ts';
-import type { DailyActivityPoint } from '../types/models.ts';
 
 /** Time ranges available in the analytics view. */
 export type AnalyticsRange = TimeRangeFilter;
@@ -280,6 +278,82 @@ export function computeResourceActivity(
   return [...rows.values()].sort(
     (a, b) => b.minutes - a.minutes || b.reviews - a.reviews || a.label.localeCompare(b.label)
   );
+}
+
+/**
+ * Builds a continuous daily series of aggregated study activity. Pads empty
+ * days with zero so charts stay uniform and predictable.
+ */
+export function generateDailyActivitySeries(
+  history: Array<{ date: string; minutes: number; reviews: number }>,
+  range: TimeRangeFilter,
+  todayStr: string,
+  lang: LanguageCode = 'es'
+): DailyActivityPoint[] {
+  const daysCount = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 0;
+  const historyMap = new Map<string, { minutes: number; reviews: number }>();
+  for (const h of history) {
+    const existing = historyMap.get(h.date) || { minutes: 0, reviews: 0 };
+    historyMap.set(h.date, {
+      minutes: existing.minutes + h.minutes,
+      reviews: existing.reviews + h.reviews
+    });
+  }
+
+  const formatShortLabel = (isoDate: string): string => {
+    const parts = isoDate.split('-');
+    if (parts.length < 3) return isoDate;
+    const [, mm, dd] = parts;
+    const monthNames: Record<string, string> = {
+      '01': translateKey(lang, 'chart.month.01'), '02': translateKey(lang, 'chart.month.02'),
+      '03': translateKey(lang, 'chart.month.03'), '04': translateKey(lang, 'chart.month.04'),
+      '05': translateKey(lang, 'chart.month.05'), '06': translateKey(lang, 'chart.month.06'),
+      '07': translateKey(lang, 'chart.month.07'), '08': translateKey(lang, 'chart.month.08'),
+      '09': translateKey(lang, 'chart.month.09'), '10': translateKey(lang, 'chart.month.10'),
+      '11': translateKey(lang, 'chart.month.11'), '12': translateKey(lang, 'chart.month.12')
+    };
+    return `${dd} ${monthNames[mm] || mm}`;
+  };
+
+  if (daysCount > 0) {
+    // Emit exactly the last N days ending today
+    const points: DailyActivityPoint[] = [];
+    const baseDate = new Date(`${todayStr}T00:00:00Z`);
+
+    for (let i = daysCount - 1; i >= 0; i--) {
+      const d = new Date(baseDate.getTime() - i * 86_400_000);
+      const iso = d.toISOString().slice(0, 10);
+      const data = historyMap.get(iso) || { minutes: 0, reviews: 0 };
+      points.push({
+        date: iso,
+        label: formatShortLabel(iso),
+        minutes: data.minutes,
+        reviews: data.reviews
+      });
+    }
+    return points;
+  }
+
+  // 'all' mode: sort every recorded day chronologically
+  const allDates = Array.from(historyMap.keys()).sort();
+  if (allDates.length === 0) {
+    return [{
+      date: todayStr,
+      label: formatShortLabel(todayStr),
+      minutes: 0,
+      reviews: 0
+    }];
+  }
+
+  return allDates.map(iso => {
+    const data = historyMap.get(iso)!;
+    return {
+      date: iso,
+      label: formatShortLabel(iso),
+      minutes: data.minutes,
+      reviews: data.reviews
+    };
+  });
 }
 
 /** Continuous daily series for charts (empty days zero-filled). */

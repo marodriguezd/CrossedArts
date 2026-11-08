@@ -4,6 +4,8 @@ import {
   type EmbeddingCapabilitiesReport,
   type EmbeddingRuntimeBackend
 } from './capabilities.ts';
+
+export type { EmbeddingRuntimeBackend, EmbeddingCapabilitiesReport };
 import { isWebGpuFatalError } from '../localLlm/capabilities.ts';
 import { embeddingCache, EMBEDDING_PIPELINE_VERSION, expectedDimensionsForModel } from './cache.ts';
 import { configureOnnxRuntimeWasm } from './ortRuntime.ts';

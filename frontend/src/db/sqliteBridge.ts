@@ -165,6 +165,8 @@ export interface StorageStatusReport {
   databaseSizeBytes: number;
 }
 
+export type StorageReport = StorageStatusReport;
+
 const SQLITE_HEADER_STRING = 'SQLite format 3\0';
 
 export function isValidSqliteBuffer(buffer: ArrayBuffer | Uint8Array): boolean {

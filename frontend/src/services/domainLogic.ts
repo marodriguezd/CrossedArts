@@ -58,48 +58,36 @@ export function adjustBookPage(currentPage: number, delta: number, totalPages: n
   return Math.max(0, Math.min(Math.round(target), totalPages));
 }
 
-export interface SM2State {
-  repetitionCount: number;
-  intervalDays: number;
-  easeFactor: number;
-}
+export {
+  calculateSM2,
+  formatNextReviewInterval,
+  type SM2State,
+  type SM2Result
+} from './sm2.ts';
 
-export interface SM2Result extends SM2State {
-  intervalModifier: string;
-}
+import {
+  formatPlaybackTime,
+  parseTimestampToSeconds,
+  extractTimestampParts,
+  getStoredPlaybackSeconds,
+  SUPPORTED_PLAYBACK_SPEEDS,
+  calculatePlaybackJump,
+  resolveNextPlaybackSpeed,
+  type TimestampPart
+} from './playback.ts';
 
-/**
- * Applies the SuperMemo-2 (SM-2) algorithm to one flashcard repetition.
- * Pure isolated function for determinism and testability.
- */
-export function calculateSM2(
-  currentState: SM2State,
-  grade: number
-): SM2Result {
-  let reps = currentState.repetitionCount;
-  let interval = currentState.intervalDays;
-  let ease = currentState.easeFactor;
+export {
+  formatPlaybackTime,
+  parseTimestampToSeconds,
+  extractTimestampParts,
+  getStoredPlaybackSeconds,
+  SUPPORTED_PLAYBACK_SPEEDS,
+  calculatePlaybackJump,
+  resolveNextPlaybackSpeed,
+  type TimestampPart
+};
 
-  if (grade >= 3) {
-    if (reps === 0) interval = 1;
-    else if (reps === 1) interval = 6;
-    else interval = Math.round(interval * ease);
-    reps += 1;
-  } else {
-    reps = 0;
-    interval = 1;
-  }
-
-  ease = Math.max(1.3, ease + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02)));
-  const easeFormatted = Number(ease.toFixed(2));
-
-  return {
-    repetitionCount: reps,
-    intervalDays: interval,
-    easeFactor: easeFormatted,
-    intervalModifier: `+${interval} days`
-  };
-}
+export { generateDailyActivitySeries } from './analytics.ts';
 
 export type StudyItemKind = 'flashcard' | 'practice';
 
@@ -130,16 +118,6 @@ export function parseUtcTimestamp(value: string | null | undefined): number {
   const normalized = value.trim().replace(' ', 'T');
   const withZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : `${normalized}Z`;
   return Date.parse(withZone);
-}
-
-export function formatNextReviewInterval(intervalDays: number, lang: LanguageCode = 'es'): string {
-  const days = Math.max(1, Math.round(intervalDays));
-  if (days === 1) return translateKey(lang, 'review.interval.day');
-  if (days < 30) return translateKey(lang, 'review.interval.days', { n: days });
-  const months = Math.round(days / 30);
-  return months === 1
-    ? translateKey(lang, 'review.interval.month')
-    : translateKey(lang, 'review.interval.months', { n: months });
 }
 
 export interface StudySessionCounters {
@@ -442,107 +420,6 @@ export function resolveShortcutOptionIndex(key: string, maxOptions: number): num
   return null;
 }
 
-/**
- * Formats seconds as 'mm:ss' or 'hh:mm:ss'.
- */
-export function formatPlaybackTime(seconds: number): string {
-  if (typeof seconds !== 'number' || isNaN(seconds) || seconds < 0) {
-    return '00:00';
-  }
-  const totalSecs = Math.floor(seconds);
-  const hrs = Math.floor(totalSecs / 3600);
-  const mins = Math.floor((totalSecs % 3600) / 60);
-  const secs = totalSecs % 60;
-
-  const pad = (n: number) => n.toString().padStart(2, '0');
-
-  if (hrs > 0) {
-    return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
-  }
-  return `${pad(mins)}:${pad(secs)}`;
-}
-
-/**
- * Converts a time string like '01:15', '01:05:30', or '[01:15]' to total seconds.
- */
-export function parseTimestampToSeconds(timestamp: string): number | null {
-  if (!timestamp) return null;
-  const clean = timestamp.replace(/^\[/, '').replace(/\]$/, '').trim();
-  const parts = clean.split(':').map(p => parseInt(p, 10));
-
-  if (parts.some(p => isNaN(p) || p < 0)) return null;
-
-  if (parts.length === 2) {
-    const [mins, secs] = parts;
-    if (secs >= 60) return null;
-    return mins * 60 + secs;
-  }
-
-  if (parts.length === 3) {
-    const [hrs, mins, secs] = parts;
-    if (mins >= 60 || secs >= 60) return null;
-    return hrs * 3600 + mins * 60 + secs;
-  }
-
-  return null;
-}
-
-export interface TimestampPart {
-  text: string;
-  isTimestamp: boolean;
-  seconds?: number;
-  rawTimestamp?: string;
-}
-
-/**
- * Splits text into plain-text chunks and interactive [mm:ss]/[hh:mm:ss] timestamps.
- */
-export function extractTimestampParts(content: string): TimestampPart[] {
-  if (!content) return [];
-  const regex = /\[(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\]/g;
-  const parts: TimestampPart[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({
-        text: content.slice(lastIndex, match.index),
-        isTimestamp: false
-      });
-    }
-
-    const fullTag = match[0];
-    const inner = fullTag.slice(1, -1);
-    const secs = parseTimestampToSeconds(inner);
-
-    if (secs !== null) {
-      parts.push({
-        text: fullTag,
-        isTimestamp: true,
-        seconds: secs,
-        rawTimestamp: inner
-      });
-    } else {
-      parts.push({
-        text: fullTag,
-        isTimestamp: false
-      });
-    }
-
-    lastIndex = match.index + fullTag.length;
-  }
-
-  if (lastIndex < content.length) {
-    parts.push({
-      text: content.slice(lastIndex),
-      isTimestamp: false
-    });
-  }
-
-  return parts;
-}
-
 export interface MarkdownInlineToken {
   type: 'text' | 'bold' | 'italic' | 'code' | 'timestamp';
   content: string;
@@ -652,82 +529,6 @@ export function filterSupportedFiles(files: File[] | FileList | null | undefined
   return list.filter(file => {
     const name = file.name.toLowerCase();
     return SUPPORTED_INGESTION_EXTENSIONS.some(ext => name.endsWith(ext));
-  });
-}
-
-/**
- * Builds a continuous daily series of aggregated study activity. Pads empty
- * days with zero so charts stay uniform and predictable.
- */
-export function generateDailyActivitySeries(
-  history: Array<{ date: string; minutes: number; reviews: number }>,
-  range: TimeRangeFilter,
-  todayStr: string,
-  lang: LanguageCode = 'es'
-): DailyActivityPoint[] {
-  const daysCount = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 0;
-  const historyMap = new Map<string, { minutes: number; reviews: number }>();
-  for (const h of history) {
-    const existing = historyMap.get(h.date) || { minutes: 0, reviews: 0 };
-    historyMap.set(h.date, {
-      minutes: existing.minutes + h.minutes,
-      reviews: existing.reviews + h.reviews
-    });
-  }
-
-  const formatShortLabel = (isoDate: string): string => {
-    const parts = isoDate.split('-');
-    if (parts.length < 3) return isoDate;
-    const [, mm, dd] = parts;
-    const monthNames: Record<string, string> = {
-      '01': translateKey(lang, 'chart.month.01'), '02': translateKey(lang, 'chart.month.02'),
-      '03': translateKey(lang, 'chart.month.03'), '04': translateKey(lang, 'chart.month.04'),
-      '05': translateKey(lang, 'chart.month.05'), '06': translateKey(lang, 'chart.month.06'),
-      '07': translateKey(lang, 'chart.month.07'), '08': translateKey(lang, 'chart.month.08'),
-      '09': translateKey(lang, 'chart.month.09'), '10': translateKey(lang, 'chart.month.10'),
-      '11': translateKey(lang, 'chart.month.11'), '12': translateKey(lang, 'chart.month.12')
-    };
-    return `${dd} ${monthNames[mm] || mm}`;
-  };
-
-  if (daysCount > 0) {
-    // Emit exactly the last N days ending today
-    const points: DailyActivityPoint[] = [];
-    const baseDate = new Date(`${todayStr}T00:00:00Z`);
-
-    for (let i = daysCount - 1; i >= 0; i--) {
-      const d = new Date(baseDate.getTime() - i * 86_400_000);
-      const iso = d.toISOString().slice(0, 10);
-      const data = historyMap.get(iso) || { minutes: 0, reviews: 0 };
-      points.push({
-        date: iso,
-        label: formatShortLabel(iso),
-        minutes: data.minutes,
-        reviews: data.reviews
-      });
-    }
-    return points;
-  }
-
-  // 'all' mode: sort every recorded day chronologically
-  const allDates = Array.from(historyMap.keys()).sort();
-  if (allDates.length === 0) {
-    return [{
-      date: todayStr,
-      label: formatShortLabel(todayStr),
-      minutes: 0,
-      reviews: 0
-    }];
-  }
-
-  return allDates.map(iso => {
-    const data = historyMap.get(iso)!;
-    return {
-      date: iso,
-      label: formatShortLabel(iso),
-      minutes: data.minutes,
-      reviews: data.reviews
-    };
   });
 }
 
@@ -936,56 +737,5 @@ export function filterNotesByQueryAndTag(
       foldForSearch(n.tags || '').includes(q)
     );
   });
-}
-
-/**
- * Safely reads saved playback seconds for a lesson from localStorage.
- * Returns null when missing, invalid, or when localStorage is unavailable.
- */
-export function getStoredPlaybackSeconds(lessonId: string): number | null {
-  if (typeof localStorage === 'undefined' || !lessonId) return null;
-  try {
-    const raw = localStorage.getItem(`crossedarts-playback:${lessonId}`);
-    if (!raw) return null;
-    const secs = parseFloat(raw);
-    return !isNaN(secs) && secs > 0 ? secs : null;
-  } catch {
-    return null;
-  }
-}
-
-export const SUPPORTED_PLAYBACK_SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
-
-/**
- * Computes the new playback second after a time jump (forward or backward),
- * clamped strictly to [0, duration].
- */
-export function calculatePlaybackJump(currentTime: number, deltaSeconds: number, duration: number = Infinity): number {
-  const safeCurrent = isNaN(currentTime) || currentTime < 0 ? 0 : currentTime;
-  const safeDuration = isNaN(duration) || duration <= 0 ? Infinity : duration;
-  const target = safeCurrent + deltaSeconds;
-  return Math.max(0, Math.min(safeDuration, target));
-}
-
-/**
- * Resolves the next playback speed when stepping up or down through the
- * app's standard speeds.
- */
-export function resolveNextPlaybackSpeed(currentSpeed: number, direction: 'increase' | 'decrease'): number {
-  const speeds = SUPPORTED_PLAYBACK_SPEEDS;
-  const idx = speeds.indexOf(currentSpeed as any);
-  if (direction === 'increase') {
-    if (idx === -1) {
-      const next = speeds.find(s => s > currentSpeed);
-      return next ?? speeds[speeds.length - 1];
-    }
-    return idx < speeds.length - 1 ? speeds[idx + 1] : speeds[idx];
-  } else {
-    if (idx === -1) {
-      const prev = [...speeds].reverse().find(s => s < currentSpeed);
-      return prev ?? speeds[0];
-    }
-    return idx > 0 ? speeds[idx - 1] : speeds[0];
-  }
 }
 

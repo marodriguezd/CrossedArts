@@ -11,6 +11,11 @@ import { sessionDao } from '../src/db/dao/sessions.ts';
 import { noteDao } from '../src/db/dao/notes.ts';
 import { practiceWorkDao } from '../src/db/dao/practiceWork.ts';
 import { goalDao } from '../src/db/dao/goals.ts';
+import { courseDao } from '../src/db/dao/courses.ts';
+import { flashcardDao } from '../src/db/dao/flashcards.ts';
+import { graphDao } from '../src/db/dao/graph.ts';
+import { searchDao } from '../src/db/dao/search.ts';
+import { resourceDao } from '../src/db/dao/resources.ts';
 import { SESSION_SELECT, SESSION_LIVE_DURATION_SQL } from '../src/db/dao/sessionQueries.ts';
 import { PRACTICE_WORK_ORDER_SQL, PRACTICE_WORK_COLUMNS } from '../src/db/dao/practiceWorkQueries.ts';
 import {
@@ -37,7 +42,15 @@ test('dao: la fachada expone la API pública sin cambiar su nombre', () => {
 
 test('dao: los módulos de dominio están compuestos en la fachada', () => {
   for (const [name, module] of Object.entries({
-    sessionDao, noteDao, practiceWorkDao, goalDao
+    sessionDao,
+    noteDao,
+    practiceWorkDao,
+    goalDao,
+    courseDao,
+    flashcardDao,
+    graphDao,
+    searchDao,
+    resourceDao
   } as Record<string, object>)) {
     for (const method of Object.keys(module)) {
       assert.strictEqual(
@@ -51,7 +64,17 @@ test('dao: los módulos de dominio están compuestos en la fachada', () => {
 
 test('dao: cada método tiene una única implementación (sin duplicados)', () => {
   const owners = new Map<string, string[]>();
-  for (const [name, module] of Object.entries({ sessionDao, noteDao, practiceWorkDao, goalDao } as Record<string, object>)) {
+  for (const [name, module] of Object.entries({
+    sessionDao,
+    noteDao,
+    practiceWorkDao,
+    goalDao,
+    courseDao,
+    flashcardDao,
+    graphDao,
+    searchDao,
+    resourceDao
+  } as Record<string, object>)) {
     for (const method of Object.keys(module)) {
       owners.set(method, [...(owners.get(method) || []), name]);
     }
@@ -93,7 +116,10 @@ test('dao: el mapeo de filas es único y compartido', () => {
     ['../src/db/dao/sessions.ts', 'mapLearningSessionRow'],
     ['../src/db/dao/notes.ts', 'mapNoteRow'],
     ['../src/db/dao/practiceWork.ts', 'mapPracticeWorkRow'],
-    ['../src/db/dao/goals.ts', 'SqlRow']
+    ['../src/db/dao/goals.ts', 'SqlRow'],
+    ['../src/db/dao/courses.ts', 'mapCourseRow'],
+    ['../src/db/dao/flashcards.ts', 'mapFlashcardRow'],
+    ['../src/db/dao/resources.ts', 'mapBookRow']
   ] as const) {
     const source = read(file);
     assert.ok(source.includes(mapper), `${file} debe leer filas con ${mapper}`);
@@ -137,19 +163,26 @@ test('dao: tarjetas, cursos, libros y fragmentos se leen con el mapper canónico
   assert.strictEqual(fragment.tags, undefined);
   assert.strictEqual(fragment.created_at, undefined);
 
-  // Y el DAO no proyecta ninguna de esas cuatro entidades a mano: si volviera
-  // la proyección artesanal, habría dos lecturas posibles de la misma fila.
+  // Y ningún módulo de dominio ni la fachada proyecta ninguna de esas cuatro
+  // entidades a mano: si volviera la proyección artesanal, habría dos lecturas
+  // posibles de la misma fila.
+  const flashcardSource = read('../src/db/dao/flashcards.ts');
+  const courseSource = read('../src/db/dao/courses.ts');
+  const resourceSource = read('../src/db/dao/resources.ts');
   const daoSource = read('../src/db/dao.ts');
-  assert.strictEqual((daoSource.match(/values\.map\(mapFlashcardRow\)/g) || []).length, 3);
-  assert.strictEqual((daoSource.match(/values\.map\(mapCourseRow\)/g) || []).length, 1);
-  assert.ok(daoSource.includes('mapCourseRow(res[0].values[0])'), 'la lectura por id usa el mismo mapper de curso');
-  assert.strictEqual((daoSource.match(/values\.map\(mapBookRow\)/g) || []).length, 1);
-  assert.ok(daoSource.includes('mapBookRow(res[0].values[0])'), 'la lectura por id usa el mismo mapper de libro');
-  assert.ok(daoSource.includes('values.map(mapResourceFragmentRow)'));
-  // Las proyecciones artesanales de esas cuatro entidades (el resto del DAO
-  // proyecta índices y meta del grafo, que no son filas de entidad).
-  for (const leftover of ['ease_factor: Number(', 'difficulty: row[9]', 'author: row[8]', 'page_count: Number(row[10])']) {
-    assert.ok(!daoSource.includes(leftover), `la proyección artesanal \`${leftover}\` no sobrevive`);
+
+  assert.strictEqual((flashcardSource.match(/values\.map\(mapFlashcardRow\)/g) || []).length, 3);
+  assert.strictEqual((courseSource.match(/values\.map\(mapCourseRow\)/g) || []).length, 1);
+  assert.ok(courseSource.includes('mapCourseRow(res[0].values[0])'), 'la lectura por id usa el mismo mapper de curso');
+  assert.strictEqual((resourceSource.match(/values\.map\(mapBookRow\)/g) || []).length, 1);
+  assert.ok(resourceSource.includes('mapBookRow(res[0].values[0])'), 'la lectura por id usa el mismo mapper de libro');
+  assert.ok(resourceSource.includes('values.map(mapResourceFragmentRow)'));
+
+  // Las proyecciones artesanales de esas cuatro entidades no sobreviven en ningún archivo
+  for (const source of [daoSource, flashcardSource, courseSource, resourceSource]) {
+    for (const leftover of ['ease_factor: Number(', 'difficulty: row[9]', 'author: row[8]', 'page_count: Number(row[10])']) {
+      assert.ok(!source.includes(leftover), `la proyección artesanal \`${leftover}\` no sobrevive`);
+    }
   }
 });
 

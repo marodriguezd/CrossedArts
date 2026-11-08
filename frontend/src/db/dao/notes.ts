@@ -19,7 +19,7 @@ import { mapNoteRow } from './sqlRows.ts';
 import type { Note } from '../../types/models.ts';
 
 /** Same width as the column and as the backend's `derive_note_title`. */
-const TITLE_MAX_LENGTH = 255;
+export const TITLE_MAX_LENGTH = 255;
 
 /**
  * First non-empty line of the content, or `fallback` when it has no text.
@@ -28,7 +28,7 @@ const TITLE_MAX_LENGTH = 255;
  * `backend/app/services/note.py`: the browser and the API must title the same
  * note the same way, so a change here is a change there.
  */
-function deriveNoteTitle(content: string | null | undefined, fallback: string): string {
+export function deriveNoteTitle(content: string | null | undefined, fallback: string): string {
   for (const line of (content ?? '').split(/\r?\n/)) {
     const stripped = line.trim();
     if (stripped) return stripped.slice(0, TITLE_MAX_LENGTH);

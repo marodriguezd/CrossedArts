@@ -32,31 +32,26 @@ export function goalKindLabel(kind: GoalKind, lang: LanguageCode = 'es'): string
   return translateKey(lang, `goals.kind.${kind}`);
 }
 
-/** Localized unit label for a goal measure. */
-const GOAL_UNIT_KEYS: Record<GoalUnit, string> = {
-  lecciones: 'lessons',
-  páginas: 'pages',
-  piezas: 'pieces',
-  minutos: 'minutes',
-  ninguna: 'none'
-};
+/** Measure units per goal kind (neutral domain identifiers). */
+export type GoalUnit = 'lessons' | 'pages' | 'pieces' | 'minutes' | 'none';
 
+/**
+ * Localized unit label for a goal measure.
+ * Resolves directly through i18n dictionaries (goals.unit.*).
+ */
 export function goalUnitLabel(unit: GoalUnit, lang: LanguageCode = 'es'): string {
-  return translateKey(lang, `goals.unit.${GOAL_UNIT_KEYS[unit] ?? 'none'}`);
+  return translateKey(lang, `goals.unit.${unit}`);
 }
 
 /** Goal kinds tied to a concrete resource (course or book). */
 export const GOAL_KINDS_REQUIRING_RESOURCE: ReadonlySet<GoalKind> = new Set<GoalKind>(['course', 'book']);
 
-/** Measure units per goal kind. The UI never concatenates them together. */
-export type GoalUnit = 'lecciones' | 'páginas' | 'piezas' | 'minutos' | 'ninguna';
-
 const GOAL_UNIT_BY_KIND: Record<GoalKind, GoalUnit> = {
-  course: 'lecciones',
-  book: 'páginas',
-  practice: 'piezas',
-  study_time: 'minutos',
-  custom: 'ninguna'
+  course: 'lessons',
+  book: 'pages',
+  practice: 'pieces',
+  study_time: 'minutes',
+  custom: 'none'
 };
 
 export interface GoalDraft {
@@ -222,7 +217,7 @@ export function computeGoalProgress(
   context: GoalProgressContext,
   lang: LanguageCode = 'es'
 ): GoalProgress {
-  const unit = GOAL_UNIT_BY_KIND[goal.kind] ?? 'ninguna';
+  const unit = GOAL_UNIT_BY_KIND[goal.kind] ?? 'none';
   const tr = (key: string, params?: Record<string, string | number | null | undefined>): string =>
     translateKey(lang, key, params);
 
@@ -289,7 +284,7 @@ export function computeGoalProgress(
 
     case 'custom':
     default:
-      return unmeasurable('ninguna', tr('goals.basis.customManual'));
+      return unmeasurable('none', tr('goals.basis.customManual'));
   }
 }
 

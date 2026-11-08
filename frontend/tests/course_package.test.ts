@@ -238,7 +238,13 @@ test('30.11 the resource detail exports a package and Settings imports it', () =
   assert.ok(detail.includes('exportCoursePackage'), 'El detalle debe exportar el paquete');
   assert.ok(detail.includes('downloadJsonFile'), 'Debe reutilizar la descarga segura de JSON');
 
-  const settings = readSource('../src/pages/SettingsView.tsx');
+  const settingsSources = [readSource('../src/pages/SettingsView.tsx')];
+  try {
+    settingsSources.push(readSource('../src/components/settings/DatabaseSection.tsx'));
+  } catch {
+    // DatabaseSection is optional if not extracted yet
+  }
+  const settings = settingsSources.join('\n');
   assert.ok(settings.includes('validateCoursePackage'), 'Ajustes debe validar el paquete antes de escribir');
   assert.ok(settings.includes('importCoursePackage'), 'Ajustes debe importar el paquete');
   assert.ok(settings.includes('Importar paquete'), 'Debe existir el control de importación de paquetes');

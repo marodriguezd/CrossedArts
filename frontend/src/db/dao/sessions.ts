@@ -45,12 +45,51 @@ import type {
   DailyActivityPoint,
   KPIMetrics,
   LearningSession,
+  StudySessionMode,
   StudySessionStatus,
   TimeRangeFilter,
   TodayStudySummary
 } from '../../types/models.ts';
+import {
+  resolveStudySessionScope,
+  validateStudySessionScope,
+  type StudySessionScope
+} from '../../services/sessionScope.ts';
+import { translateKey } from '../../i18n/dictionaries.ts';
+import { daoLang } from '../daoLanguage.ts';
 
 export const sessionDao = {
+  async startStudySession(params: {
+    mode: StudySessionMode;
+    resourceId?: string;
+    lessonId?: string;
+    scope?: StudySessionScope;
+  }): Promise<string> {
+    const db = dbBridge.getDatabase();
+    const anchors = { resourceId: params.resourceId, lessonId: params.lessonId };
+    const scope = params.scope ?? resolveStudySessionScope(anchors);
+    const consistency = validateStudySessionScope(scope, anchors, daoLang());
+    if (!consistency.ok) {
+      throw new Error(consistency.error || translateKey(daoLang(), 'dao.err.sessionScope'));
+    }
+
+    const id = `ss_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    db.run(
+      `INSERT INTO learning_session
+        (id, resource_id, lesson_id, scope, started_at, mode, status, duration_minutes, inactive_seconds, cards_reviewed, questions_answered, correct_answers)
+       VALUES (?, ?, ?, ?, datetime('now'), ?, 'active', 0, 0, 0, 0, 0)`,
+      [id, params.resourceId || null, params.lessonId || null, scope, params.mode]
+    );
+    // A persist failure propagates and rolls back: the UI must never start a
+    // ghost session that later shows as active.
+    try {
+      await dbBridge.persist();
+    } catch (err) {
+      db.run('DELETE FROM learning_session WHERE id = ?', [id]);
+      throw err;
+    }
+    return id;
+  },
   async getKPIs(): Promise<KPIMetrics> {
     const db = dbBridge.getDatabase();
     const resTotal = db.exec("SELECT COUNT(*) FROM learning_resource")[0]?.values[0][0] as number || 0;
