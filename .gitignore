@@ -149,3 +149,6 @@ HANDOFF.md
 logs/
 temp/
 tmp/
+
+# Contexto importado de conversaciones (no es código fuente)
+.cloud-attachments/

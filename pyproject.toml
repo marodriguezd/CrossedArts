@@ -29,10 +29,6 @@ warn_unused_ignores = false
 # esta lista se comprueba con TODOS los códigos activos; al tocar uno de estos,
 # se le retira su código.
 [[tool.mypy.overrides]]
-module = ["backend.app.api.dashboard"]
-disable_error_code = ["arg-type", "union-attr"]
-
-[[tool.mypy.overrides]]
 module = [
     "backend.app.api.ingestion",
     "backend.app.services.context",

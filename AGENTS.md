@@ -14,7 +14,8 @@
 - **Derived Data:** Learning goal progress, daily analytics streaks, and focus plans are strictly derived on read from relational data, never duplicated as independent state.
 - **Semantic Indexing:** Refreshed incrementally in the browser. In-flight content edits flag a dirty state that triggers a deterministic, coalesced follow-up pass without blocking UI reads.
 - **Optional Backend (`backend/`):** Optional helper for offline heavy ingestion (batch scanner/metadata extraction) and server-side LLM orchestration. The backend MUST NEVER silently become the source of truth for user learning state, learner progress, or notes.
-- **Legacy Compatibility:** All backward compatibility translations (for legacy DomestiK settings, database files, and directory paths) are strictly isolated in `backend/app/core/compatibility.py`. New features never reference legacy namespaces.
+- **Playback telemetry is not learning state:** `POST /media/{id}/progress` writes the resume position, the duration and its own `is_watched` flag. It never completes a lesson nor moves course progress: a `Range`-heavy stream or a re-requested mark would otherwise complete a lesson nobody watched (RFC 9110 safe-method semantics; completion is a client fact).
+- **Legacy Compatibility:** All backward compatibility translations (for legacy DomestiK settings, database files, and directory paths) are strictly isolated in `backend/app/core/compatibility.py`. New features never reference legacy namespaces. The legacy `DomestiKSettings` alias lives there too (module `__getattr__`, lazy import), never in `core/settings.py`.
 
 ## Invariants
 
@@ -34,10 +35,19 @@
 ### 3. Schema Migrations
 - New tables/columns require updates to: `schema.ts`, `exportImport.ts` (`getDatabaseTables()`), and `seedDemo.ts`
 - Migrations must be idempotent
+- A migration must land on the SAME schema `create_all()` produces, including column nullability:
+  `test_fresh_create_all_and_migrated_schema_agree` compares columns, foreign keys (with `ON DELETE`),
+  CHECKs and indexes table by table. It caught `note.created_at`/`updated_at` being nullable only on
+  migrated installs (fixed by `e3f4a5b6c7d8`).
 
 ### 3b. Domain Contracts Shared With The Backend
 - Session scope (`learning_session.scope`): `lesson`, `resource` or `global`. Global review is an explicit first-class scope, NOT a session without scope. Rule lives in `services/sessionScope.ts` (frontend) and `resolve_session_scope` (backend); both derive the scope from the anchors and validate declared scopes.
+- Session-scope case table: `shared/session-scope-cases.json` (root `shared/`, not under `frontend/` or `backend/`) holds the derivation, effective-scope and validation rows. Both suites read it, so parity is verified, not assumed.
+- Declared vs effective scope: the stored `scope` is HISTORY and is never rewritten when an anchor disappears. `resolveEffectiveStudySessionScope` / `resolve_effective_session_scope` derive the effective value on read (`resource` with no resource reports `global`). Write paths (`validateStudySessionScope`, `StartSessionRequest`, the model's `before_insert`/`before_update`) reject a declared scope that is incoherent with its anchors.
+- Session history survives deletion: both `learning_session` anchors are nullable and unlink with `ON DELETE SET NULL`, in the browser schema and in the backend (model + Alembic). Never re-add an FK `CASCADE` or an ORM `delete-orphan` there.
 - Notes: `note.resource_id` is NULLABLE. A standalone note is valid; deleting a resource/lesson unlinks (`ON DELETE SET NULL`) and never destroys user work. No placeholder resources are ever created.
+- `note.title` is contract, not decoration: NOT NULL in the canonical schema and derived from the first non-empty line of the content (255 max, neutral fallback «Nota»). ONE implementation lives in `models/activity.py` (`derive_note_title`) and the model applies it on insert/update (`_derive_note_title_on_write`), so a row built directly obeys the rule too; `services/note.py` re-exports that same function. Mirrors kept in sync: `deriveNoteTitle` in `db/dao/notes.ts` and the backfill in migration `d2e3f4a5b6c7`. A partial update cannot blank it. Changing the rule means changing every mirror.
+- Recent activity is honest: `RecentActivityItem.resource_id` is a REAL resource id or `None` — never the session's own id and never an invented `resource_type` (`lesson`/`global`/`standalone` are not resource types). Every item carries its own `title`; `scope` is emitted only on session items.
 
 ### 4. SM-2 Algorithm
 - Ease Factor never below 1.30
@@ -51,7 +61,10 @@
 - Revoke URLs on lesson change or view exit
 
 ### 6. UI Language & Theming
-- All UI text in Spanish
+- All UI text in Spanish, and NO UI copy lives in components: it belongs to `src/i18n/locales/*`
+  (six languages, `LocaleKey` derived from `en`) and is resolved through `translateKey`/`useLanguage` —
+  including attributes (`aria-label`, `title`, `placeholder`). `i18n_literal_guard.test.ts` is a per-file
+  RATCHET: new files must have zero Spanish literals and migrated copy lowers the budget, never raises it
 - Use semantic CSS tokens (`--c-canvas`, `--c-ink`, `--c-accent`) — no literal color palettes in JSX
 - Theme: light (cream) default, dark (charcoal) alternative, persisted in `localStorage`
 
@@ -71,7 +84,7 @@
 cd frontend
 npm install          # Install dependencies
 npm run dev          # Start dev server (Vite)
-npm test             # Run test suite (881 tests, 83 files)
+npm test             # Run test suite (907 tests, 89 files)
 npm run typecheck    # TypeScript type checking
 npm run build        # Production build (outputs to dist/)
 ```
@@ -132,7 +145,7 @@ PYTHONPATH=. pytest backend/tests -q
 
 ## Testing Expectations
 
-The frontend test suite (881 tests, 83 files) validates:
+The frontend test suite (907 tests, 89 files) validates:
 - SQLite WASM initialization without network access
 - SM-2 algorithm accuracy
 - Study session lifecycle and persistence
@@ -177,7 +190,34 @@ The frontend test suite (881 tests, 83 files) validates:
   live instances of the same type, and makes only the top one answer `Escape`
 - Local clock presentation: `localDate.formatLocalClockTime` fixes 24 h `HH:MM:SS` (never the
   browser's locale, never `24:00:00` from `hour12: false`)
-- Session scope contract (lesson / resource / global) on SQLite
+- Session scope contract (lesson / resource / global) on SQLite, including the declared-vs-effective split after
+  `ON DELETE SET NULL` and the fact that the anchor-requiring CHECK is gone
+- Session history survives the deletion of its resource or lesson, on both sides: the browser bridge rebuilds an
+  existing database that still carries the retired CHECK exactly once (the migrated DDL converges with a fresh
+  one) and the backend keeps every row through `upgrade`, `downgrade` and a second `upgrade`
+- Note title/tags contract: derived title on create, no blanking on partial update, and the four places that
+  implement the rule (backend service, browser DAO, migration backfill, schema) agree
+- Recent activity honesty: real resource id or `None`, no invented `resource_type`, own `title` per entry,
+  `scope` only on sessions (typed as a `Literal` domain), and a finalized session without an end stamp is
+  skipped instead of breaking the feed
+- Error-code contract: every domain failure carries its own `code`/`http_status` (`core/errors.py`
+  `DomainError`, subclasses per failure mode) and the router only forwards it; a missing lesson is
+  `LESSON_NOT_FOUND`, a parse failure is `NOTE_PARSE_ERROR` 422, and an unclassified failure stays a 500
+- Note-title rule holds for every construction path: the model derives it on write, not only `NoteService`
+- Semantic manifest lifecycle: the purge of a fragment that left the corpus is PERSISTED (a key deleted only in
+  memory came back on every boot and was purged again, so the manifest never shrank), and loading is per
+  identity `(modelId, pipelineVersion)` — a single "loaded" flag skipped a second model's stored hashes and
+  recomputed all of them
+- UI copy stays in the dictionaries: view copy, ARIA labels, titles and placeholders resolve through
+  `translateKey`/`useLanguage`, and the i18n guard caps the remaining Spanish literals per file
+- Orphan vectors: vectors of deleted material are freed by ONE reconcile (`pruneChunksNotIn`) against the
+  live corpus at indexing time, not by a hook on each delete path — a new delete path cannot leak them
+- Retrieval bookkeeping is honest: `fuseResults` derives `retrievalMode` from which channels actually found
+  the document (never from the score), `maxTotalResults` is an exact cap checked before appending, and
+  `trimChatHistory` preserves the transcript order instead of hoisting `system` turns to the front
+- Session-scope parity: `shared/session-scope-cases.json` is the ONE case table, read by
+  `frontend/tests/session_scope_parity.test.ts` and `backend/tests/test_session_scope_parity.py`. A new case
+  belongs in the fixture, so the two implementations cannot drift apart silently
 - Local LLM runtime contract: single `generate()` API, delta-only streaming plus an explicit
   replacement event (`onReplace`) that retracts already-streamed text when a WASM backend rewrites it
 - Task-aware, deterministic local model selection
@@ -233,6 +273,16 @@ The frontend test suite (881 tests, 83 files) validates:
 
 14. **Chunk boundaries are offsets, not absolute positions.** `splitAtBoundary` receives the chunk's `cursor` and measures every candidate cut *inside* the window that starts there. Comparing the absolute index of a line break against half the absolute limit held trivially from the second fragment on, and the cut landed on the very break the overlap had just re-read: a 2.4 KB note of ~590-character paragraphs became 211 fragments of 11–80 characters (one vector and one citation each). Any change to the boundary rules keeps that relative measurement.
 
+15. **pytest's `-q` hides its own summary.** `pyproject.toml` sets `addopts = "--tb=short -q"`, and with `-q` pytest prints no `383 passed` line at all: `| tail -5` shows progress dots and reads like a run that reported nothing. Read the result with `-o addopts="" --tb=no` and keep the exit status (`pipefail` or `PIPESTATUS`). The shell also exports `PORT=0`, so pytest needs `env -u PORT`. Baseline at this commit: 444 backend tests, 907 frontend tests in 89 files.
+
+19. **An error code is part of the error, never guessed from its message.** `get_http_exception(code, message, status_code)` takes the code the failure actually deserves, and the services carry it on the exception (`DomainError` in `core/errors.py`, subclassed as `NoteError` / `SessionError` / `ProgressError`). The blanket `except ValueError` it replaced told clients that a missing LESSON was `RESOURCE_NOT_FOUND`, and that a failed relation parse was a 404 on a note that existed; `POST /notes` with a bad anchor answered 400, which is the same lie in status form. A new failure mode gets its own exception class with its code and status, and an unclassified failure stays a 500 instead of being dressed as "not found".
+
+16. **Never re-add the anchor CHECK on `learning_session`.** `CHECK (scope <> 'resource' OR resource_id IS NOT NULL)` looks like a harmless integrity rule and is a data-loss bug: SQLite evaluates CHECK constraints on the internal UPDATE performed by `ON DELETE SET NULL`, so deleting a resource with a resource-scoped session fails with `CHECK constraint failed` — the material cannot be deleted and the history is not unlinked either. It is absent from `buildLearningSessionTableSql` (browser) and from the backend model/migration on purpose. Coherence of a DECLARED scope is validated on write and the EFFECTIVE scope is derived on read.
+
+17. **`learning_session` has two states that look contradictory and are not.** `finalized` is the formal close marker while `ended_at` is nullable and also written by the heartbeat. Any reader that presents "closed" activity filters on `finalized` AND `ended_at IS NOT NULL`; filtering on `finalized` alone turns one legal legacy row into a 500 for the whole dashboard (`RecentActivityItem.timestamp` is required).
+
+18. **One table definition per migration target.** `buildLearningSessionTableSql(tableName)` in `db/schema.ts` is the single source for `SCHEMA_SQL` and for the existing-database rebuild in `sqliteBridge.ts`, and the detector normalizes whitespace before comparing DDL. When the two copies were written separately, reformatting one made `hasSessionScopeChecks` return false forever and the table was rebuilt (and persisted) on every boot. Same shape as `buildPracticeWorkTableSql`.
+
 ## File Map
 
 ```
@@ -278,7 +328,7 @@ CrossedArts/
 │   │   │   └── localMediaService.ts  # File System Access API
 │   │   └── hooks/                    # useTheme, useCommandPaletteHotkey, useGoalProgress
 │   ├── scripts/visual-qa.mjs         # Playwright visual/responsive QA (optional)
-│   └── tests/                        # 83 test files, 881 tests
+│   └── tests/                        # 89 test files, 907 tests
 ├── backend/
 │   ├── alembic/                      # Database migrations
 │   ├── app/
