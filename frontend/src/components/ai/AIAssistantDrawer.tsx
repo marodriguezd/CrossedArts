@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLanguage } from '../../hooks/useLanguage.ts';
+import { translateKey } from '../../i18n/dictionaries.ts';
+import type { LanguageCode } from '../../i18n/languages.ts';
 import { X, Send, Bot, Sparkles, User, RefreshCw, Cpu, Database, AlertCircle, ArrowUpRight, Settings } from 'lucide-react';
 import { aiService, AIChatMessage, AssistantResponse, type AISettings, type AIProvider } from '../../ai/aiService.ts';
 import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
@@ -39,15 +42,9 @@ interface AIAssistantDrawerProps {
 }
 
 /** Type labels for citation provenance routes. */
-const CITATION_TYPE_LABELS: Record<RagSourceCitation['sourceType'], string> = {
-  course: 'Curso',
-  lesson: 'Lección',
-  book: 'Libro',
-  note: 'Nota',
-  concept: 'Concepto',
-  flashcard: 'Tarjeta',
-  practice: 'Práctica'
-};
+function citationTypeLabel(type: RagSourceCitation['sourceType'], lang: LanguageCode): string {
+  return translateKey(lang, `ai.citation.${type}`);
+}
 
 const PROVIDER_LABELS: Record<AIProvider, string> = {
   demo: 'Modo demo local',
@@ -70,13 +67,14 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
   onOpenCitation,
   onOpenSettings
 }) => {
+  const { t, effective } = useLanguage();
   const retrievalScope = (activeResourceId || activeLessonId)
     ? { resourceId: activeResourceId, lessonId: activeLessonId }
     : undefined;
   const [messages, setMessages] = useState<MessageItem[]>([
     {
       role: 'assistant',
-      content: '¡Hola! Soy tu tutor pedagógico de CrossedArts. Puedo responder dudas sobre tus cursos, libros y notas usando recuperación local en tu dispositivo. ¿En qué te ayudo hoy?'
+      content: t('ai.greeting')
     }
   ]);
   const [input, setInput] = useState('');
@@ -278,7 +276,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Tutor pedagógico"
+      aria-label={t('ai.tutorLabel')}
       className="fixed inset-y-0 right-0 z-[45] flex w-full animate-slide-left flex-col border-l border-line bg-surface shadow-pop sm:w-[440px]"
     >
       <div className="flex items-center justify-between border-b border-line bg-raised p-4">
@@ -315,10 +313,10 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
             <p className="mt-0.5 flex items-center gap-1 text-micro">
               <AlertCircle size={10} aria-hidden="true" />
               {isOnDevice
-                ? 'Las respuestas se generan en tu dispositivo.'
+                ? t('ai.privacyOnDevice')
                 : isLocalServer
-                  ? 'Se envía a tu servidor local de Ollama.'
-                  : 'Las consultas salen hacia la API de OpenAI.'}
+                  ? t('ai.privacyOllama')
+                  : t('ai.privacyOpenai')}
             </p>
           </div>
         </div>
@@ -396,7 +394,11 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
                                 : 'border border-line bg-canvas text-muted'
                           )}
                         >
-                          {m.retrievalMode === 'hybrid' ? '⚡ Híbrido' : m.retrievalMode === 'semantic' ? 'Semántico' : 'Léxico'}
+                          {m.retrievalMode === 'hybrid'
+                            ? t('ai.retrievalHybrid')
+                            : m.retrievalMode === 'semantic'
+                              ? t('ai.retrievalSemantic')
+                              : t('ai.retrievalLexical')}
                         </span>
                       )}
                     </span>
@@ -410,7 +412,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
                         {m.citations.map(citation => {
                           const breadcrumb = citation.path && citation.path.length > 0
                             ? citation.path.join(' › ')
-                            : CITATION_TYPE_LABELS[citation.sourceType];
+                            : citationTypeLabel(citation.sourceType, effective);
                           const canNavigate = Boolean(citation.navigate) && Boolean(onOpenCitation);
                           return (
                             <li key={citation.key} className="flex flex-col gap-0.5">
@@ -419,7 +421,9 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
                                   type="button"
                                   onClick={() => onOpenCitation?.(citation)}
                                   className="text-left font-semibold text-accent hover:underline focus-visible:underline"
-                                  title={`Abrir ${CITATION_TYPE_LABELS[citation.sourceType].toLowerCase()} de origen`}
+                                  title={t('ai.openCitation', {
+                                    type: citationTypeLabel(citation.sourceType, effective).toLowerCase()
+                                  })}
                                 >
                                   <SourceTitle title={citation.title} />
                                   <ArrowUpRight size={10} className="ml-0.5 inline align-baseline" aria-hidden="true" />
@@ -507,7 +511,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
             <ProgressBar
               className="mt-1.5"
               value={runtimeStatus.progress}
-              label="Progreso de preparación de IA local"
+              label={t('ai.localPrepProgress')}
             />
           )}
           {localUnavailable && runtimeStatus.errorAction && (

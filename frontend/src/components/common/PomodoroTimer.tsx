@@ -13,6 +13,7 @@ import {
   startPomodoro,
   tickPomodoro
 } from '../../services/pomodoro.ts';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import { cn } from '../ui/index.tsx';
 
 /** Soft chime generated with the Web Audio API (no external files). */
@@ -44,6 +45,7 @@ function playSoftChime(): void {
 const PHASE_LABEL: Record<PomodoroPhase, string> = { focus: 'Enfoque', break: 'Descanso' };
 
 export const PomodoroTimer: React.FC = () => {
+  const { t } = useLanguage();
   const [state, setState] = useState<PomodoroState>(() => loadPomodoro());
   const [now, setNow] = useState(() => Date.now());
   const [alert, setAlert] = useState<PomodoroPhase | null>(null);
@@ -158,12 +160,10 @@ export const PomodoroTimer: React.FC = () => {
           <Timer size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <p className="text-secondary font-semibold text-ink">
-              {alert === 'focus' ? '¡Enfoque completado!' : 'Descanso terminado'}
+              {alert === 'focus' ? t('pomodoro.focusDone') : t('pomodoro.breakDone')}
             </p>
             <p className="type-meta mt-0.5">
-              {alert === 'focus'
-                ? 'Tómate 5 minutos. Pulsa ▶ cuando quieras empezar el descanso.'
-                : 'Listo para otra ronda de 25 minutos. Pulsa ▶ para empezar.'}
+              {alert === 'focus' ? t('pomodoro.takeBreak') : t('pomodoro.nextRound')}
             </p>
           </div>
           <button

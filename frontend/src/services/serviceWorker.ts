@@ -118,7 +118,7 @@ export function createServiceWorkerUpdater(deps: ServiceWorkerUpdaterDeps): Serv
       try {
         listener(state);
       } catch (err) {
-        console.error('Error en listener de actualización del Service Worker:', err);
+        console.error('Service Worker update listener failed:', err);
       }
     }
     try {
@@ -207,7 +207,7 @@ export function createServiceWorkerUpdater(deps: ServiceWorkerUpdaterDeps): Serv
       }
       if (state.status !== 'waiting') setState({ status: 'idle' });
     } catch (err) {
-      console.warn('Registro de Service Worker no disponible o falló:', err);
+      console.warn('Service Worker registration unavailable or failed:', err);
       if (!disposed) setState({ status: 'error', hasUpdate: false });
     }
   };
@@ -221,7 +221,7 @@ export function createServiceWorkerUpdater(deps: ServiceWorkerUpdaterDeps): Serv
     try {
       worker.postMessage({ type: 'SKIP_WAITING' });
     } catch (err) {
-      console.warn('No se pudo activar la nueva versión del Service Worker:', err);
+      console.warn('Failed to activate the new Service Worker version:', err);
       accepted = false;
       setState({ status: 'waiting', hasUpdate: true });
     }

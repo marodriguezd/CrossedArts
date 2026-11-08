@@ -173,9 +173,19 @@ test('7.10 Media Matching: Weak title fallback rejects short/empty stems to prev
 test('7.11 Individual File Association: Validates extensions and tracks individual file', () => {
   // Test validation
   const invalidFile = { name: 'document.pdf', type: 'application/pdf' } as File;
-  const resInvalid = localMediaService.associateIndividualFile('l1', invalidFile);
+  // The message is copy, so it follows the UI language. The test PINS the
+  // language instead of depending on the environment's resolved locale, and
+  // proves both bundles are really used (no Spanish literal left in the code).
+  const resInvalid = localMediaService.associateIndividualFile('l1', invalidFile, 'es');
   assert.strictEqual(resInvalid.success, false);
   assert.ok(resInvalid.error?.includes('no soportado'));
+
+  const resEnglish = localMediaService.associateIndividualFile('l1', invalidFile, 'en');
+  assert.strictEqual(resEnglish.success, false);
+  assert.ok(
+    resEnglish.error?.includes('Unsupported format'),
+    'el mensaje se resuelve por idioma, no es un literal en español'
+  );
 
   // Test valid association
   const validFile = { name: 'lesson-video.mp4', type: 'video/mp4' } as File;

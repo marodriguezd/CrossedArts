@@ -399,15 +399,15 @@ export function bodySnippet(body: string, normalizedQuery: string, maxLength = 8
 
 /** Human label per group, reused by the UI. */
 export const PALETTE_GROUP_LABELS: Record<PaletteGroup, string> = {
-  accion: 'Acciones',
-  meta: 'Metas',
-  curso: 'Cursos',
-  libro: 'Libros',
-  recurso: 'Recursos',
-  practica: 'Trabajo práctico',
-  leccion: 'Lecciones',
-  nota: 'Notas',
-  concepto: 'Conceptos'
+  accion: translateKey('es', 'palette.group.accion'),
+  meta: translateKey('es', 'palette.group.meta'),
+  curso: translateKey('es', 'palette.group.curso'),
+  libro: translateKey('es', 'palette.group.libro'),
+  recurso: translateKey('es', 'palette.group.recurso'),
+  practica: translateKey('es', 'palette.group.practica'),
+  leccion: translateKey('es', 'palette.group.leccion'),
+  nota: translateKey('es', 'palette.group.nota'),
+  concepto: translateKey('es', 'palette.group.concepto')
 };
 
 const NAV_ACTION_STRINGS: Record<string, { titleKey: string; subtitleKey: string }> = {
@@ -486,13 +486,20 @@ export function resolveActionTab(actionId: string): string | null {
   }
 }
 
+/** Spanish fallback for a static navigation action (the catalogue is the source). */
+function navEs(id: string, part: 'title' | 'subtitle'): string {
+  const keys = NAV_ACTION_STRINGS[id];
+  if (!keys) return '';
+  return translateKey('es', part === 'title' ? keys.titleKey : keys.subtitleKey);
+}
+
 /** Static navigation actions. The destination resolves by id. */
 const NAVIGATION_ACTIONS: PaletteItem[] = [
   {
     id: 'accion:dashboard',
     group: 'accion',
-    title: 'Ir al Dashboard',
-    subtitle: 'Métricas, racha y accesos directos',
+    title: navEs('accion:dashboard', 'title'),
+    subtitle: navEs('accion:dashboard', 'subtitle'),
     icon: 'accion',
     destination: null,
     keywords: ['inicio', 'home', 'kpi', 'racha', 'metricas', 'resumen']
@@ -500,8 +507,8 @@ const NAVIGATION_ACTIONS: PaletteItem[] = [
   {
     id: 'accion:focus',
     group: 'accion',
-    title: 'Ir a Hoy',
-    subtitle: 'Qué hacer ahora, derivado de tus datos',
+    title: navEs('accion:focus', 'title'),
+    subtitle: navEs('accion:focus', 'subtitle'),
     icon: 'accion',
     destination: null,
     keywords: ['hoy', 'focus', 'enfoque', 'siguiente', 'recomendar', 'pendiente', 'dia']
@@ -509,8 +516,8 @@ const NAVIGATION_ACTIONS: PaletteItem[] = [
   {
     id: 'accion:analytics',
     group: 'accion',
-    title: 'Ir a Análisis',
-    subtitle: 'Tiempo, constancia y progreso real',
+    title: navEs('accion:analytics', 'title'),
+    subtitle: navEs('accion:analytics', 'subtitle'),
     icon: 'accion',
     destination: null,
     keywords: ['analitica', 'estadisticas', 'metricas', 'grafico', 'tendencia', 'progreso']
@@ -518,8 +525,8 @@ const NAVIGATION_ACTIONS: PaletteItem[] = [
   {
     id: 'accion:goals',
     group: 'accion',
-    title: 'Ir a Metas',
-    subtitle: 'Objetivos de aprendizaje con progreso medido',
+    title: navEs('accion:goals', 'title'),
+    subtitle: navEs('accion:goals', 'subtitle'),
     icon: 'accion',
     destination: null,
     keywords: ['metas', 'objetivos', 'goals', 'planificacion', 'fecha', 'cumplir']
@@ -527,8 +534,8 @@ const NAVIGATION_ACTIONS: PaletteItem[] = [
   {
     id: 'accion:library',
     group: 'accion',
-    title: 'Ir a la Biblioteca',
-    subtitle: 'Catálogo de cursos, libros y recursos',
+    title: navEs('accion:library', 'title'),
+    subtitle: navEs('accion:library', 'subtitle'),
     icon: 'accion',
     destination: null,
     keywords: ['catalogo', 'recursos', 'cursos', 'libros']
@@ -536,8 +543,8 @@ const NAVIGATION_ACTIONS: PaletteItem[] = [
   {
     id: 'accion:graph',
     group: 'accion',
-    title: 'Abrir el Grafo de conocimiento',
-    subtitle: 'Relaciones entre cursos, notas y conceptos',
+    title: navEs('accion:graph', 'title'),
+    subtitle: navEs('accion:graph', 'subtitle'),
     icon: 'accion',
     destination: null,
     keywords: ['grafo', 'red', 'conexiones', 'mapa', 'relaciones']
@@ -545,8 +552,8 @@ const NAVIGATION_ACTIONS: PaletteItem[] = [
   {
     id: 'accion:notes',
     group: 'accion',
-    title: 'Ir a Notas',
-    subtitle: 'Todas las notas de estudio',
+    title: navEs('accion:notes', 'title'),
+    subtitle: navEs('accion:notes', 'subtitle'),
     icon: 'accion',
     destination: null,
     keywords: ['notas', 'apuntes', 'markdown']
@@ -554,8 +561,8 @@ const NAVIGATION_ACTIONS: PaletteItem[] = [
   {
     id: 'accion:settings',
     group: 'accion',
-    title: 'Ir a Ajustes',
-    subtitle: 'Copias de seguridad, IA local e índice semántico',
+    title: navEs('accion:settings', 'title'),
+    subtitle: navEs('accion:settings', 'subtitle'),
     icon: 'accion',
     destination: null,
     keywords: ['ajustes', 'configuracion', 'preferencias', 'backup', 'respaldo']

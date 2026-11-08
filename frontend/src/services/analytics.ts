@@ -254,14 +254,16 @@ export function computeResourceActivity(
   sessions: readonly LearningSession[],
   range: AnalyticsRange,
   today: string,
-  utcOffset?: string
+  utcOffset?: string,
+  lang: LanguageCode = 'es'
 ): ResourceActivityRow[] {
   const { current } = resolveRangeWindows(range, today);
   const rows = new Map<string, ResourceActivityRow>();
 
   for (const session of filterSessionsByWindow(sessions, current, utcOffset)) {
     const key = session.resource_id || `__general__:${session.resource_title || 'general'}`;
-    const label = session.resource_title || session.lesson_title || 'Estudio general';
+    const label =
+      session.resource_title || session.lesson_title || translateKey(lang, 'analytics.general');
     const row = rows.get(key) ?? {
       resourceId: session.resource_id ?? null,
       label,

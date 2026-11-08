@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, X } from 'lucide-react';
 import { cn } from './primitives.ts';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 
 /**
  * `cn` and `Kbd` live in `primitives.ts` (not here) because a `.tsx` cannot be
@@ -146,12 +147,17 @@ interface SearchInputProps {
 export const SearchInput: React.FC<SearchInputProps> = ({
   value,
   onChange,
-  placeholder = 'Buscar…',
+  placeholder,
   label,
   className,
   onSubmit,
   autoFocus,
-}) => (
+}) => {
+  const { t } = useLanguage();
+  // The default placeholder is copy, not a constant: it follows the UI language
+  // like every other string instead of staying Spanish for non-Spanish users.
+  const hint = placeholder ?? t('ui.searchPlaceholder');
+  return (
   <div className={cn('relative flex items-center', className)}>
     <label htmlFor={`search-${label.replace(/\s+/g, '-').toLowerCase()}`} className="sr-only">
       {label}
@@ -170,7 +176,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
       onKeyDown={(e) => {
         if (e.key === 'Enter' && onSubmit) onSubmit();
       }}
-      placeholder={placeholder}
+      placeholder={hint}
       className={cn(
         'h-9 w-full rounded-lg border border-line bg-surface pl-9 pr-8 text-secondary text-ink',
         'placeholder:text-faint focus:border-accent/50 focus:outline-none focus-visible:outline-none',
@@ -181,7 +187,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
     {value && (
       <button
         type="button"
-        aria-label="Borrar búsqueda"
+        aria-label={t('ui.clearSearch')}
         onClick={() => onChange('')}
         className="absolute right-2 text-faint hover:text-ink transition-colors"
       >
@@ -189,7 +195,8 @@ export const SearchInput: React.FC<SearchInputProps> = ({
       </button>
     )}
   </div>
-);
+  );
+};
 
 /* ProgressBar and SectionHeading live in ./primitives.ts (written with
  * createElement) so their ARIA can be asserted against the HTML rendered by the

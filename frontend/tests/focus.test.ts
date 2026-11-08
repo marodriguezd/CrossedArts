@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert';
 
 import {
-  FOCUS_EMPTY_MESSAGE,
   FOCUS_PRIORITY,
   buildFocusPlan,
   buildFocusSummary,
@@ -10,6 +9,7 @@ import {
   type FocusInput
 } from '../src/services/focus.ts';
 import { computeGoalProgress, type GoalProgressContext } from '../src/services/goals.ts';
+import { translateKey } from '../src/i18n/dictionaries.ts';
 import type {
   Course,
   LearningGoal,
@@ -75,8 +75,13 @@ function goal(overrides: Partial<LearningGoal> & { id: string }): LearningGoal {
 test('focus: sin datos accionables el plan queda vacío (estado vacío honesto)', () => {
   const plan = buildFocusPlan(input());
   assert.deepStrictEqual(plan, []);
-  assert.ok(FOCUS_EMPTY_MESSAGE.length > 0, 'Debe existir un mensaje de estado vacío');
-  assert.doesNotMatch(FOCUS_EMPTY_MESSAGE, /deberías|recomendamos|potencial/i);
+  // The empty state is UI copy, so it lives in the catalogue the view renders.
+  // The old `FOCUS_EMPTY_MESSAGE` constant duplicated it and no caller used it.
+  const emptyTitle = translateKey('es', 'focus.emptyTitle');
+  const emptyHint = translateKey('es', 'focus.emptyHint');
+  assert.ok(emptyTitle.length > 0, 'Debe existir un título de estado vacío');
+  assert.ok(emptyHint.length > 0, 'Debe existir una pista de estado vacío');
+  assert.doesNotMatch(`${emptyTitle} ${emptyHint}`, /deberías|recomendamos|potencial/i);
 });
 
 test('focus: las tarjetas pendientes encabezan el plan con su contador', () => {

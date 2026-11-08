@@ -43,10 +43,10 @@ export interface GalleryItem {
 
 /** Localized labels per artifact category. */
 export const ARTIFACT_KIND_LABELS: Record<ArtifactKind, string> = {
-  course: 'Curso',
-  book: 'Libro',
-  resource: 'Recurso',
-  practice: 'Trabajo práctico'
+  course: translateKey('es', 'gallery.kind.course'),
+  book: translateKey('es', 'gallery.kind.book'),
+  resource: translateKey('es', 'gallery.kind.resource'),
+  practice: translateKey('es', 'gallery.kind.practice')
 };
 
 /** Localized artifact-kind label. Defaults to Spanish (callers omit it). */

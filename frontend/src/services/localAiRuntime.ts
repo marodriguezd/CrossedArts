@@ -8,6 +8,13 @@ import { getStoredEmbeddingModelId } from './embeddingModelPreference.ts';
 import { dao } from '../db/dao.ts';
 import type { SemanticChunk } from '../lib/localEmbeddings/chunking.ts';
 import { buildSemanticCorpus } from '../lib/localEmbeddings/corpus.ts';
+import { translateKey } from '../i18n/dictionaries.ts';
+import { resolveAppLanguage } from '../i18n/resolveAppLanguage.ts';
+
+/** User-facing status copy, resolved in the active UI language. */
+function tr(key: string, params?: Record<string, string | number | null | undefined>): string {
+  return translateKey(resolveAppLanguage(), key, params);
+}
 
 /**
  * CrossedArts — Local AI runtime with automatic preparation.
@@ -121,7 +128,7 @@ const INITIAL_LLM_STATUS: LocalAiStatus = {
 const INITIAL_SEMANTIC_STATUS: SemanticStatus = {
   stage: 'idle',
   progress: 0,
-  message: 'Búsqueda semántica en reposo',
+  message: tr('ai.semantic.idle'),
   indexed: 0,
   total: 0
 };
@@ -163,25 +170,25 @@ function categorizeLlmError(err: any): Pick<LocalAiStatus, 'errorCategory' | 'er
   ) {
     return {
       errorCategory: 'shader-incompatible',
-      errorAction: 'Incompatibilidad de shaders WebGPU con tu tarjeta gráfica. Te recomendamos cambiar a Llama 3.2 1B o usar el modelo CPU (WASM).'
+      errorAction: tr('ai.err.shader')
     };
   }
   if (raw.includes('webgpu') || raw.includes('adapter') || raw.includes('unsupported')) {
     return {
       errorCategory: 'unsupported-browser',
-      errorAction: 'Puedes seguir usando el modo demostración o conectar Ollama.'
+      errorAction: tr('ai.err.demoFallback')
     };
   }
   if (raw.includes('device lost') || raw.includes('out of memory') || raw.includes('memory')) {
     return {
       errorCategory: 'insufficient-resources',
-      errorAction: 'Cierra otras pestañas pesadas e inténtalo de nuevo.'
+      errorAction: tr('ai.err.memory')
     };
   }
   if (raw.includes('fetch') || raw.includes('network') || raw.includes('failed to load') || raw.includes('offline')) {
     return {
       errorCategory: 'offline-uncached',
-      errorAction: 'Conéctate una vez para completar la descarga.'
+      errorAction: tr('ai.err.offline')
     };
   }
   return {
@@ -351,9 +358,9 @@ export class LocalAiRuntime {
       return this.setLlmStatus({
         stage: 'unsupported',
         progress: 0,
-        message: 'La IA local no está disponible en este dispositivo.',
+        message: tr('ai.err.unavailable'),
         errorCategory: 'unsupported-browser',
-        errorAction: 'Puedes seguir usando el modo demostración o conectar Ollama.'
+        errorAction: tr('ai.err.demoFallback')
       });
     }
 
@@ -376,9 +383,9 @@ export class LocalAiRuntime {
       return this.setLlmStatus({
         stage: 'unsupported',
         progress: 0,
-        message: 'La IA local no está disponible en este dispositivo.',
+        message: tr('ai.err.unavailable'),
         errorCategory: 'unsupported-browser',
-        errorAction: 'Puedes seguir usando el modo demostración o conectar Ollama.'
+        errorAction: tr('ai.err.demoFallback')
       });
     }
 
@@ -399,11 +406,11 @@ export class LocalAiRuntime {
       return this.setLlmStatus({
         stage: 'error',
         progress: 0,
-        message: 'La IA local todavía no está disponible sin conexión.',
+        message: tr('ai.err.offlineNotReady'),
         modelId: model.id,
         modelName: model.name,
         errorCategory: 'offline-uncached',
-        errorAction: 'Conéctate una vez para prepararla y después podrás usarla sin conexión.'
+        errorAction: tr('ai.err.offlinePrepare')
       });
     }
 
@@ -485,7 +492,7 @@ export class LocalAiRuntime {
         progress: 0,
         indexed: 0,
         total: 0,
-        message: 'La búsqueda semántica se preparará al activar la IA local.',
+        message: tr('ai.semantic.afterConsent'),
         errorCategory: undefined
       });
     }
@@ -496,7 +503,7 @@ export class LocalAiRuntime {
     this.inFlightSemantic = this.prepareSemantic()
       .catch((err: any) => this.setSemanticStatus({
         stage: 'error',
-        message: 'No se pudo preparar la búsqueda semántica.',
+        message: tr('ai.semantic.failed'),
         errorCategory: 'indexing-failed'
       }))
       .finally(() => { this.inFlightSemantic = null; });
@@ -525,13 +532,13 @@ export class LocalAiRuntime {
     if (!this.deps.isBrowser()) {
       return this.setSemanticStatus({
         stage: 'error',
-        message: 'La búsqueda semántica no está disponible en este entorno.',
+        message: tr('ai.semantic.unavailable'),
         errorCategory: 'semantic-unavailable'
       });
     }
 
     try {
-      this.setSemanticStatus({ stage: 'preparing', progress: 0, message: 'Preparando búsqueda…' });
+      this.setSemanticStatus({ stage: 'preparing', progress: 0, message: tr('ai.semantic.preparing') });
 
       // Deterministic loop coalescing reindexing when dirty occurs during a pass
       let passCount = 0;
@@ -554,7 +561,7 @@ export class LocalAiRuntime {
 
         // No embeddings are downloaded for a still-empty library.
         if (total === 0) {
-          return this.setSemanticStatus({ stage: 'ready', progress: 100, indexed: 0, total: 0, message: 'Búsqueda semántica lista' });
+          return this.setSemanticStatus({ stage: 'ready', progress: 100, indexed: 0, total: 0, message: tr('ai.semantic.ready') });
         }
 
         if (
@@ -571,7 +578,7 @@ export class LocalAiRuntime {
           await this.deps.embeddingEngine.pruneStaleCache?.(activeModelId);
         } catch { /* a purge must never block indexing */ }
 
-        this.setSemanticStatus({ stage: 'indexing', progress: 0, message: 'Preparando búsqueda…' });
+        this.setSemanticStatus({ stage: 'indexing', progress: 0, message: tr('ai.semantic.preparing') });
 
         await this.deps.embeddingEngine.indexChunks(chunks, (indexed, count) => {
           const safeTotal = count || total;
@@ -580,7 +587,7 @@ export class LocalAiRuntime {
             indexed,
             total: safeTotal,
             progress: safeTotal > 0 ? Math.round((indexed / safeTotal) * 100) : 0,
-            message: 'Preparando búsqueda…'
+            message: tr('ai.semantic.preparing')
           });
         });
 
@@ -590,11 +597,11 @@ export class LocalAiRuntime {
         }
       }
 
-      return this.setSemanticStatus({ stage: 'ready', progress: 100, indexed: finalTotal, total: finalTotal, message: 'Búsqueda semántica lista' });
+      return this.setSemanticStatus({ stage: 'ready', progress: 100, indexed: finalTotal, total: finalTotal, message: tr('ai.semantic.ready') });
     } catch (err: any) {
       return this.setSemanticStatus({
         stage: 'error',
-        message: 'No se pudo preparar la búsqueda semántica.',
+        message: tr('ai.semantic.failed'),
         errorCategory: 'indexing-failed'
       });
     }

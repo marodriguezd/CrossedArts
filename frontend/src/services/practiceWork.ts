@@ -9,12 +9,12 @@ import { computeContentHash } from '../lib/localEmbeddings/chunking.ts';
 import { translateKey } from '../i18n/dictionaries.ts';
 import type { LanguageCode } from '../i18n/languages.ts';
 export const PRACTICE_WORK_KIND_LABELS: Record<PracticeWorkKind, string> = {
-  exercise: 'Ejercicio',
-  project: 'Proyecto',
-  essay: 'Ensayo',
-  drawing: 'Dibujo',
-  code: 'Código',
-  other: 'Otro'
+  exercise: translateKey('es', 'practice.kind.exercise'),
+  project: translateKey('es', 'practice.kind.project'),
+  essay: translateKey('es', 'practice.kind.essay'),
+  drawing: translateKey('es', 'practice.kind.drawing'),
+  code: translateKey('es', 'practice.kind.code'),
+  other: translateKey('es', 'practice.kind.other')
 };
 
 /** Stable order for populating selectors (never object-key order). */
@@ -31,9 +31,9 @@ export const PRACTICE_WORK_STATUS_LABELS: Record<
   PracticeWorkStatus,
   { text: string; tone: 'neutral' | 'accent' | 'success' }
 > = {
-  PLANNED: { text: 'Planificado', tone: 'neutral' },
-  IN_PROGRESS: { text: 'En marcha', tone: 'accent' },
-  DONE: { text: 'Terminado', tone: 'success' }
+  PLANNED: { text: translateKey('es', 'practice.status.PLANNED'), tone: 'neutral' },
+  IN_PROGRESS: { text: translateKey('es', 'practice.status.IN_PROGRESS'), tone: 'accent' },
+  DONE: { text: translateKey('es', 'practice.status.DONE'), tone: 'success' }
 };
 
 export const PRACTICE_WORK_STATUSES: PracticeWorkStatus[] = ['PLANNED', 'IN_PROGRESS', 'DONE'];
@@ -75,48 +75,51 @@ export interface PracticeWorkValidation {
  * or reviewed. 3. Self-ratings, when present, run 0-5 (same scale as SM-2).
  * 4. `blob:` URLs are never accepted as persisted artifacts.
  */
-export function validatePracticeWorkDraft(draft: PracticeWorkDraft): PracticeWorkValidation {
+export function validatePracticeWorkDraft(
+  draft: PracticeWorkDraft,
+  lang: LanguageCode = 'es'
+): PracticeWorkValidation {
   if (!draft.title || !draft.title.trim()) {
-    return { ok: false, error: 'El trabajo práctico necesita un título.' };
+    return { ok: false, error: translateKey(lang, 'practice.errTitle') };
   }
 
   const linked = Boolean(draft.resource_id || draft.lesson_id || draft.concept_id);
   if (!linked) {
-    return {
-      ok: false,
-      error: 'Vincula el trabajo a un recurso, una lección o un concepto para poder encontrarlo después.'
-    };
+    return { ok: false, error: translateKey(lang, 'practice.errLink') };
   }
 
   if (draft.self_rating !== undefined && draft.self_rating !== null) {
     const rating = draft.self_rating;
     if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
-      return { ok: false, error: 'La autoevaluación debe estar entre 0 y 5.' };
+      return { ok: false, error: translateKey(lang, 'practice.errRating') };
     }
   }
 
   const artifact = (draft as { artifact_url?: string | null }).artifact_url;
   if (artifact && artifact.startsWith('blob:')) {
-    return { ok: false, error: 'No se pueden guardar URLs temporales (blob:) como artefacto.' };
+    return { ok: false, error: translateKey(lang, 'practice.errBlob') };
   }
 
   // Workspace: the checklist must stay usable.
   if (draft.checklist !== undefined && draft.checklist !== null) {
     if (!Array.isArray(draft.checklist)) {
-      return { ok: false, error: 'La lista de verificación no tiene un formato válido.' };
+      return { ok: false, error: translateKey(lang, 'practice.errChecklistFormat') };
     }
     if (draft.checklist.length > MAX_CHECKLIST_ITEMS) {
-      return { ok: false, error: `La lista de verificación no puede superar ${MAX_CHECKLIST_ITEMS} elementos.` };
+      return {
+        ok: false,
+        error: translateKey(lang, 'practice.errChecklistMax', { n: MAX_CHECKLIST_ITEMS })
+      };
     }
     for (const item of draft.checklist) {
       if (!item || typeof item.text !== 'string' || !item.text.trim()) {
-        return { ok: false, error: 'Los elementos de la lista deben tener texto.' };
+        return { ok: false, error: translateKey(lang, 'practice.errChecklistItem') };
       }
     }
   }
 
   if (draft.content !== undefined && draft.content !== null && typeof draft.content !== 'string') {
-    return { ok: false, error: 'El contenido del espacio de trabajo no es texto válido.' };
+    return { ok: false, error: translateKey(lang, 'practice.errContent') };
   }
 
   return { ok: true };
@@ -252,5 +255,5 @@ export function practiceWorkStatusLabel(status?: string, lang: LanguageCode = 'e
   if (status && status in PRACTICE_WORK_STATUS_LABELS) {
     return translateKey(lang, `practice.status.${status}`);
   }
-  return PRACTICE_WORK_STATUS_LABELS.PLANNED.text;
+  return translateKey(lang, 'practice.status.PLANNED');
 }

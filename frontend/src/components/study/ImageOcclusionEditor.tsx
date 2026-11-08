@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import { X, Upload, Plus, Trash2, Image as ImageIcon, Eye, Layers, Check, AlertCircle } from 'lucide-react';
 import type { ImageOcclusionData, OcclusionMask } from '../../types/models.ts';
 import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
@@ -27,6 +28,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
   resourceId,
   lessonId
 }) => {
+  const { t } = useLanguage();
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
 
   const handleProcessImage = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
-      setErrorMsg('Por favor selecciona un archivo de imagen válido (PNG, JPG, WebP, SVG).');
+      setErrorMsg(t('occlusion.errInvalidImage'));
       return;
     }
     setErrorMsg(null);
@@ -55,7 +57,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
       }
     };
     reader.readAsDataURL(file);
-  }, [front]);
+  }, [front, t]);
 
   // Paste support (Ctrl+V)
   useEffect(() => {
@@ -156,15 +158,15 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
 
   const handleSave = async () => {
     if (!imageDataUrl) {
-      setErrorMsg('Debes añadir una imagen para crear la tarjeta de oclusión.');
+      setErrorMsg(t('occlusion.errNoImage'));
       return;
     }
     if (masks.length === 0) {
-      setErrorMsg('Debes dibujar al menos un área de oclusión sobre la imagen.');
+      setErrorMsg(t('occlusion.errNoMask'));
       return;
     }
     if (!front.trim()) {
-      setErrorMsg('El título / anverso de la tarjeta no puede estar vacío.');
+      setErrorMsg(t('occlusion.errNoFront'));
       return;
     }
 
@@ -205,7 +207,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
       onCardSaved(res.id);
       onClose();
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error al guardar la tarjeta de oclusión');
+      setErrorMsg(err?.message || t('occlusion.errSave'));
     } finally {
       setIsSaving(false);
     }
@@ -279,7 +281,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                 >
                   <img
                     src={imageDataUrl}
-                    alt="Lienzo de oclusión"
+                    alt={t('occlusion.canvasAlt')}
                     className="block max-h-[50vh] max-w-full object-contain pointer-events-none"
                   />
 
@@ -380,7 +382,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                 type="text"
                 value={front}
                 onChange={(e) => setFront(e.target.value)}
-                placeholder="Ej. Identifica las partes señaladas"
+                placeholder={t('occlusion.titlePlaceholder')}
                 className="w-full px-3 py-2 rounded-lg border border-[var(--c-line)] bg-[var(--c-canvas)] text-xs text-[var(--c-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]"
               />
             </div>
@@ -487,7 +489,7 @@ export const ImageOcclusionEditor: React.FC<ImageOcclusionEditorProps> = ({
                 value={back}
                 onChange={(e) => setBack(e.target.value)}
                 rows={2}
-                placeholder="Contexto adicional que aparecerá al calificar la tarjeta..."
+                placeholder={t('occlusion.contextPlaceholder')}
                 className="w-full px-3 py-1.5 rounded-lg border border-[var(--c-line)] bg-[var(--c-canvas)] text-xs text-[var(--c-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)] resize-none"
               />
             </div>

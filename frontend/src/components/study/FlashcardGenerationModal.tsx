@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import { X, Sparkles, Trash2, Check, AlertCircle, BookOpen } from 'lucide-react';
 import type { GeneratedFlashcard, StudyDifficulty } from '../../lib/studyGeneration/types.ts';
 import { isTopOverlay, pushOverlay, removeOverlay } from '../../services/overlayStack.ts';
@@ -24,6 +25,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
   resourceId,
   lessonId
 }) => {
+  const { t } = useLanguage();
   const [topic, setTopic] = useState(initialTopic);
   const [count, setCount] = useState<number>(4);
   const [difficulty, setDifficulty] = useState<StudyDifficulty>('medium');
@@ -141,7 +143,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
           </div>
           <button
             onClick={onClose}
-            aria-label="Cerrar diálogo"
+            aria-label={t('flashcards.closeDialog')}
             className="rounded-lg p-1.5 text-faint transition hover:bg-canvas hover:text-ink"
           >
             <X size={18} aria-hidden="true" />
@@ -202,7 +204,7 @@ export const FlashcardGenerationModal: React.FC<FlashcardGenerationModalProps> =
                         difficulty === d ? 'bg-ink font-semibold text-canvas' : 'text-muted hover:text-ink'
                       )}
                     >
-                      {d === 'easy' ? 'Fácil' : d === 'medium' ? 'Media' : 'Difícil'}
+                      {t(`study.difficulty.${d}`)}
                     </button>
                   ))}
                 </div>

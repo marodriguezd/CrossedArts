@@ -623,7 +623,10 @@ test('2.20 dao.createModule y dao.addNote responden en el idioma activo', async 
     assert.strictEqual(missing.success, false);
     assert.strictEqual(missing.error, 'Der angegebene Kurs existiert nicht.');
 
-    await dao.addNote({ content: 'Nota creada sin título.' });
+    // El titular se deriva del contenido (AGENTS.md §3b), así que el texto
+    // neutro del diccionario sólo aparece cuando no hay nada que derivar: es
+    // justo el caso que este test necesita para comprobar el idioma activo.
+    await dao.addNote({ content: '   \n  ' });
     const created = (await dao.getNotes()).find(n => n.title === 'Neue Notiz');
     assert.ok(created, 'el título por defecto debe redactarse en el idioma activo');
     await dao.deleteNote(created.id);
@@ -775,6 +778,40 @@ test('2.26 dao lee un fragmento igual desde la nota y desde el detalle del recur
     assert.strictEqual(fragment.tags, '');
   } finally {
     const leftover = (await dao.getNotes()).find(n => n.title === 'Fragmento de mapeo');
+    if (leftover) await dao.deleteNote(leftover.id);
+  }
+});
+
+test('2.27 dao deriva el titular de la nota del contenido, igual que la API', async () => {
+  // Contrato compartido (AGENTS.md §3b): una nota creada sólo con contenido se
+  // titula con su primera línea no vacía. Antes el navegador guardaba el
+  // marcador de posición mientras la API derivaba el titular, así que la MISMA
+  // nota tenía dos nombres según por dónde se hubiera creado.
+  await dbBridge.init();
+
+  await dao.addNote({ content: '  Primera línea real\n\nResto del texto.' });
+  try {
+    const note = (await dao.getNotes()).find(n => n.title === 'Primera línea real');
+    assert.ok(note, 'la nota debe existir');
+    assert.strictEqual(note.title, 'Primera línea real', 'el titular sale de la primera línea no vacía');
+
+    // Y un título en blanco en el PATCH no deja la nota sin titular: se deriva
+    // del contenido nuevo, que es el que el llamador acaba de escribir.
+    await dao.updateNote(note.id, { title: '   ', content: 'Otra primera línea\nresto' });
+    let reread = await dao.getNoteById(note.id);
+    assert.ok(reread);
+    assert.strictEqual(reread.title, 'Otra primera línea');
+    assert.strictEqual(reread.content, 'Otra primera línea\nresto');
+
+    // Sin contenido con el que derivar, el titular almacenado no se toca: es
+    // lo mismo que la API responde con 422 en vez de guardar `title = ''`.
+    await dao.updateNote(note.id, { title: '  ' });
+    reread = await dao.getNoteById(note.id);
+    assert.ok(reread);
+    assert.strictEqual(reread.title, 'Otra primera línea');
+    assert.strictEqual(reread.content, 'Otra primera línea\nresto');
+  } finally {
+    const leftover = (await dao.getNotes()).find(n => n.title === 'Otra primera línea');
     if (leftover) await dao.deleteNote(leftover.id);
   }
 });

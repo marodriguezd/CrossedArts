@@ -257,14 +257,14 @@ export function validateKnowledgeConnection(
 }
 
 export const GRAPH_NODE_LABELS: Record<GraphNodeType, string> = {
-  concept: 'Concepto',
-  course: 'Curso',
-  book: 'Libro',
-  module: 'Módulo',
-  lesson: 'Lección',
-  note: 'Nota',
-  practice: 'Trabajo práctico',
-  resource: 'Recurso'
+  concept: translateKey('es', 'graph.node.concept'),
+  course: translateKey('es', 'graph.node.course'),
+  book: translateKey('es', 'graph.node.book'),
+  module: translateKey('es', 'graph.node.module'),
+  lesson: translateKey('es', 'graph.node.lesson'),
+  note: translateKey('es', 'graph.node.note'),
+  practice: translateKey('es', 'graph.node.practice'),
+  resource: translateKey('es', 'graph.node.resource')
 };
 
 /** Localized node-type label. Defaults to Spanish (existing callers omit it). */
@@ -278,14 +278,14 @@ export function graphRelationLabel(relation: GraphRelationType, lang: LanguageCo
 }
 
 export const GRAPH_RELATION_LABELS: Record<GraphRelationType, string> = {
-  contains: 'contiene',
-  references: 'referencia',
-  teaches: 'enseña',
-  discusses: 'trata sobre',
-  related_to: 'relacionado con',
-  requires: 'requiere',
-  builds_on: 'se basa en',
-  about: 'trata de'
+  contains: translateKey('es', 'graph.rel.contains'),
+  references: translateKey('es', 'graph.rel.references'),
+  teaches: translateKey('es', 'graph.rel.teaches'),
+  discusses: translateKey('es', 'graph.rel.discusses'),
+  related_to: translateKey('es', 'graph.rel.related_to'),
+  requires: translateKey('es', 'graph.rel.requires'),
+  builds_on: translateKey('es', 'graph.rel.builds_on'),
+  about: translateKey('es', 'graph.rel.about')
 };
 
 /** Learning-context refs owning an artifact. */

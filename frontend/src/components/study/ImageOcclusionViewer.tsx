@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import type { ImageOcclusionData, OcclusionMask } from '../../types/models.ts';
 import { cn } from '../ui/index.tsx';
 import { Eye, EyeOff } from 'lucide-react';
@@ -21,6 +22,7 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
   onSelectMask,
   className
 }) => {
+  const { t } = useLanguage();
   const { imageUrl, imageId, mode, masks } = data;
   const safeMasks = Array.isArray(masks) ? masks : [];
 
@@ -59,7 +61,7 @@ export const ImageOcclusionViewer: React.FC<ImageOcclusionViewerProps> = ({
         {resolvedUrl ? (
           <img
             src={resolvedUrl}
-            alt="Lámina de estudio con oclusión"
+            alt={t('occlusion.studyAlt')}
             className="block max-h-[60vh] max-w-full object-contain pointer-events-none"
           />
         ) : (

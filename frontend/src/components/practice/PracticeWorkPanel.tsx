@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import {
   ClipboardList,
   Plus,
@@ -15,6 +16,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { dao } from '../../db/dao.ts';
+import { graphNodeLabel } from '../../services/domainLogic.ts';
 import type { PracticeChecklistItem, PracticeWork, PracticeWorkKind, GraphNodeType } from '../../types/models.ts';
 import {
   PRACTICE_WORK_KINDS,
@@ -57,17 +59,6 @@ const STATUS_ICONS = {
   DONE: CircleCheck
 } as const;
 
-const CONTEXT_TYPE_LABELS: Record<GraphNodeType, string> = {
-  course: 'Curso',
-  book: 'Libro',
-  module: 'Módulo',
-  lesson: 'Lección',
-  note: 'Nota',
-  concept: 'Concepto',
-  practice: 'Trabajo práctico',
-  resource: 'Recurso'
-};
-
 /**
  * Practice-work workspace.
  *
@@ -85,6 +76,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
   onOpenResource,
   className
 }) => {
+  const { t, effective } = useLanguage();
   const [items, setItems] = useState<PracticeWork[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
@@ -112,7 +104,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
       const data = await dao.getPracticeWorkForResource(resourceId, lessonId);
       setItems(data);
     } catch (err) {
-      console.warn('No se pudo cargar el trabajo práctico:', err);
+      console.warn('Failed to load practice work:', err);
       setItems([]);
     } finally {
       setIsLoading(false);
@@ -166,15 +158,18 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
   };
 
   const handleAdd = async () => {
-    const validation = validatePracticeWorkDraft({
-      title: draft.title,
-      kind: draft.kind,
-      resource_id: resourceId,
-      lesson_id: lessonId ?? null,
-      concept_id: conceptId ?? null
-    });
+    const validation = validatePracticeWorkDraft(
+      {
+        title: draft.title,
+        kind: draft.kind,
+        resource_id: resourceId,
+        lesson_id: lessonId ?? null,
+        concept_id: conceptId ?? null
+      },
+      effective
+    );
     if (!validation.ok) {
-      setFormError(validation.error || 'No se pudo crear el trabajo práctico.');
+      setFormError(validation.error || t('practice.errCreate'));
       return;
     }
     setFormError(null);
@@ -193,8 +188,8 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
       await load();
       onChanged?.();
     } catch (err) {
-      console.warn('No se pudo guardar el trabajo práctico:', err);
-      setFormError('No se pudo guardar el trabajo práctico en tu base local.');
+      console.warn('Failed to save practice work:', err);
+      setFormError(t('practice.errSave'));
     }
   };
 
@@ -212,17 +207,20 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
   /** Saves workspace Markdown content and self-rating. */
   const handleSaveWorkspace = async () => {
     if (!openItem) return;
-    const validation = validatePracticeWorkDraft({
-      title: openItem.title,
-      kind: openItem.kind,
-      status: openItem.status,
-      resource_id: openItem.resource_id ?? null,
-      lesson_id: openItem.lesson_id ?? null,
-      concept_id: openItem.concept_id ?? null,
-      content: wsContent,
-      checklist: wsChecklist,
-      self_rating: wsRating
-    });
+    const validation = validatePracticeWorkDraft(
+      {
+        title: openItem.title,
+        kind: openItem.kind,
+        status: openItem.status,
+        resource_id: openItem.resource_id ?? null,
+        lesson_id: openItem.lesson_id ?? null,
+        concept_id: openItem.concept_id ?? null,
+        content: wsContent,
+        checklist: wsChecklist,
+        self_rating: wsRating
+      },
+      effective
+    );
     if (!validation.ok) {
       setWsError(validation.error || 'No se pudo guardar el espacio de trabajo.');
       return;
@@ -253,7 +251,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
       );
       onChanged?.();
     } catch {
-      setWsError('No se pudo guardar la lista de verificación.');
+      setWsError(t('practice.errChecklist'));
     }
   };
 
@@ -290,7 +288,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
       await load();
       onChanged?.();
     } catch (err) {
-      console.warn('No se pudo eliminar el trabajo práctico:', err);
+      console.warn('Failed to delete practice work:', err);
       setPendingDelete(null);
     }
   };
@@ -300,7 +298,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
   return (
     <section
       className={cn('rounded-xl border border-line bg-surface p-5 shadow-card', className)}
-      aria-label="Trabajo práctico"
+      aria-label={t('practice.sectionLabel')}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
         <h2 className="type-section flex items-center gap-2 text-ink">
@@ -335,7 +333,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
               onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
               placeholder="p. ej. Resolver la hoja de ejercicios 3"
               className={INPUT_CLS}
-              aria-label="Título del trabajo práctico"
+              aria-label={t('practice.titleLabel')}
             />
           </label>
           <label className="block">
@@ -344,7 +342,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
               value={draft.kind}
               onChange={e => setDraft(d => ({ ...d, kind: e.target.value as PracticeWorkKind }))}
               className={INPUT_CLS}
-              aria-label="Tipo de trabajo práctico"
+              aria-label={t('practice.typeLabel')}
             >
               {PRACTICE_WORK_KINDS.map(kind => (
                 <option key={kind} value={kind}>{PRACTICE_WORK_KIND_LABELS[kind]}</option>
@@ -358,7 +356,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
               onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
               rows={2}
               className={INPUT_CLS}
-              aria-label="Descripción del trabajo práctico"
+              aria-label={t('practice.descriptionLabel')}
             />
           </label>
           {formError && <p className="text-meta text-error" role="alert">{formError}</p>}
@@ -444,7 +442,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                       type="button"
                       onClick={() => setPendingDelete(item)}
                       aria-label={`Eliminar ${item.title}`}
-                      title="Eliminar trabajo práctico"
+                      title={t('practice.deleteTitle')}
                       className="rounded p-1 text-faint transition hover:text-error"
                     >
                       <Trash2 size={13} aria-hidden="true" />
@@ -470,7 +468,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                             const summaryRow = contextTitles.get(openItem.resource_id);
                             links.push({
                               key: 'resource',
-                              label: `${summaryRow ? CONTEXT_TYPE_LABELS[summaryRow.type] : 'Recurso'}: ${summaryRow?.title ?? openItem.resource_id}`,
+                              label: `${graphNodeLabel(summaryRow ? summaryRow.type : 'resource', effective)}: ${summaryRow?.title ?? openItem.resource_id}`,
                               onClick: onOpenResource ? () => onOpenResource(openItem.resource_id!) : undefined
                             });
                           }
@@ -571,8 +569,8 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                               addCheckItem();
                             }
                           }}
-                          placeholder="Añadir un paso…"
-                          aria-label="Nuevo paso de la lista de verificación"
+                          placeholder={t('practice.stepPlaceholder')}
+                          aria-label={t('practice.stepLabel')}
                           className={INPUT_CLS}
                         />
                         <Button size="sm" variant="outline" onClick={addCheckItem} disabled={!newCheckText.trim()}>
@@ -610,7 +608,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
                           value={wsContent}
                           onChange={e => setWsContent(e.target.value)}
                           rows={7}
-                          placeholder={'Escribe aquí tu trabajo: planteamiento, desarrollo, código, conclusiones…\n\nSoporta **Markdown**.'}
+                          placeholder={t('practice.contentPlaceholder')}
                           className={cn(INPUT_CLS, 'mt-1 font-mono text-meta')}
                         />
                       )}
@@ -674,7 +672,7 @@ export const PracticeWorkPanel: React.FC<PracticeWorkPanelProps> = ({
 
       <ConfirmDialog
         isOpen={pendingDelete !== null}
-        title="Eliminar trabajo práctico"
+        title={t('practice.deleteTitle')}
         consequence={
           pendingDelete
             ? `Se eliminará «${pendingDelete.title}» junto con su contenido y su lista de verificación. Esta acción no se puede deshacer.`

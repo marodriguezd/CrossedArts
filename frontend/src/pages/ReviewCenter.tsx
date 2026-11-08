@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useReducer, useMemo, useCallback } from 'react';
+import { useLanguage } from '../hooks/useLanguage.ts';
 import type { Flashcard, LearningResource, LearningSession, StudySessionMode } from '../types/models.ts';
 import {
   CheckCircle2,
@@ -61,19 +62,19 @@ type StudyItem =
  * good (informative), and 5 perfect (success). Color never stands alone: each
  * button shows grade, label, and description.
  */
-const GRADE_OPTIONS: Array<{ grade: number; label: string; hint: string; tone: string }> = [
-  { grade: 0, label: '0 · Apagón', hint: 'Sin recuerdo alguno', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
-  { grade: 1, label: '1 · Olvidado', hint: 'Error tras esfuerzo', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
-  { grade: 2, label: '2 · Dudoso', hint: 'Incorrecta, familiar', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
-  { grade: 3, label: '3 · Difícil', hint: 'Correcta con esfuerzo', tone: 'border-warning/30 bg-warning-soft text-warning hover:bg-warning-soft/70' },
-  { grade: 4, label: '4 · Bien', hint: 'Correcta con duda', tone: 'border-info/30 bg-info-soft text-info hover:bg-info-soft/70' },
-  { grade: 5, label: '5 · Perfecto', hint: 'Retención instantánea', tone: 'border-success/30 bg-success-soft text-success hover:bg-success-soft/70' }
+const GRADE_OPTIONS: Array<{ grade: number; labelKey: string; hintKey: string; tone: string }> = [
+  { grade: 0, labelKey: 'review.grade.0.label', hintKey: 'review.grade.0.hint', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
+  { grade: 1, labelKey: 'review.grade.1.label', hintKey: 'review.grade.1.hint', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
+  { grade: 2, labelKey: 'review.grade.2.label', hintKey: 'review.grade.2.hint', tone: 'border-error/30 bg-error-soft text-error hover:bg-error-soft/70' },
+  { grade: 3, labelKey: 'review.grade.3.label', hintKey: 'review.grade.3.hint', tone: 'border-warning/30 bg-warning-soft text-warning hover:bg-warning-soft/70' },
+  { grade: 4, labelKey: 'review.grade.4.label', hintKey: 'review.grade.4.hint', tone: 'border-info/30 bg-info-soft text-info hover:bg-info-soft/70' },
+  { grade: 5, labelKey: 'review.grade.5.label', hintKey: 'review.grade.5.hint', tone: 'border-success/30 bg-success-soft text-success hover:bg-success-soft/70' }
 ];
 
-const MODE_LABELS: Record<StudySessionMode, string> = {
-  flashcards: 'Tarjetas SM-2',
-  practice: 'Preguntas de práctica',
-  mixed: 'Sesión mixta'
+const MODE_KEYS: Record<StudySessionMode, string> = {
+  flashcards: 'review.mode.flashcards',
+  practice: 'review.mode.practice',
+  mixed: 'review.mode.mixed'
 };
 
 function isDue(dueDate: string): boolean {
@@ -91,6 +92,7 @@ function parseSqliteUtc(value: string): number {
 }
 
 export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefresh, initialResourceId, initialLessonId, initialMode }) => {
+  const { t } = useLanguage();
   const [state, dispatch] = useReducer(studySessionReducer, initialStudySessionState);
   const [resources, setResources] = useState<LearningResource[]>([]);
   const [lessonOptions, setLessonOptions] = useState<Array<{ id: string; title: string; courseTitle: string }>>([]);
@@ -214,7 +216,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
           }
         } catch (err: any) {
           // A local generation failure must not invalidate the session.
-          setPrepareError(err?.message || 'No se pudieron generar las preguntas de práctica.');
+          setPrepareError(err?.message || t('review.err.generate'));
         }
       }
 
@@ -233,11 +235,11 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       }
       setItems(built);
     } catch (err: any) {
-      setPrepareError(err?.message || 'Error preparando la sesión de estudio.');
+      setPrepareError(err?.message || t('review.err.prepare'));
     } finally {
       setIsPreparing(false);
     }
-  }, [count, difficulty, topic]);
+  }, [count, difficulty, topic, t]);
 
   const handleStart = async () => {
     const resourceId = selectedResourceId || undefined;
@@ -250,7 +252,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
     try {
       sessionId = await dao.startStudySession({ mode, resourceId, lessonId });
     } catch (err: any) {
-      dispatch({ type: 'START_FAILED', error: err?.message || 'No se pudo iniciar la sesión en el almacenamiento local.' });
+      dispatch({ type: 'START_FAILED', error: err?.message || t('review.err.start') });
       return;
     }
     dispatch({ type: 'STARTED', sessionId, startedAt: Date.now() });
@@ -310,12 +312,12 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         }
         onRefresh();
       } catch (err: any) {
-        dispatch({ type: 'FINALIZE_FAILED', error: err?.message || 'No se pudo guardar el resumen de la sesión.' });
+        dispatch({ type: 'FINALIZE_FAILED', error: err?.message || t('review.err.summary') });
       }
     } else {
       setItemIndex(next);
     }
-  }, [itemIndex, items.length, state.sessionId, onRefresh]);
+  }, [itemIndex, items.length, state.sessionId, onRefresh, t]);
 
   const handleToggleAudio = useCallback(() => {
     if (!currentCard) return;
@@ -367,17 +369,17 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
         state.sessionId
       );
       if (!sessionUpdated) {
-        setActionError('La tarjeta se guardó, pero no se pudo actualizar el contador de la sesión.');
+        setActionError(t('review.err.counter'));
       }
       const option = GRADE_OPTIONS.find(o => o.grade === grade);
       setGradeFeedback({
-        label: option?.label || `Grado ${grade}`,
+        label: option ? t(option.labelKey) : t('review.gradeFallback', { grade }),
         nextReview: result ? formatNextReviewInterval(result.intervalDays) : 'actualizado'
       });
     } catch (err: any) {
       setActionError(err?.message || 'No se pudo guardar el repaso SM-2 en el almacenamiento local.');
     }
-  }, [currentCard, state.sessionId]);
+  }, [currentCard, state.sessionId, t]);
 
   const handleSubmitAnswer = useCallback(async () => {
     if (selectedOption === null || !currentQuestion) return;
@@ -387,10 +389,10 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       try {
         await dao.recordStudyQuestionAnswer(state.sessionId, correct);
       } catch {
-        setActionError('No se pudo registrar la respuesta en el historial local de la sesión.');
+        setActionError(t('review.err.record'));
       }
     }
-  }, [selectedOption, currentQuestion, state.sessionId]);
+  }, [selectedOption, currentQuestion, state.sessionId, t]);
 
   useEffect(() => {
     if (state.phase !== 'active' || isPreparing || isFlashcardModalOpen) return;
@@ -505,7 +507,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       setShowAnswer(false);
       onRefresh();
     } catch (err: any) {
-      setActionError(err?.message || 'No se pudo cancelar la sesión en el almacenamiento local.');
+      setActionError(err?.message || t('review.err.cancel'));
     }
   };
 
@@ -518,7 +520,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       dispatch({ type: finalStatus === 'completed' ? 'COMPLETED' : 'CANCELLED' });
       onRefresh();
     } catch (err: any) {
-      setActionError(err?.message || 'No se pudo finalizar la sesión.');
+      setActionError(err?.message || t('review.err.finalize'));
     }
   };
 
@@ -566,7 +568,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
             <span>
               <strong>Tienes una sesión de estudio sin finalizar</strong>
               <span className="mt-0.5 block">
-                {MODE_LABELS[pendingResume.mode]} · {pendingResume.cards_reviewed} tarjetas · {pendingResume.questions_answered} preguntas registradas
+                {t(MODE_KEYS[pendingResume.mode])} · {pendingResume.cards_reviewed} tarjetas · {pendingResume.questions_answered} preguntas registradas
               </span>
             </span>
           </span>
@@ -582,14 +584,14 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       )}
 
       {(state.phase === 'idle' || state.phase === 'failed') && !isPreparing && (
-        <section className="space-y-5 rounded-xl border border-line bg-surface p-5 shadow-card sm:p-6" aria-label="Configuración de la sesión">
+        <section className="space-y-5 rounded-xl border border-line bg-surface p-5 shadow-card sm:p-6" aria-label={t('review.sessionConfigLabel')}>
           <div className="space-y-2">
             <span className="type-micro">Modalidad</span>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {([
-                { id: 'flashcards', label: 'Tarjetas SM-2', icon: Layers, desc: `${dueCount} pendientes` },
-                { id: 'practice', label: 'Práctica', icon: ListChecks, desc: 'Preguntas generadas' },
-                { id: 'mixed', label: 'Mixta', icon: Shuffle, desc: 'Tarjetas + práctica' }
+                { id: 'flashcards', label: t('review.mode.flashcards'), icon: Layers, desc: t('review.modeDesc.flashcards', { n: dueCount }) },
+                { id: 'practice', label: t('review.modeShort.practice'), icon: ListChecks, desc: t('review.modeDesc.practice') },
+                { id: 'mixed', label: t('review.modeShort.mixed'), icon: Shuffle, desc: t('review.modeDesc.mixed') }
               ] as Array<{ id: StudySessionMode; label: string; icon: any; desc: string }>).map(opt => {
                 const Icon = opt.icon;
                 const active = mode === opt.id;
@@ -663,7 +665,11 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
               </select>
               {selectedLessonId && (
                 <p className="mt-1.5 flex items-center gap-1 text-meta text-accent">
-                  Ámbito de lección activo: {lessonOptions.find(l => l.id === selectedLessonId)?.title || 'lección seleccionada'}
+                  {t('review.lessonScope', {
+                    title:
+                      lessonOptions.find(l => l.id === selectedLessonId)?.title ||
+                      t('review.lessonFallback')
+                  })}
                   <button type="button" onClick={() => setSelectedLessonId('')} className="underline text-muted hover:text-ink">
                     quitar
                   </button>
@@ -679,7 +685,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                   type="text"
                   value={topic}
                   onChange={e => setTopic(e.target.value)}
-                  placeholder="Ej. Repetición espaciada, Hooks…"
+                  placeholder={t('review.tagPlaceholder')}
                   className={INPUT_CLS}
                 />
               </div>
@@ -706,7 +712,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                         difficulty === d ? 'bg-ink font-semibold text-canvas' : 'text-muted hover:text-ink'
                       )}
                     >
-                      {d === 'easy' ? 'Fácil' : d === 'medium' ? 'Media' : 'Difícil'}
+                      {t(`study.difficulty.${d}`)}
                     </button>
                   ))}
                 </div>
@@ -748,10 +754,16 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5">
             <div className="flex min-w-0 items-center gap-2 text-meta text-muted">
               <Clock size={14} className="text-accent" aria-hidden="true" />
-              <span className="font-semibold text-ink">{MODE_LABELS[state.mode]}</span>
+              <span className="font-semibold text-ink">{t(MODE_KEYS[state.mode])}</span>
               {selectedResource && <span className="truncate">· {selectedResource.title}</span>}
               {selectedLessonId && (
-                <span className="truncate">· Lección: {lessonOptions.find(l => l.id === selectedLessonId)?.title || 'ámbito de lección'}</span>
+                <span className="truncate">
+                  {t('review.lessonScopeBar', {
+                    title:
+                      lessonOptions.find(l => l.id === selectedLessonId)?.title ||
+                      t('review.lessonScopeFallback')
+                  })}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -776,12 +788,16 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
             <>
               <div className="flex items-center justify-between text-meta text-muted">
                 <span>Ítem {itemIndex + 1} de {items.length}</span>
-                <span>{currentCard ? `Factor de facilidad: ${currentCard.ease_factor}` : 'Práctica efímera'}</span>
+                <span>
+                  {currentCard
+                    ? t('review.easeFactor', { value: currentCard.ease_factor })
+                    : t('review.ephemeral')}
+                </span>
               </div>
               <ProgressBar
                 value={itemIndex + 1}
                 max={items.length}
-                label="Progreso de la sesión"
+                label={t('review.sessionProgress')}
               />
 
               {currentCard && (
@@ -959,7 +975,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                         Próximo repaso: <strong className="text-success">{gradeFeedback.nextReview}</strong>
                       </p>
                       <Button variant="solid" onClick={advance} className="gap-2">
-                        {itemIndex + 1 < items.length ? 'Siguiente ítem' : 'Ver resumen'} <ArrowRight size={14} aria-hidden="true" />
+                        {itemIndex + 1 < items.length ? t('review.nextItem') : t('review.viewSummary')} <ArrowRight size={14} aria-hidden="true" />
                         <Kbd className="border-current/25 bg-black/10 text-inherit">Espacio</Kbd>
                       </Button>
                     </div>
@@ -971,17 +987,17 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
                           <button
                             key={opt.grade}
                             onClick={() => handleGrade(opt.grade)}
-                            aria-label={`Calificar como ${opt.label}. ${opt.hint}`}
+                            aria-label={t('review.gradeAria', { label: t(opt.labelKey), hint: t(opt.hintKey) })}
                             className={cn(
                               'flex flex-col justify-between rounded-xl border p-3 text-meta font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
                               opt.tone
                             )}
                           >
                             <div className="flex w-full items-center justify-between gap-1">
-                              <span>{opt.label}</span>
+                              <span>{opt.grade} · {t(opt.labelKey)}</span>
                               <Kbd className="border-current/30 bg-transparent text-current opacity-80">{opt.grade}</Kbd>
                             </div>
-                            <span className="mt-0.5 block text-left text-micro font-normal opacity-80">{opt.hint}</span>
+                            <span className="mt-0.5 block text-left text-micro font-normal opacity-80">{t(opt.hintKey)}</span>
                           </button>
                         ))}
                       </div>
@@ -1004,7 +1020,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
 
               <div
                 className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-line bg-surface/70 px-4 py-2.5 text-meta text-muted shadow-sm backdrop-blur"
-                aria-label="Guía de atajos de teclado"
+                aria-label={t('review.shortcutsGuide')}
               >
                 <span className="flex items-center gap-1.5 font-medium text-ink">
                   <Sparkles size={13} className="text-accent" aria-hidden="true" /> Atajos activos:
@@ -1036,7 +1052,7 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
               <AlertCircle size={26} className="mx-auto text-warning" aria-hidden="true" />
               <h2 className="type-section text-ink">No hay ítems para esta sesión</h2>
               <p className="type-secondary mx-auto max-w-md">
-                {prepareError || 'No encontramos tarjetas pendientes ni pudimos generar preguntas para la selección actual.'}
+                {prepareError || t('review.emptyItems')}
               </p>
               <div className="flex flex-wrap justify-center gap-2">
                 <Button variant="outline" onClick={() => prepareItems(state.mode, state.resourceId, selectedResource?.title)}>
@@ -1074,12 +1090,10 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
           </div>
           <div>
             <h2 className="type-title text-ink">
-              {state.phase === 'completed' ? 'Sesión completada' : 'Sesión cancelada'}
+              {state.phase === 'completed' ? t('review.completedTitle') : t('review.cancelledTitle')}
             </h2>
             <p className="type-secondary mt-1">
-              {state.phase === 'completed'
-                ? 'Tus repasos SM-2 y tu historial local se guardaron correctamente.'
-                : 'Los repasos ya guardados se conservan; el ítem en curso no se registró.'}
+              {state.phase === 'completed' ? t('review.completedBody') : t('review.cancelledBody')}
             </p>
           </div>
 

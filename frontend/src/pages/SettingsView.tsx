@@ -151,7 +151,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const handleTestVoice = () => {
     setIsTestingVoice(true);
     speechService.speak(
-      'Probando la síntesis de voz en CrossedArts. Aprendizaje offline en el navegador.',
+      t('settings.speechTestPhrase'),
       () => setIsTestingVoice(false),
       () => setIsTestingVoice(false)
     );
@@ -159,31 +159,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
   const handleBuildSemanticIndex = async () => {
     setEmbError(null);
-    setIndexingText('Cargando motor de embeddings...');
+    setIndexingText(t('settings.embedLoading'));
     try {
       if (localEmbeddingEngine.getStatus() !== 'ready' || localEmbeddingEngine.getLoadedModelId() !== selectedEmbeddingModelId) {
         await localEmbeddingEngine.loadModel(selectedEmbeddingModelId);
       }
-      setIndexingText('Extrayendo contenidos y generando hashes SHA-256...');
+      setIndexingText(t('settings.embedHashing'));
       const resources = await dao.getAllLearningResources();
       // ONE chunking route: the canonical corpus boundary (KnowledgeDocument),
       // exactly the one automatic indexing uses. A second ad-hoc path here used
       // to produce different fragments for the same material.
       const { chunks } = await buildSemanticCorpus(resources, selectedEmbeddingModelId);
 
-      setIndexingText(`Indexando ${chunks.length} fragmentos...`);
+      setIndexingText(t('settings.embedIndexingChunks', { n: chunks.length }));
       await localEmbeddingEngine.indexChunks(chunks, (indexed, total) => {
-        setIndexingText(`Indexando fragmento ${indexed} de ${total}...`);
+        setIndexingText(t('settings.embedIndexingProgress', { done: indexed, total }));
       });
 
       await refreshEmbeddingCount();
-      setIndexingText(`✅ Indexación completa: ${chunks.length} fragmentos indexados.`);
+      setIndexingText(t('settings.embedIndexDone', { n: chunks.length }));
       later(() => setIndexingText(null), 3500);
     } catch (err: any) {
       if (err?.message?.includes('cancelada')) {
-        setIndexingText('Indexación cancelada por el usuario.');
+        setIndexingText(t('settings.indexCancelled'));
       } else {
-        setEmbError(err?.message || 'Error durante la indexación semántica.');
+        setEmbError(err?.message || t('settings.indexError'));
       }
       later(() => setIndexingText(null), 3000);
     }
@@ -198,22 +198,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
       await localEmbeddingEngine.unload();
       setEmbStatus(localEmbeddingEngine.getStatus());
       setEmbBackend(localEmbeddingEngine.getBackend());
-      setIndexingText('Modelo de embeddings liberado de la memoria.');
+      setIndexingText(t('settings.embedReleased'));
       later(() => setIndexingText(null), 2500);
     } catch (err: any) {
-      setEmbError(err?.message || 'No se pudo liberar el modelo de embeddings.');
+      setEmbError(err?.message || t('settings.embedReleaseFail'));
     }
   };
 
   const handleCancelIndexing = () => {
     localEmbeddingEngine.cancelIndexing();
-    setIndexingText('Cancelando indexación...');
+    setIndexingText(t('settings.indexCancelling'));
   };
 
   const handleClearSemanticCache = async () => {
     await embeddingCache.clearCache();
     await refreshEmbeddingCount();
-    setIndexingText('Caché de vectores vaciado.');
+    setIndexingText(t('settings.vectorCacheCleared'));
     later(() => setIndexingText(null), 2000);
   };
 
@@ -433,7 +433,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     setDbFeedback(null);
     try {
       await dbBridge.resetDemo();
-      setDbFeedback({ type: 'success', text: 'Datos restablecidos al dataset de demostración.' });
+      setDbFeedback({ type: 'success', text: t('settings.demoResetDone') });
       onDataReset();
     } catch (err: any) {
       setDbFeedback({ type: 'error', text: 'Error restableciendo los datos: ' + (err?.message || 'desconocido') });
@@ -588,11 +588,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
           <div className="flex items-start gap-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
             <Info size={15} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
             <span>
-              <strong className="text-ink">Límites del respaldo:</strong> El archivo{' '}
-              <code className="font-mono text-accent">.sqlite</code> contiene íntegramente tus notas,
-              estado de lectura y tarjetas. Los vídeos/audios locales permanecen en tu disco duro y no
-              se duplican en la base de datos; tras restaurar en otro dispositivo, simplemente vuelve a
-              seleccionar tu carpeta de medios.
+              <strong className="text-ink">{t('settings.backupLimitsTitle')}</strong>{' '}
+              {t('settings.backupLimitsBody')}
             </span>
           </div>
 
@@ -619,8 +616,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
 
       <ConfirmDialog
         isOpen={isResetConfirmOpen}
-        title="Reiniciar datos de demostración"
-        consequence="Se eliminarán tus datos actuales y se restaurará el dataset de demostración inicial. Esta acción no se puede deshacer."
+        title={t('settings.demoResetTitle')}
+        consequence={t('settings.demoResetConsequence')}
         confirmLabel="Reiniciar"
         onCancel={() => setIsResetConfirmOpen(false)}
         onConfirm={executeResetDemo}
@@ -785,10 +782,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
             </select>
             {/* Honest per-provider privacy boundary */}
             <p className="type-meta mt-1.5">
-              {aiConfig.provider === 'demo' && '✓ Sin conexión: respuestas heurísticas generadas localmente.'}
-              {aiConfig.provider === 'local' && '✓ 100% en tu dispositivo. La primera descarga del modelo sí requiere red.'}
-              {aiConfig.provider === 'ollama' && '● Servidor local en tu máquina; permite el origen de esta app en OLLAMA_ORIGINS (p. ej. http://localhost:5173) en lugar de "*".'}
-              {aiConfig.provider === 'openai' && '⚠️ Proveedor REMOTO: tu consulta viaja a los servidores de OpenAI.'}
+              {aiConfig.provider === 'demo' && t('settings.providerDemoNote')}
+              {aiConfig.provider === 'local' && t('settings.providerLocalNote')}
+              {aiConfig.provider === 'ollama' && t('settings.providerOllamaNote')}
+              {aiConfig.provider === 'openai' && t('settings.providerOpenaiNote')}
             </p>
           </div>
 
@@ -808,16 +805,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                     }
                   >
                     {runtimeStatus.stage === 'ready'
-                      ? 'Lista'
+                      ? t('settings.runtimeReady')
                       : runtimeStatus.stage === 'unsupported'
-                        ? 'No disponible'
+                        ? t('settings.runtimeUnsupported')
                         : runtimeStatus.stage === 'consent-required'
-                          ? 'Pendiente de activación'
+                          ? t('settings.runtimeConsent')
                           : runtimeStatus.stage === 'error'
-                            ? 'Requiere atención'
+                            ? t('settings.runtimeError')
                             : runtimeStatus.stage === 'idle'
-                              ? 'En reposo'
-                              : 'Preparando…'}
+                              ? t('settings.runtimeIdle')
+                              : t('settings.runtimePreparing')}
                   </Badge>
                 </div>
                 <p className="mt-1 text-secondary text-muted">{runtimeStatus.message}</p>
@@ -850,7 +847,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                   disabled={gpuReport.state !== 'supported' && !gpuReport.hasWasmFallback}
                   className={INPUT_CLS}
                 >
-                  <optgroup label="🌐 Multilingüe Recomendado (Español, Francés, Portugués, Inglés)">
+                  <optgroup label={t('settings.multilingualGroup')}>
                     {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'multilingual').map(m => {
                       const isDisabled = m.runtimeBackend === 'webgpu' && gpuReport.state !== 'supported';
                       return (
@@ -1045,9 +1042,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
                   className={INPUT_CLS}
                 />
                 <p className="type-micro text-meta mt-1.5">
-                  {aiConfig.apiKey
-                    ? 'Clave introducida. Al guardar se conserva solo en la memoria de esta pestaña.'
-                    : 'La clave se mantiene únicamente en memoria y se pierde al recargar la página.'}
+                  {aiConfig.apiKey ? t('settings.apiKeySet') : t('settings.apiKeyMemory')}
                 </p>
               </div>
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Mountain } from 'lucide-react';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import { Panel, cn } from '../ui/index.tsx';
 import {
   MOUNTAIN_TRAIL,
@@ -51,6 +52,7 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
   scopeLabel = 'la biblioteca',
   className
 }) => {
+  const { t } = useLanguage();
   const progress =
     typeof progressOverride === 'number' ? clampPercent(Math.round(progressOverride)) : computeOverallProgress(resources);
   const hasCustomStages = Array.isArray(stages) && stages.length > 0;
@@ -72,7 +74,7 @@ export const MountainProgress: React.FC<MountainProgressProps> = ({
         <span className="text-2xl font-semibold text-ink">{progress}%</span>
         <span className="type-meta">
           {!hasCustomStages && typeof progressOverride !== 'number' && resources.length === 0
-            ? 'Sin recursos todavía'
+            ? t('mountain.empty')
             : `${reached.length}/${milestones.length} hitos alcanzados`}
         </span>
       </div>

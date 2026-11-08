@@ -14,11 +14,11 @@ import type { LanguageCode } from '../i18n/languages.ts';
 
 /** Localized goal-kind labels. Defaults to Spanish. */
 export const GOAL_KIND_LABELS: Record<GoalKind, string> = {
-  course: 'Completar un curso',
-  book: 'Terminar un libro',
-  practice: 'Completar trabajo práctico',
-  study_time: 'Tiempo de estudio',
-  custom: 'Meta personalizada'
+  course: translateKey('es', 'goals.kind.course'),
+  book: translateKey('es', 'goals.kind.book'),
+  practice: translateKey('es', 'goals.kind.practice'),
+  study_time: translateKey('es', 'goals.kind.study_time'),
+  custom: translateKey('es', 'goals.kind.custom')
 };
 
 /** Stable order for populating selectors. */

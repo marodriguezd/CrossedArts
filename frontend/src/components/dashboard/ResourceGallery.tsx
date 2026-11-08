@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowRight, ClipboardList, Layers } from 'lucide-react';
 import { Badge, ProgressBar, SectionHeading, cn } from '../ui/index.tsx';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import type { ResourceStatus } from '../../types/models.ts';
 import { resourceInitials, type GalleryItem } from '../../services/galleryItems.ts';
 
@@ -50,21 +51,26 @@ const STATUS_LABELS: Record<ResourceStatus, { text: string; tone: 'neutral' | 'a
  */
 export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
   items,
-  title = 'Tu aprendizaje de un vistazo',
-  description = 'Galería visual de los recursos que estás trabajando.',
+  title,
+  description,
   onSeeAll,
-  seeAllLabel = 'Ver toda la Biblioteca',
+  seeAllLabel,
   limit = 6,
-  emptyHint = 'Aún no hay recursos. Importa un documento o crea tu primer curso desde la Biblioteca.',
+  emptyHint,
   className
 }) => {
+  const { t } = useLanguage();
+  const resolvedTitle = title ?? t('gallery.title');
+  const resolvedDescription = description ?? t('gallery.description');
+  const resolvedSeeAllLabel = seeAllLabel ?? t('gallery.seeAll');
+  const resolvedEmptyHint = emptyHint ?? t('gallery.emptyHint');
   const visible = items.slice(0, Math.max(0, limit));
 
   return (
-    <section className={cn('space-y-4', className)} aria-label={title}>
+    <section className={cn('space-y-4', className)} aria-label={resolvedTitle}>
       <SectionHeading
-        title={title}
-        description={description}
+        title={resolvedTitle}
+        description={resolvedDescription}
         action={
           onSeeAll ? (
             <button
@@ -72,7 +78,7 @@ export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
               onClick={onSeeAll}
               className="inline-flex items-center gap-1 text-meta font-medium text-accent hover:underline"
             >
-              {seeAllLabel}
+              {resolvedSeeAllLabel}
               <ArrowRight size={12} aria-hidden="true" />
             </button>
           ) : undefined
@@ -82,7 +88,7 @@ export const ResourceGallery: React.FC<ResourceGalleryProps> = ({
       {visible.length === 0 ? (
         <div className="flex items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-6">
           <Layers size={18} className="shrink-0 text-faint" aria-hidden="true" />
-          <p className="type-secondary">{emptyHint}</p>
+          <p className="type-secondary">{resolvedEmptyHint}</p>
         </div>
       ) : (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">

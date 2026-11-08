@@ -3,7 +3,7 @@ import type { LanguageCode } from '../i18n/languages.ts';
 import { resolveAppLanguage } from '../i18n/resolveAppLanguage.ts';
 import initSqlJs from 'sql.js';
 import type { Database, SqlJsConfig, SqlJsStatic } from 'sql.js';
-import { SCHEMA_SQL, KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL, buildPracticeWorkTableSql, PRACTICE_WORK_INDEX_SQL } from './schema.ts';
+import { SCHEMA_SQL, KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL, buildPracticeWorkTableSql, buildLearningSessionTableSql, PRACTICE_WORK_INDEX_SQL } from './schema.ts';
 import { SEED_SQL } from './seedDemo.ts';
 import { resolveSqliteWasmUrl, deployedSqliteWasmFilename } from './sqliteWasmUrl.ts';
 
@@ -1104,14 +1104,15 @@ class SQLiteBridge {
    *
    * Extends the study session with mode, counters, status, and `scope` without
    * creating a second history system. Rebuilds the table whenever the live
-   * schema is not the current one (incompatible columns, or missing scope
-   * CHECKs), because SQLite cannot add a CHECK constraint in place.
+   * schema is not the current one (incompatible columns, or outdated scope
+   * CHECKs), because SQLite cannot add or drop a CHECK in place.
    *
    * `scope` makes the three-scope domain explicit (global / resource / lesson;
-   * see `services/sessionScope.ts`). Legacy rows that never declared it are
-   * normalized DETERMINISTICALLY from their anchors: lesson with `lesson_id`,
-   * resource with only `resource_id`, global otherwise. No existing row changes
-   * meaning.
+   * see `services/sessionScope.ts`). A declared scope is PRESERVED: only rows
+   * that never had the column, or whose stored value is impossible under the
+   * surviving rules, get one derived from their anchors. An unlinked `resource`
+   * is a legitimate state after `ON DELETE SET NULL`, so it is kept as declared
+   * and reclassified on read. No existing row changes meaning.
    *
    * @returns true when the table was migrated and must be persisted.
    */
@@ -1130,7 +1131,7 @@ class SQLiteBridge {
     const resourceNotNull = columns.find(c => c.name === 'resource_id')?.notNull === true;
 
     // Schema already current: mode + optional resource_id + lesson_id + scope,
-    // plus the scope CHECKs that make an incoherent scope unstorable.
+    // plus the two scope CHECKs that remain valid after an unlink.
     if (hasMode && !resourceNotNull && hasLessonId && hasScope && this.hasSessionScopeChecks(db)) {
       return false;
     }
@@ -1149,18 +1150,30 @@ class SQLiteBridge {
   }
 
   /**
-   * Does the live table carry the three scope CHECK constraints?
+   * Does the live table carry the CURRENT scope rules?
    *
-   * SQLite stores the CREATE TABLE text verbatim, so the predicates written by
-   * `SCHEMA_SQL` and by `rebuildLearningSessionTable` are findable there.
+   * SQLite stores the CREATE TABLE text verbatim, so the predicates declared by
+   * `buildLearningSessionTableSql` are findable there. Both the canonical table
+   * and the migrated one are built from that single definition.
+   *
+   * It requires the two surviving predicates and the ABSENCE of the retired
+   * `resource`-anchor CHECK (`scope <> 'resource' OR resource_id IS NOT NULL`):
+   * that one made the `ON DELETE SET NULL` action fail for a resource-scoped
+   * session, so deleting a resource became impossible instead of unlinking it.
+   * A database still carrying it is rebuilt exactly once.
    */
   private hasSessionScopeChecks(db: Database): boolean {
     const rows = db.exec("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'learning_session'");
-    const ddl = rows.length && rows[0].values.length ? String(rows[0].values[0][0] ?? '') : '';
+    // Formatting must never decide whether the table is rebuilt: comparing the
+    // raw DDL made any reindented builder or migration report "outdated" for
+    // ever, and the table was then rebuilt — and persisted — on EVERY boot. The
+    // text is flattened before matching so only the predicates themselves count.
+    const raw = rows.length && rows[0].values.length ? String(rows[0].values[0][0] ?? '') : '';
+    const ddl = raw.replace(/\s+/g, ' ');
     return (
       ddl.includes("scope IN ('global', 'resource', 'lesson')") &&
       ddl.includes("scope <> 'global' OR (resource_id IS NULL AND lesson_id IS NULL)") &&
-      ddl.includes("scope <> 'resource' OR resource_id IS NOT NULL")
+      !ddl.includes("scope <> 'resource' OR resource_id IS NOT NULL")
     );
   }
 
@@ -1188,16 +1201,17 @@ class SQLiteBridge {
     const durationExpr = legacyExpr('duration_minutes', '0');
     const inactiveExpr = legacyExpr('inactive_seconds', '0');
 
-    // Scope derives from the anchors: lesson beats resource, and anchorless IS
-    // the global scope. A stored value that would violate the new CHECK (an
-    // unlinked 'resource' after ON DELETE SET NULL) is re-derived instead of
-    // aborting the whole migration.
+    // Preserve the declared scope whenever it is representable: a value from
+    // the domain that is not `global` with anchors. An unlinked 'resource'
+    // (resource_id NULL) is exactly the state ON DELETE SET NULL leaves behind,
+    // so it is kept here and reclassified on read by
+    // `resolveEffectiveStudySessionScope`; deriving it at migration time would
+    // rewrite history.
     const derivedScope = `CASE WHEN ${lessonExpr} IS NOT NULL THEN 'lesson' WHEN resource_id IS NOT NULL THEN 'resource' ELSE 'global' END`;
     const scopeExpr = legacyColumns.has('scope')
       ? `CASE
            WHEN scope IN ('lesson', 'resource', 'global')
             AND NOT (scope = 'global' AND (${lessonExpr} IS NOT NULL OR resource_id IS NOT NULL))
-            AND NOT (scope = 'resource' AND resource_id IS NULL)
            THEN scope
            ELSE ${derivedScope}
          END`
@@ -1205,26 +1219,9 @@ class SQLiteBridge {
 
     db.run('BEGIN TRANSACTION;');
     try {
-      db.run(`
-      CREATE TABLE learning_session_migrated (
-        id TEXT PRIMARY KEY,
-        resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
-        lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL,
-        scope TEXT NOT NULL DEFAULT 'global'
-          CHECK (scope IN ('global', 'resource', 'lesson'))
-          CHECK (scope <> 'global' OR (resource_id IS NULL AND lesson_id IS NULL))
-          CHECK (scope <> 'resource' OR resource_id IS NOT NULL),
-        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        ended_at DATETIME,
-        duration_minutes INTEGER DEFAULT 0,
-        inactive_seconds INTEGER DEFAULT 0,
-        mode TEXT DEFAULT 'flashcards',
-        cards_reviewed INTEGER DEFAULT 0,
-        questions_answered INTEGER DEFAULT 0,
-        correct_answers INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'completed'
-      );
-    `);
+      // The temp table comes from the canonical builder, so the migrated
+      // definition can never disagree with what a fresh install creates.
+      db.run(buildLearningSessionTableSql('learning_session_migrated'));
       // Preserve the actually persisted state: when the legacy DB already
       // recorded mode, counters or status, copy them verbatim (COALESCE only
       // covers NULL). A cancelled session is never rebuilt as completed; the

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import {
   Lesson,
   LessonWorkspace as LessonWorkspaceModel,
@@ -99,6 +100,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
   onOpenResource,
   onOpenConcept
 }) => {
+  const { t } = useLanguage();
   const [workspace, setWorkspace] = useState<LessonWorkspaceModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -322,7 +324,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         setNextLesson(null);
       }
     } catch (err) {
-      console.warn('No se pudo cargar el espacio de trabajo de la lección:', err);
+      console.warn('Failed to load the lesson workspace:', err);
     } finally {
       setIsLoading(false);
     }
@@ -384,11 +386,11 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
     });
     setIsSaving(false);
     if (!res.success) {
-      setFeedback({ type: 'error', text: res.error || 'No se pudo guardar la lección.' });
+      setFeedback({ type: 'error', text: res.error || t('lessonWorkspace.saveFail') });
       return;
     }
     setIsEditing(false);
-    setFeedback({ type: 'success', text: 'Lección actualizada. El índice semántico se invalida solo para esta lección.' });
+    setFeedback({ type: 'success', text: t('lessonWorkspace.updated') });
     onRefresh();
     loadWorkspace();
   };
@@ -416,7 +418,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
     });
     setNoteForm({ title: '', content: '' });
     setIsCreatingNote(false);
-    setFeedback({ type: 'success', text: 'Nota creada y asociada a esta lección.' });
+    setFeedback({ type: 'success', text: t('lessonWorkspace.noteCreated') });
     onRefresh();
     loadWorkspace();
   };
@@ -435,7 +437,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
       if (res.success) {
         setCardForm({ front: '', back: '' });
         setIsCreatingCard(false);
-        setFeedback({ type: 'success', text: 'Tarjeta añadida a la lección y programada en SM-2.' });
+        setFeedback({ type: 'success', text: t('lessonWorkspace.cardCreated') });
         await loadWorkspace();
         onRefresh();
       } else {
@@ -559,7 +561,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
               size="sm"
               variant={lesson.is_completed ? 'outline' : 'solid'}
               onClick={handleToggleComplete}
-              aria-label={lesson.is_completed ? 'Reabrir lección' : 'Marcar lección como completada'}
+              aria-label={lesson.is_completed ? t('lessonWorkspace.reopen') : t('lessonWorkspace.markDone')}
               className={lesson.is_completed ? 'border-success/40 text-success' : ''}
             >
               {lesson.is_completed ? <><Check size={13} aria-hidden="true" /> Completada</> : <><CheckCircle size={13} aria-hidden="true" /> Marcar completada</>}
@@ -640,7 +642,11 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           <div className="flex flex-wrap items-center gap-2.5 text-meta text-muted">
             <span className="flex items-center gap-1.5">
               <Video size={13} className="text-accent" aria-hidden="true" />
-              {isLocalMedia ? 'Medio local efímero' : playbackUrl ? 'Medio remoto' : 'Sin medio'}
+              {isLocalMedia
+                ? t('lessonWorkspace.mediaLocal')
+                : playbackUrl
+                  ? t('lessonWorkspace.mediaRemote')
+                  : t('lessonWorkspace.mediaNone')}
             </span>
             {playbackUrl && (
               <>
@@ -672,7 +678,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   </button>
                 </div>
 
-                <div className="flex items-center gap-0.5 rounded-lg border border-line bg-canvas px-1 py-0.5" title="Velocidad de reproducción ([ y ] para ajustar)">
+                <div className="flex items-center gap-0.5 rounded-lg border border-line bg-canvas px-1 py-0.5" title={t('lessonWorkspace.playbackSpeedTitle')}>
                   <Gauge size={12} className="mx-1 text-muted" aria-hidden="true" />
                   {SUPPORTED_PLAYBACK_SPEEDS.map(s => (
                     <button
@@ -717,7 +723,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
               type="file"
               accept="video/*,audio/*,.mp4,.webm,.ogg,.mov,.m4v,.mp3,.wav,.m4a"
               className="hidden"
-              aria-label="Asociar archivo multimedia local a la lección"
+              aria-label={t('lessonWorkspace.attachMediaLabel')}
               onChange={async e => {
                 const file = e.target.files?.[0];
                 if (file) await handleAssociateFile(file);
@@ -728,7 +734,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         </div>
       </div>
 
-      <section className="rounded-xl border border-line bg-surface p-5 shadow-card sm:p-7" aria-label="Contenido de la lección">
+      <section className="rounded-xl border border-line bg-surface p-5 shadow-card sm:p-7" aria-label={t('lessonWorkspace.contentSectionLabel')}>
         <div className="mb-4 flex items-center justify-between gap-3 border-b border-line pb-3">
           <h3 className="type-section text-ink">Contenido</h3>
           {!isEditing && (
@@ -752,7 +758,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                 type="text"
                 value={editForm.title}
                 onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
-                aria-label="Título de la lección"
+                aria-label={t('lessonWorkspace.titleLabel')}
                 className={INPUT_CLS}
               />
             </div>
@@ -774,8 +780,8 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                 value={editForm.content}
                 onChange={e => setEditForm(f => ({ ...f, content: e.target.value }))}
                 rows={12}
-                aria-label="Contenido de la lección (texto o Markdown)"
-                placeholder="Escribe el contenido de la lección (texto o Markdown)…"
+                aria-label={t('lessonWorkspace.contentLabel')}
+                placeholder={t('lessonWorkspace.contentPlaceholder')}
                 className={cn(INPUT_CLS, 'min-h-56 resize-y font-mono text-secondary')}
               />
             </div>
@@ -795,13 +801,13 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
           />
         ) : (
           <EmptyState
-            title="Esta lección aún no tiene contenido."
-            hint="Usa «Editar» para añadir texto o Markdown. El contenido se guarda como datos en SQLite."
+            title={t('lessonWorkspace.emptyContentTitle')}
+            hint={t('lessonWorkspace.emptyContentHint')}
           />
         )}
       </section>
 
-      <section className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5" aria-label="Tarjetas de estudio de la lección">
+      <section className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5" aria-label={t('lessonWorkspace.cardsSectionLabel')}>
         <div className="mb-4 flex flex-col gap-3 border-b border-line pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Brain size={18} className="text-accent" aria-hidden="true" />
@@ -837,7 +843,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                 rows={2}
                 value={cardForm.front}
                 onChange={e => setCardForm(f => ({ ...f, front: e.target.value }))}
-                placeholder="¿Qué es...? / Definición de..."
+                placeholder={t('lessonWorkspace.cardFrontPlaceholder')}
                 required
                 className={cn(INPUT_CLS, 'resize-y')}
               />
@@ -869,8 +875,8 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
         {flashcards.length === 0 && !isCreatingCard ? (
           <EmptyState
-            title="Esta lección aún no tiene tarjetas de estudio asociadas."
-            hint="Crea tarjetas manuales con «Nueva tarjeta» o extráelas automáticamente del contenido con «Generar con IA». Se integrarán inmediatamente en el algoritmo SuperMemo-2."
+            title={t('lessonWorkspace.emptyCardsTitle')}
+            hint={t('lessonWorkspace.emptyCardsHint')}
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -969,7 +975,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
       </section>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Notas de la lección">
+        <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label={t('lessonWorkspace.notesSectionLabel')}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="type-section text-ink">Notas ({notes.length})</h3>
             <Button size="sm" variant="quiet" onClick={() => setIsCreatingNote(v => !v)}>
@@ -986,9 +992,9 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   type="text"
                   value={noteForm.title}
                   onChange={e => setNoteForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder="Título de la nota"
+                  placeholder={t('lessonWorkspace.noteTitlePlaceholder')}
                   required
-                  aria-label="Título de la nueva nota"
+                  aria-label={t('lessonWorkspace.newNoteTitleLabel')}
                   className={INPUT_CLS}
                 />
               </div>
@@ -1007,7 +1013,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                         }));
                       }}
                       className="inline-flex items-center gap-1 rounded border border-line bg-canvas px-1.5 py-0.5 text-micro font-medium text-muted hover:border-line-strong hover:text-ink transition-colors"
-                      title="Insertar marca de tiempo actual del vídeo en la nota"
+                      title={t('lessonWorkspace.insertTimestampTitle')}
                     >
                       <Clock size={11} className="text-accent" aria-hidden="true" />
                       <span>Marca [{formatPlaybackTime(videoRef.current?.currentTime || currentPlaybackSeconds || 0)}]</span>
@@ -1019,7 +1025,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
                   value={noteForm.content}
                   onChange={e => setNoteForm(f => ({ ...f, content: e.target.value }))}
                   rows={3}
-                  placeholder="Contenido… (incluye marcas como [02:30] para saltar al vídeo)"
+                  placeholder={t('lessonWorkspace.noteContentPlaceholder')}
                   aria-label="Contenido de la nueva nota"
                   className={cn(INPUT_CLS, 'resize-y')}
                 />
@@ -1164,7 +1170,9 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         <div className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent-soft/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="type-item text-ink">
-              {nextLesson.allCompleted ? 'Curso completado. Repasa la última lección:' : 'Continuar aprendiendo'}
+              {nextLesson.allCompleted
+                ? t('courseDetail.courseDone')
+                : t('lessonWorkspace.continueLearning')}
             </p>
             <p className="type-meta mt-0.5 truncate">{nextLesson.moduleTitle} › {nextLesson.title}</p>
           </div>
@@ -1177,7 +1185,7 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
       <ConfirmDialog
         isOpen={Boolean(deletingCardId)}
         title="Eliminar tarjeta de estudio"
-        consequence="Esta tarjeta se eliminará de la lección y del ciclo de repetición espaciada SM-2. Esta acción no se puede deshacer."
+        consequence={t('lessonWorkspace.deleteCardConsequence')}
         confirmLabel="Eliminar tarjeta"
         tone="danger"
         onCancel={() => setDeletingCardId(null)}

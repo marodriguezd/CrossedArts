@@ -124,9 +124,6 @@ export interface RecentResourceEntry {
   minutes: number;
 }
 
-export const FOCUS_EMPTY_MESSAGE =
-  'No hay nada pendiente que requiera tu atención ahora mismo: sin tarjetas vencidas, sin trabajos en marcha y sin lecciones a medio terminar.';
-
 function sortPlan(items: FocusItem[]): FocusItem[] {
   return items.sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
 }
@@ -347,7 +344,8 @@ export function buildFocusSummary(input: FocusInput): FocusSummary {
  */
 export function deriveRecentResources(
   sessions: readonly LearningSession[],
-  limit: number
+  limit: number,
+  lang: LanguageCode = 'es'
 ): RecentResourceEntry[] {
   const map = new Map<string, RecentResourceEntry & { lastStartedAt: string }>();
 
@@ -359,7 +357,7 @@ export function deriveRecentResources(
     if (session.status !== 'completed') continue;
     const key = session.resource_id || session.lesson_id;
     if (!key) continue;
-    const label = session.resource_title || session.lesson_title || 'Estudio general';
+    const label = session.resource_title || session.lesson_title || translateKey(lang, 'analytics.general');
     const existing = map.get(key);
     if (existing) {
       existing.minutes += session.duration_minutes || 0;

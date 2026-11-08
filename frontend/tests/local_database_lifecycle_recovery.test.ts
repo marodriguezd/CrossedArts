@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import initSqlJs from 'sql.js';
 import { dbBridge, DatabaseInitializationError, StaleWriteError, isValidSqliteBuffer, setDbLanguage } from '../src/db/sqliteBridge.ts';
 import { dao, setDaoLanguage } from '../src/db/dao.ts';
+import { resolveEffectiveStudySessionScope } from '../src/services/sessionScope.ts';
 
 // These tests assert Spanish copy: pin the data layer explicitly instead of
 // inheriting the OS locale (Spanish dev machines vs C-locale CI runners).
@@ -527,8 +528,9 @@ test('31.12 REGRESIÓN: un fallo de lectura con IndexedDB presente es terminal y
 
 test('31.13 REGRESIÓN: una sesión legacy con scope incoherente se normaliza en vez de abortar la migración', async () => {
   // Esquema anterior: sin `lesson_id` ni `mode`, pero con `scope`. Una fila
-  // 'resource' sin recurso (posible tras ON DELETE SET NULL) violaría el CHECK
-  // de la tabla nueva si se copiara tal cual.
+  // 'resource' sin recurso es el estado que deja ON DELETE SET NULL; el CHECK
+  // que lo prohibía ya no existe, así que la migración conserva el ámbito
+  // declarado y lo reclasifica al leer.
   const SQL = await initSqlJs();
   const legacy = new SQL.Database();
   legacy.run(`
@@ -571,7 +573,11 @@ test('31.13 REGRESIÓN: una sesión legacy con scope incoherente se normaliza en
 
   const rows = db.exec("SELECT scope, duration_minutes, cards_reviewed, status, lesson_id FROM learning_session WHERE id = 's-old'");
   assert.equal(rows.length, 1, 'la fila histórica se conserva');
-  assert.deepEqual(rows[0].values[0], ['global', 30, 7, 'cancelled', null]);
+  assert.deepEqual(
+    rows[0].values[0],
+    ['resource', 30, 7, 'cancelled', null],
+    'el ámbito declarado sobrevive; el efectivo se deriva al leer'
+  );
 
   const fk = db.exec('PRAGMA foreign_keys;');
   assert.equal(Number(fk[0].values[0][0]), 1, 'foreign_keys debe quedar activo tras la migración');
@@ -660,9 +666,11 @@ test('31.11 Stale write error in persist preserves remote snapshot and sets stal
 });
 
 test('31.16 REGRESIÓN: una base migrada impone los mismos CHECK de ámbito que una fresca', async () => {
-  // SQLite no puede añadir un CHECK con ALTER TABLE. Una migración incremental
-  // (`ADD COLUMN scope`) dejaba una base migrada aceptando ámbitos que la
-  // fresca rechaza; sólo el rebuild completo converge.
+  // SQLite no puede añadir ni quitar un CHECK con ALTER TABLE. Una migración
+  // incremental (`ADD COLUMN scope`) dejaba una base migrada aceptando ámbitos
+  // que la fresca rechaza; sólo el rebuild completo converge. El CHECK que
+  // exigía recurso para `scope='resource'` se retira en ambas: impedía el
+  // desvinculado de `ON DELETE SET NULL`.
   const SQL = await initSqlJs();
   const legacy = new SQL.Database();
   legacy.run(`
@@ -705,7 +713,7 @@ test('31.16 REGRESIÓN: una base migrada impone los mismos CHECK de ámbito que 
   const migrated = db.exec("SELECT scope, duration_minutes FROM learning_session WHERE id = 's-legacy'");
   assert.deepEqual(migrated[0].values[0], ['resource', 12]);
 
-  // Y la tabla resultante rechaza exactamente lo que rechaza una base fresca.
+  // Y la tabla resultante impone exactamente lo que impone una base fresca.
   assert.throws(
     () => db.run("INSERT INTO learning_session (id, resource_id, scope) VALUES ('bad-value', 'r1', 'otro')"),
     /CHECK constraint failed/,
@@ -716,9 +724,151 @@ test('31.16 REGRESIÓN: una base migrada impone los mismos CHECK de ámbito que 
     /CHECK constraint failed/,
     'un ámbito global con ancla se rechaza también en una base migrada'
   );
-  assert.throws(
-    () => db.run("INSERT INTO learning_session (id, resource_id, scope) VALUES ('bad-resource', NULL, 'resource')"),
-    /CHECK constraint failed/,
-    'un ámbito de recurso sin recurso se rechaza también en una base migrada'
+  // El estado desvinculado es legítimo: es el que produce ON DELETE SET NULL.
+  // La coherencia del ámbito se valida al ESCRIBIR (DAO/servicio) y se
+  // re-clasifica al leer, no se prohíbe en la base.
+  db.run("INSERT INTO learning_session (id, resource_id, scope) VALUES ('unlinked', NULL, 'resource')");
+  const unlinked = db.exec("SELECT scope FROM learning_session WHERE id = 'unlinked'");
+  assert.deepEqual(unlinked[0].values[0], ['resource']);
+  assert.equal(
+    resolveEffectiveStudySessionScope('resource', { resourceId: null }),
+    'global',
+    'una sesión de recurso desvinculada se presenta como repaso global'
   );
+});
+
+test('31.17 REGRESIÓN: borrar un recurso desvincula su sesión en lugar de fallar o destruirla', async () => {
+  const fresh = new (dbBridge.constructor as any)();
+  const db = await fresh.init();
+
+  db.run("INSERT INTO learning_resource (id, title, type) VALUES ('r-delete', 'Curso Borrado', 'course')");
+  db.run(
+    "INSERT INTO learning_session (id, resource_id, scope, duration_minutes) " +
+    "VALUES ('s-delete', 'r-delete', 'resource', 18)"
+  );
+
+  // Con foreign_keys ON, el CHECK antiguo hacía fallar este DELETE.
+  db.run("DELETE FROM learning_resource WHERE id = 'r-delete'");
+
+  const row = db.exec(
+    "SELECT resource_id, scope, duration_minutes FROM learning_session WHERE id = 's-delete'"
+  );
+  assert.deepEqual(
+    row[0].values[0],
+    [null, 'resource', 18],
+    'la sesión sobrevive sin recurso y conserva su duración y su ámbito declarado'
+  );
+});
+
+test('31.18 REGRESIÓN: una base con el CHECK de ancla retirado converge con una fresca y se reconstruye una sola vez', async () => {
+  // La versión publicada anterior llevaba TRES CHECKs, incluido
+  // `scope <> 'resource' OR resource_id IS NOT NULL`. Esa base es la que de
+  // verdad tienen los usuarios existentes, y es la única que dispara la rama
+  // nueva del detector: si no se reconstruye, borrar un recurso sigue fallando
+  // con `CHECK constraint failed`; si el detector se equivoca, se reconstruye
+  // en cada arranque. Las dos cosas se afirman aquí.
+  const SQL = await initSqlJs();
+  const legacy = new SQL.Database();
+  legacy.run(`
+    CREATE TABLE learning_resource (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      cover_path TEXT,
+      category TEXT DEFAULT 'General',
+      status TEXT DEFAULT 'NOT_STARTED',
+      source_path TEXT,
+      type TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE lesson (
+      id TEXT PRIMARY KEY,
+      module_id TEXT,
+      title TEXT,
+      content TEXT,
+      order_index INTEGER,
+      duration_minutes INTEGER,
+      lesson_type TEXT,
+      media_url TEXT,
+      is_completed BOOLEAN
+    );
+    CREATE TABLE learning_session (
+      id TEXT PRIMARY KEY,
+      resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
+      lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL,
+      scope TEXT NOT NULL DEFAULT 'global'
+        CHECK (scope IN ('global', 'resource', 'lesson'))
+        CHECK (scope <> 'global' OR (resource_id IS NULL AND lesson_id IS NULL))
+        CHECK (scope <> 'resource' OR resource_id IS NOT NULL),
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME,
+      duration_minutes INTEGER DEFAULT 0,
+      inactive_seconds INTEGER DEFAULT 0,
+      mode TEXT DEFAULT 'flashcards',
+      cards_reviewed INTEGER DEFAULT 0,
+      questions_answered INTEGER DEFAULT 0,
+      correct_answers INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'completed'
+    );
+    INSERT INTO learning_resource (id, title, type) VALUES ('r-old', 'Curso Publicado', 'course');
+    INSERT INTO learning_session
+      (id, resource_id, scope, duration_minutes, mode, cards_reviewed, status)
+      VALUES ('s-checked', 'r-old', 'resource', 40, 'quiz', 5, 'cancelled');
+  `);
+  const bytes = legacy.export();
+  legacy.close();
+
+  const bridge = new (dbBridge.constructor as any)();
+  bridge.loadFromStorage = async () => bytes;
+  const db = await bridge.init();
+  assert.equal(bridge.getInitState(), 'ready', 'la migración no puede abortar la apertura');
+
+  const row = db.exec("SELECT resource_id, scope, duration_minutes, mode, cards_reviewed, status FROM learning_session WHERE id = 's-checked'");
+  assert.deepEqual(
+    row[0].values[0],
+    ['r-old', 'resource', 40, 'quiz', 5, 'cancelled'],
+    'la fila histórica se conserva entera y mantiene su ámbito declarado'
+  );
+
+  // SQLite guarda el texto tal cual y `ALTER TABLE ... RENAME` reescribe el
+  // nombre entrecomillado y se come el `IF NOT EXISTS`: ni las comillas ni esa
+  // cláusula son parte del contrato, así que se normalizan. Lo que sí se
+  // compara es cada columna, cada CHECK y cada acción de clave foránea.
+  const ddlOf = (sqliteDb: any) => {
+    const res = sqliteDb.exec("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'learning_session'");
+    return String(res[0].values[0][0] ?? '')
+      .replace(/\bIF NOT EXISTS\b/g, '')
+      .replace(/["`]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+  const migratedDdl = ddlOf(db);
+  assert.ok(
+    !migratedDdl.includes("scope <> 'resource' OR resource_id IS NOT NULL"),
+    'el CHECK que impedía el desvinculado debe desaparecer de la base migrada'
+  );
+
+  const fresh = new (dbBridge.constructor as any)();
+  const freshDb = await fresh.init();
+  assert.equal(
+    migratedDdl,
+    ddlOf(freshDb),
+    'una base migrada debe imponer exactamente el mismo esquema que una fresca'
+  );
+
+  // Reabrir los bytes persistidos no puede volver a reconstruir la tabla: el
+  // detector compara el DDL, y un rebuild por arranque escribiría la base en
+  // cada inicio.
+  const persisted = bridge.exportDatabase();
+  const reopened = new (dbBridge.constructor as any)();
+  reopened.loadFromStorage = async () => persisted;
+  const reopenedDb = await reopened.init();
+  assert.equal(reopened.getInitState(), 'ready');
+  assert.equal(ddlOf(reopenedDb), migratedDdl, 'la segunda apertura no debe reescribir el esquema');
+  const again = reopenedDb.exec("SELECT resource_id, scope, duration_minutes FROM learning_session WHERE id = 's-checked'");
+  assert.deepEqual(again[0].values[0], ['r-old', 'resource', 40]);
+
+  const fk = reopenedDb.exec('PRAGMA foreign_keys;');
+  assert.equal(Number(fk[0].values[0][0]), 1, 'foreign_keys debe quedar activo tras la migración');
 });

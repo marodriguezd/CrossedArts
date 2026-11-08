@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react';
+import { useLanguage } from '../hooks/useLanguage.ts';
 import { Course, Book, SearchResult, UnorganizedResource, GraphNodeType } from '../types/models.ts';
 import { isTopOverlay, pushOverlay, removeOverlay } from '../services/overlayStack.ts';
 import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ClipboardList, ArrowUpRight, UploadCloud, Target } from 'lucide-react';
@@ -46,6 +47,7 @@ export const Library: React.FC<LibraryProps> = ({
   onOpenConcept,
   onOpenGoals
 }) => {
+  const { t } = useLanguage();
   const [filter, setFilter] = useState<'all' | 'courses' | 'books'>('all');
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
@@ -113,7 +115,7 @@ export const Library: React.FC<LibraryProps> = ({
     setIsSearching(true);
     dao.searchKnowledge(q)
       .then(res => { if (!cancelled) setSearchResults(res); })
-      .catch(err => console.warn('Error en búsqueda local:', err))
+      .catch(err => console.warn('Local search failed:', err))
       .finally(() => { if (!cancelled) setIsSearching(false); });
     return () => { cancelled = true; };
   }, [deferredQuery, courses, books]);
@@ -172,7 +174,7 @@ export const Library: React.FC<LibraryProps> = ({
   const handleSaveBookMeta = async (book: Book) => {
     const pageCount = bookMetaForm.pageCount ? parseInt(bookMetaForm.pageCount, 10) : undefined;
     if (pageCount !== undefined && (isNaN(pageCount) || pageCount <= 0)) {
-      setBookFeedback({ id: book.id, msg: 'El número de páginas debe ser mayor que cero.', isError: true });
+      setBookFeedback({ id: book.id, msg: t('library.errPagesPositive'), isError: true });
       return;
     }
     const res = await dao.updateBookDetails(book.id, {
@@ -225,15 +227,15 @@ export const Library: React.FC<LibraryProps> = ({
 
   /** Localized label for the search-result type. Defaults to Spanish. */
   const SEARCH_TYPE_LABELS: Partial<Record<SearchResult['type'], string>> = {
-    course: 'Curso',
-    book: 'Libro',
-    module: 'Módulo',
-    lesson: 'Lección',
-    note: 'Nota',
-    concept: 'Concepto',
-    practice: 'Trabajo práctico',
-    resource: 'Recurso',
-    goal: 'Meta'
+    course: t('graph.node.course'),
+    book: t('graph.node.book'),
+    module: t('graph.node.module'),
+    lesson: t('graph.node.lesson'),
+    note: t('graph.node.note'),
+    concept: t('graph.node.concept'),
+    practice: t('graph.node.practice'),
+    resource: t('graph.node.resource'),
+    goal: t('search.type.goal')
   };
 
   const [isWindowDragging, setIsWindowDragging] = useState(false);
@@ -335,14 +337,14 @@ export const Library: React.FC<LibraryProps> = ({
         success: 0,
         duplicates: 0,
         errors: fileList.length,
-        details: [err?.message || 'Error durante la importación de archivos.']
+        details: [err?.message || t('library.errImport')]
       });
     } finally {
       setIsImporting(false);
       setIngestionProgress(null);
       abortControllerRef.current = null;
     }
-  }, [onUpdateBookProgress, onDocumentImported]);
+  }, [onUpdateBookProgress, onDocumentImported, t]);
 
   const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -470,7 +472,7 @@ export const Library: React.FC<LibraryProps> = ({
   const handleSaveProgress = async (book: Book) => {
     const pageNum = parseInt(inputPage, 10);
     if (isNaN(pageNum)) {
-      setBookFeedback({ id: book.id, msg: 'Introduce un número de página válido.', isError: true });
+      setBookFeedback({ id: book.id, msg: t('library.errPageInvalid'), isError: true });
       return;
     }
 
@@ -688,8 +690,8 @@ export const Library: React.FC<LibraryProps> = ({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SearchInput
-          label="Buscar por título, autor o tema"
-          placeholder="Buscar por título, autor o tema…"
+          label={t('library.searchLabel')}
+          placeholder={t('library.searchPlaceholder')}
           value={query}
           onChange={setQuery}
           className="sm:w-80"
@@ -808,10 +810,10 @@ export const Library: React.FC<LibraryProps> = ({
         <section>
           <SectionHeading
             title={`Cursos (${filteredCourses.length})`}
-            description="Cursos estructurados con módulos y lecciones."
+            description={t('library.coursesDescription')}
           />
           {filteredCourses.length === 0 ? (
-            <EmptyState title="Sin cursos" hint="Crea un curso o ajusta la búsqueda." />
+            <EmptyState title={t('library.emptyCoursesTitle')} hint={t('library.emptyCoursesHint')} />
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredCourses.map(course => (
@@ -855,10 +857,10 @@ export const Library: React.FC<LibraryProps> = ({
         <section className="pt-2">
           <SectionHeading
             title={`Libros y manuales (${filteredBooks.length})`}
-            description="Lecturas con progreso de páginas y acciones de estudio."
+            description={t('library.booksDescription')}
           />
           {filteredBooks.length === 0 ? (
-            <EmptyState title="Sin libros" hint="Importa un PDF o EPUB para añadirlo a la biblioteca." />
+            <EmptyState title={t('library.emptyBooksTitle')} hint={t('library.emptyBooksHint')} />
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filteredBooks.map(book => (
@@ -876,7 +878,7 @@ export const Library: React.FC<LibraryProps> = ({
                       <button
                         onClick={() => handleStartEdit(book)}
                         className="text-meta text-muted underline underline-offset-2 hover:text-ink"
-                        title="Actualizar página actual"
+                        title={t('library.updatePageTitle')}
                       >
                         {editingBookId === book.id ? 'Cancelar' : 'Editar'}
                       </button>
@@ -949,7 +951,7 @@ export const Library: React.FC<LibraryProps> = ({
                             min="1"
                             value={bookMetaForm.pageCount}
                             onChange={e => setBookMetaForm(f => ({ ...f, pageCount: e.target.value }))}
-                            placeholder="Páginas"
+                            placeholder={t('library.pagesPlaceholder')}
                             className="w-20 rounded-md border border-line bg-surface px-2 py-1 text-right text-meta text-ink focus:border-accent/50 focus:outline-none"
                           />
                           <span className="text-meta">páginas totales</span>
@@ -993,7 +995,7 @@ export const Library: React.FC<LibraryProps> = ({
                             type="button"
                             onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 10, book.page_count ?? 0)))}
                             className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
-                            title="Avanzar 10 páginas"
+                            title={t('library.advance10')}
                           >
                             +10 pág
                           </button>
@@ -1001,7 +1003,7 @@ export const Library: React.FC<LibraryProps> = ({
                             type="button"
                             onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 25, book.page_count ?? 0)))}
                             className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
-                            title="Avanzar 25 páginas"
+                            title={t('library.advance25')}
                           >
                             +25 pág
                           </button>
@@ -1009,7 +1011,7 @@ export const Library: React.FC<LibraryProps> = ({
                             type="button"
                             onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 50, book.page_count ?? 0)))}
                             className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
-                            title="Avanzar 50 páginas"
+                            title={t('library.advance50')}
                           >
                             +50 pág
                           </button>
@@ -1085,7 +1087,7 @@ export const Library: React.FC<LibraryProps> = ({
               <h3 id="preview-title" className="type-section flex items-center gap-2 text-ink">
                 <FileUp size={17} className="text-accent" aria-hidden="true" /> Previsualización de importación
               </h3>
-              <button onClick={() => setPreviewDoc(null)} aria-label="Cerrar previsualización" className="text-faint hover:text-ink">
+              <button onClick={() => setPreviewDoc(null)} aria-label={t('library.closePreview')} className="text-faint hover:text-ink">
                 <X size={18} aria-hidden="true" />
               </button>
             </div>
@@ -1242,7 +1244,7 @@ export const Library: React.FC<LibraryProps> = ({
               <h3 id="create-course-title" className="type-section flex items-center gap-2 text-ink">
                 <GraduationCap size={17} className="text-accent" aria-hidden="true" /> Crear curso
               </h3>
-              <button type="button" onClick={() => setIsCreateCourseOpen(false)} aria-label="Cerrar diálogo" className="text-faint hover:text-ink">
+              <button type="button" onClick={() => setIsCreateCourseOpen(false)} aria-label={t('library.closeDialog')} className="text-faint hover:text-ink">
                 <X size={18} aria-hidden="true" />
               </button>
             </div>

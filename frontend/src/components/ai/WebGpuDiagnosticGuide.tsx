@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import {
   Cpu,
   CheckCircle2,
@@ -39,6 +40,7 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
   onCapabilityChange,
   className = ''
 }) => {
+  const { t } = useLanguage();
   const [report, setReport] = useState<WebGPUCapabilityReport>(
     initialReport || {
       state: 'checking',
@@ -173,8 +175,8 @@ export const WebGpuDiagnosticGuide: React.FC<WebGpuDiagnosticGuideProps> = ({
             variant="quiet"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            title="Volver a comprobar compatibilidad gráfica"
-            aria-label="Volver a comprobar compatibilidad gráfica"
+            title={t('diagnostics.recheck')}
+            aria-label={t('diagnostics.recheck')}
           >
             <RotateCw
               size={13}

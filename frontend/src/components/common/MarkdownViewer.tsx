@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Copy, Check, Clock } from 'lucide-react';
 import { parseInlineMarkdownTokens } from '../../services/domainLogic.ts';
+import { useLanguage } from '../../hooks/useLanguage.ts';
 import { cn } from '../ui/index.tsx';
 
 interface MarkdownViewerProps {
@@ -15,6 +16,7 @@ interface CodeBlockProps {
 }
 
 const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   /** Reset timer, cleared on unmount so it never sets state on a dead component. */
   const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,11 +41,11 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
   return (
     <div className="group relative my-3 overflow-hidden rounded-xl border border-line bg-canvas">
       <div className="flex items-center justify-between border-b border-line bg-surface/70 px-3 py-1.5 text-micro text-muted">
-        <span className="font-mono">{language || 'código'}</span>
+        <span className="font-mono">{language || t('markdown.code')}</span>
         <button
           type="button"
           onClick={handleCopy}
-          aria-label={copied ? 'Código copiado al portapapeles' : 'Copiar fragmento de código'}
+          aria-label={copied ? t('markdown.copied') : t('markdown.copy')}
           className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-micro hover:bg-accent-soft hover:text-ink transition-colors"
         >
           {copied ? (

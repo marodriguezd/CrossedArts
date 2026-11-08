@@ -4,6 +4,10 @@
  * persisted to SQLite (AGENTS.md invariant 5).
  */
 
+import { translateKey } from '../i18n/dictionaries.ts';
+import type { LanguageCode } from '../i18n/languages.ts';
+import { resolveAppLanguage } from '../i18n/resolveAppLanguage.ts';
+
 export interface DiscoveredMediaFile {
   name: string;
   relativePath: string;
@@ -212,12 +216,21 @@ class LocalMediaService {
    * validates the extension, persists nothing to SQLite, and updates the
    * in-memory playback map.
    */
-  public associateIndividualFile(lessonId: string, file: File): { success: boolean; error?: string } {
+  public associateIndividualFile(
+    lessonId: string,
+    file: File,
+    lang: LanguageCode = resolveAppLanguage()
+  ): { success: boolean; error?: string } {
     if (!isSupportedMedia(file.name)) {
       const ext = file.name.slice(file.name.lastIndexOf('.'));
       return {
         success: false,
-        error: `Formato no soportado ("${ext || 'sin extensión'}"). Formatos permitidos: ${Array.from(SUPPORTED_MEDIA_EXTENSIONS).join(', ')}.`
+        // The message follows the UI language through the shared dictionary;
+        // tests PIN the language instead of depending on the environment.
+        error: translateKey(lang, 'media.unsupportedFormat', {
+          ext: ext || translateKey(lang, 'media.noExtension'),
+          formats: Array.from(SUPPORTED_MEDIA_EXTENSIONS).join(', '),
+        })
       };
     }
 
@@ -244,7 +257,7 @@ class LocalMediaService {
    */
   public async pickAndScanDirectory(lessons: MatchCandidate[]): Promise<MediaScanReport> {
     if (!this.isSupported()) {
-      throw new Error('La File System Access API no está soportada en este navegador.');
+      throw new Error(translateKey(resolveAppLanguage(), 'media.fsUnsupported'));
     }
 
     // @ts-ignore

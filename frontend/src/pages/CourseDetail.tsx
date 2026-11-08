@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLanguage } from '../hooks/useLanguage.ts';
 import { Course, Lesson } from '../types/models.ts';
 import {
   ArrowLeft,
@@ -54,6 +55,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   onOpenResource,
   onOpenConcept
 }) => {
+  const { t } = useLanguage();
   const findLesson = (lessonId?: string | null): Lesson | null => {
     if (!lessonId) return null;
     for (const mod of course.modules || []) {
@@ -114,10 +116,10 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
       }
       setFeedbackMsg({
         type: 'success',
-        text: completed ? 'Lección marcada como completada.' : 'Lección marcada como pendiente.'
+        text: completed ? t('courseDetail.lessonCompleted') : t('courseDetail.lessonPending')
       });
     } catch {
-      setFeedbackMsg({ type: 'error', text: 'No se pudo actualizar el estado de la lección.' });
+      setFeedbackMsg({ type: 'error', text: t('courseDetail.lessonToggleFail') });
     }
   };
 
@@ -127,10 +129,10 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
       onRefresh();
       setFeedbackMsg({
         type: 'success',
-        text: completed ? 'Todas las lecciones del módulo marcadas como completadas.' : 'Todas las lecciones del módulo marcadas como pendientes.'
+        text: completed ? t('courseDetail.moduleAllDone') : t('courseDetail.moduleAllPending')
       });
     } catch {
-      setFeedbackMsg({ type: 'error', text: 'No se pudo actualizar el módulo.' });
+      setFeedbackMsg({ type: 'error', text: t('courseDetail.moduleToggleFail') });
     }
   };
 
@@ -166,11 +168,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
     setFeedbackMsg(null);
     const res = await dao.createModule({ courseId: course.id, title: newModuleTitle });
     if (!res.success) {
-      setFeedbackMsg({ type: 'error', text: res.error || 'No se pudo crear el módulo.' });
+      setFeedbackMsg({ type: 'error', text: res.error || t('courseDetail.moduleCreateFail') });
       return;
     }
     setNewModuleTitle('');
-    setFeedbackMsg({ type: 'success', text: 'Módulo creado correctamente.' });
+    setFeedbackMsg({ type: 'success', text: t('courseDetail.moduleCreated') });
     onRefresh();
   };
 
@@ -178,11 +180,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
     setFeedbackMsg(null);
     const res = await dao.createLesson({ moduleId: newLessonModuleId, title: newLessonTitle });
     if (!res.success) {
-      setFeedbackMsg({ type: 'error', text: res.error || 'No se pudo crear la lección.' });
+      setFeedbackMsg({ type: 'error', text: res.error || t('courseDetail.lessonCreateFail') });
       return;
     }
     setNewLessonTitle('');
-    setFeedbackMsg({ type: 'success', text: 'Lección creada correctamente.' });
+    setFeedbackMsg({ type: 'success', text: t('courseDetail.lessonCreated') });
     onRefresh();
     if (res.id) setSelectedLesson({ id: res.id, module_id: newLessonModuleId, title: newLessonTitle.trim(), order_index: 0, duration_minutes: 0, lesson_type: 'VIDEO', is_completed: false });
   };
@@ -301,7 +303,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
         <div className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent-soft/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="type-item text-ink">
-              {nextLesson.allCompleted ? 'Curso completado. Repasa la última lección:' : 'Continuar curso'}
+              {nextLesson.allCompleted ? t('courseDetail.courseDone') : t('courseDetail.continue')}
             </p>
             <p className="type-meta mt-0.5 truncate">{nextLesson.moduleTitle} › {nextLesson.title}</p>
           </div>
@@ -321,7 +323,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
       {(course.total_lessons || 0) > 0 && (
         <MountainProgress
           title="Tu recorrido en este curso"
-          subtitle="Cada hito marca el final de un módulo del temario; la subida es el porcentaje real de lecciones completadas."
+          subtitle={t('courseDetail.progressSubtitle')}
           scopeLabel={`el curso ${course.title}`}
           progress={coursePercentValue}
           stages={courseStages}
@@ -338,7 +340,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
             <div className="space-y-1.5">
               <SearchInput
                 label="Buscar lecciones"
-                placeholder="Buscar lección en este curso…"
+                placeholder={t('courseDetail.searchLessonPlaceholder')}
                 value={lessonQuery}
                 onChange={setLessonQuery}
                 className="w-full"
@@ -364,16 +366,16 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                 type="text"
                 value={newModuleTitle}
                 onChange={e => setNewModuleTitle(e.target.value)}
-                placeholder="Nuevo módulo…"
-                aria-label="Título del nuevo módulo"
+                placeholder={t('courseDetail.newModulePlaceholder')}
+                aria-label={t('courseDetail.newModuleTitleLabel')}
                 className={cn(INPUT_CLS, 'min-w-0 flex-1')}
               />
               <button
                 onClick={handleCreateModule}
                 disabled={!newModuleTitle.trim()}
                 className="rounded-lg bg-accent p-1.5 text-on-accent transition hover:opacity-90 disabled:pointer-events-none disabled:bg-line disabled:text-muted"
-                title="Crear módulo"
-                aria-label="Crear módulo"
+                title={t('courseDetail.createModule')}
+                aria-label={t('courseDetail.createModule')}
               >
                 <Plus size={14} aria-hidden="true" />
               </button>
@@ -381,7 +383,9 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
 
             {filteredModules.length === 0 ? (
               <p className="type-meta px-1 text-muted">
-                {course.modules?.length === 0 ? 'Sin módulos.' : 'No hay lecciones que coincidan con la búsqueda.'}
+                {course.modules?.length === 0
+                  ? t('courseDetail.noModules')
+                  : t('courseDetail.noLessonMatches')}
               </p>
             ) : (
               filteredModules.map((mod) => (
@@ -401,7 +405,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                           type="button"
                           onClick={() => handleToggleModuleLessons(mod.id, !mod.lessons?.every(l => l.is_completed))}
                           className="p-1 text-faint hover:text-accent text-micro transition-colors cursor-pointer"
-                          title={mod.lessons.every(l => l.is_completed) ? 'Marcar módulo como pendiente' : 'Marcar módulo como completado'}
+                          title={
+                            mod.lessons.every(l => l.is_completed)
+                              ? t('courseDetail.markModulePending')
+                              : t('courseDetail.markModuleDone')
+                          }
                           aria-label={`Marcar todas las lecciones del módulo ${mod.title} como ${mod.lessons.every(l => l.is_completed) ? 'pendientes' : 'completadas'}`}
                         >
                           {mod.lessons.every(l => l.is_completed) ? (
@@ -414,7 +422,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                       <button
                         onClick={() => handleDeleteModule(mod.id, mod.title)}
                         className="p-1 text-faint transition-colors hover:text-error cursor-pointer"
-                        title="Eliminar módulo"
+                        title={t('courseDetail.deleteModule')}
                         aria-label={`Eliminar módulo ${mod.title}`}
                       >
                         <Trash2 size={12} aria-hidden="true" />
@@ -489,7 +497,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                             type="button"
                             onClick={() => handleDeleteLesson(les.id, les.title)}
                             className="p-0.5 text-faint opacity-0 transition hover:text-error focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-                            title="Eliminar lección"
+                            title={t('courseDetail.deleteLesson')}
                             aria-label={`Eliminar lección ${les.title}`}
                           >
                             <Trash2 size={11} aria-hidden="true" />
@@ -512,7 +520,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                   id="new-lesson-module"
                   value={newLessonModuleId}
                   onChange={e => setNewLessonModuleId(e.target.value)}
-                  aria-label="Módulo de la nueva lección"
+                  aria-label={t('courseDetail.newLessonModuleLabel')}
                   className="w-full rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-meta text-ink focus:border-accent/50 focus:outline-none"
                 >
                   {(course.modules || []).map(m => (
@@ -526,16 +534,16 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
                     type="text"
                     value={newLessonTitle}
                     onChange={e => setNewLessonTitle(e.target.value)}
-                    placeholder="Título de la lección…"
-                    aria-label="Título de la nueva lección"
+                    placeholder={t('courseDetail.lessonTitlePlaceholder')}
+                    aria-label={t('courseDetail.newLessonTitleLabel')}
                     className={cn(INPUT_CLS, 'min-w-0 flex-1')}
                   />
                   <button
                     onClick={handleCreateLesson}
                     disabled={!newLessonTitle.trim()}
                     className="rounded-lg bg-accent p-1.5 text-on-accent transition hover:opacity-90 disabled:pointer-events-none disabled:bg-line disabled:text-muted"
-                    title="Crear lección"
-                    aria-label="Crear lección"
+                    title={t('courseDetail.createLesson')}
+                    aria-label={t('courseDetail.createLesson')}
                   >
                     <Plus size={14} aria-hidden="true" />
                   </button>
@@ -566,8 +574,8 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
           ) : (
             <EmptyState
               icon={<BookOpen size={32} aria-hidden="true" />}
-              title="Este curso aún no tiene lecciones"
-              hint="Crea un módulo y una lección para empezar a construir el curso."
+              title={t('courseDetail.emptyTitle')}
+              hint={t('courseDetail.emptyHint')}
             />
           )}
         </div>

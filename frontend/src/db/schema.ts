@@ -38,6 +38,47 @@ export function buildPracticeWorkTableSql(tableName: string): string {
 );`;
 }
 
+/**
+ * Canonical DDL for study sessions.
+ *
+ * Scope is the canonical three-value domain (see `services/sessionScope.ts`):
+ *   'lesson'   -> session started in a lesson (resource_id optional)
+ *   'resource' -> session started in a resource, with no lesson
+ *   'global'   -> cross-cutting review: no anchors (explicit scope, not absence)
+ *
+ * The table enforces only the value domain and that 'global' never carries an
+ * anchor. It deliberately does NOT require an anchor for 'resource' or 'lesson':
+ * `ON DELETE SET NULL` unlinks either anchor from an already finished session
+ * (history is preserved) and SQLite evaluates CHECK constraints on that internal
+ * UPDATE, so an anchor-requiring CHECK made deleting a resource fail instead of
+ * unlinking it. Write paths validate coherence;
+ * `resolveEffectiveStudySessionScope` reclassifies the session on read.
+ *
+ * Exposed as a function so `rebuildLearningSessionTable()` builds the table with
+ * exactly the same definition (a single source of truth): two hand-maintained
+ * copies drifted before, and any formatting difference made the migration
+ * rerun on every boot.
+ */
+export function buildLearningSessionTableSql(tableName: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${tableName} (
+  id TEXT PRIMARY KEY,
+  resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
+  lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL,
+  scope TEXT NOT NULL DEFAULT 'global'
+    CHECK (scope IN ('global', 'resource', 'lesson'))
+    CHECK (scope <> 'global' OR (resource_id IS NULL AND lesson_id IS NULL)),
+  started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  ended_at DATETIME,
+  duration_minutes INTEGER DEFAULT 0,
+  inactive_seconds INTEGER DEFAULT 0,
+  mode TEXT DEFAULT 'flashcards',
+  cards_reviewed INTEGER DEFAULT 0,
+  questions_answered INTEGER DEFAULT 0,
+  correct_answers INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'completed'
+);`;
+}
+
 /** Practice-work indexes (same names for the canonical and migrated tables). */
 export const PRACTICE_WORK_INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS idx_practice_work_resource ON practice_work(resource_id);
@@ -95,33 +136,10 @@ CREATE TABLE IF NOT EXISTS lesson (
   is_completed BOOLEAN DEFAULT 0
 );
 
--- Session scope (canonical rule in services/sessionScope.ts):
---   'lesson'   -> session started in a lesson (resource_id optional)
---   'resource' -> session started in a resource, with no lesson
---   'global'   -> cross-cutting review: no anchors (explicit scope, not absence)
--- On write, the DAO strictly validates scope coherence against its anchors.
--- The database only enforces the value domain and that 'global' never carries
--- an anchor, because ON DELETE SET NULL may unlink the lesson from an already
--- finished lesson session: history is preserved and its scope is reclassified
--- on read (the DAO derives the effective scope from the remaining anchors).
-CREATE TABLE IF NOT EXISTS learning_session (
-  id TEXT PRIMARY KEY,
-  resource_id TEXT REFERENCES learning_resource(id) ON DELETE SET NULL,
-  lesson_id TEXT REFERENCES lesson(id) ON DELETE SET NULL,
-  scope TEXT NOT NULL DEFAULT 'global'
-    CHECK (scope IN ('global', 'resource', 'lesson'))
-    CHECK (scope <> 'global' OR (resource_id IS NULL AND lesson_id IS NULL))
-    CHECK (scope <> 'resource' OR resource_id IS NOT NULL),
-  started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  ended_at DATETIME,
-  duration_minutes INTEGER DEFAULT 0,
-  inactive_seconds INTEGER DEFAULT 0,
-  mode TEXT DEFAULT 'flashcards',
-  cards_reviewed INTEGER DEFAULT 0,
-  questions_answered INTEGER DEFAULT 0,
-  correct_answers INTEGER DEFAULT 0,
-  status TEXT DEFAULT 'completed'
-);
+-- Study sessions. The definition lives in buildLearningSessionTableSql() so
+-- the existing-database migration cannot drift from it; the docblock there
+-- explains why the anchor-requiring CHECK is absent on purpose.
+${buildLearningSessionTableSql('learning_session')}
 
 CREATE TABLE IF NOT EXISTS note (
   id TEXT PRIMARY KEY,
