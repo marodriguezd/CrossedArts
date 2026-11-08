@@ -30,6 +30,12 @@ import { FlashcardGenerationModal } from '../components/study/FlashcardGeneratio
 import { ImageOcclusionEditor } from '../components/study/ImageOcclusionEditor.tsx';
 import { ImageOcclusionViewer } from '../components/study/ImageOcclusionViewer.tsx';
 import { PracticeQuestion } from '../components/study/PracticeQuestion.tsx';
+import {
+  ReviewConfigPanel,
+  ReviewCard,
+  RatingBar,
+  ReviewSummary
+} from '../components/review/index.ts';
 import { aiService } from '../ai/aiService.ts';
 import type { GeneratedQuestion, StudyDifficulty } from '../lib/studyGeneration/types.ts';
 import { initialStudySessionState, studySessionReducer } from '../services/studySession.ts';
@@ -584,161 +590,30 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       )}
 
       {(state.phase === 'idle' || state.phase === 'failed') && !isPreparing && (
-        <section className="space-y-5 rounded-xl border border-line bg-surface p-5 shadow-card sm:p-6" aria-label={t('review.sessionConfigLabel')}>
-          <div className="space-y-2">
-            <span className="type-micro">Modalidad</span>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {([
-                { id: 'flashcards', label: t('review.mode.flashcards'), icon: Layers, desc: t('review.modeDesc.flashcards', { n: dueCount }) },
-                { id: 'practice', label: t('review.modeShort.practice'), icon: ListChecks, desc: t('review.modeDesc.practice') },
-                { id: 'mixed', label: t('review.modeShort.mixed'), icon: Shuffle, desc: t('review.modeDesc.mixed') }
-              ] as Array<{ id: StudySessionMode; label: string; icon: any; desc: string }>).map(opt => {
-                const Icon = opt.icon;
-                const active = mode === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    onClick={() => setMode(opt.id)}
-                    aria-pressed={active}
-                    className={cn(
-                      'rounded-xl border p-3 text-left transition-colors duration-fast',
-                      active
-                        ? 'border-accent/50 bg-accent-soft font-semibold text-ink shadow-card'
-                        : 'border-line bg-canvas text-muted hover:border-line-strong hover:text-ink'
-                    )}
-                  >
-                    <span className="flex items-center gap-2 text-secondary">
-                      <Icon size={15} className={active ? 'text-accent' : ''} aria-hidden="true" /> {opt.label}
-                    </span>
-                    <span className="mt-1 block text-meta">{opt.desc}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="type-micro flex items-center gap-1.5">
-                <Filter size={12} className="text-accent" aria-hidden="true" />
-                Origen del mazo ({dueCount} pendientes)
-              </span>
-              {originFilter !== 'all' && (
-                <button
-                  type="button"
-                  onClick={() => setOriginFilter('all')}
-                  className="text-meta text-muted underline hover:text-ink"
-                >
-                  Restablecer
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por origen">
-              <Chip active={originFilter === 'all'} onClick={() => setOriginFilter('all')}>
-                Todo ({flashcards.filter(f => isDue(f.due_date)).length})
-              </Chip>
-              <Chip active={originFilter === 'course'} onClick={() => setOriginFilter('course')}>
-                <GraduationCap size={13} aria-hidden="true" className="mr-1 inline" /> Cursos
-              </Chip>
-              <Chip active={originFilter === 'book'} onClick={() => setOriginFilter('book')}>
-                <BookOpen size={13} aria-hidden="true" className="mr-1 inline" /> Libros
-              </Chip>
-              <Chip active={originFilter === 'general'} onClick={() => setOriginFilter('general')}>
-                General
-              </Chip>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-meta font-medium text-muted" htmlFor="study-resource">Recurso específico (opcional)</label>
-              <select
-                id="study-resource"
-                value={selectedResourceId}
-                onChange={e => setSelectedResourceId(e.target.value)}
-                className={INPUT_CLS}
-              >
-                <option value="">Todos los recursos</option>
-                {resources.map(r => (
-                  <option key={r.id} value={r.id}>{r.title}</option>
-                ))}
-              </select>
-              {selectedLessonId && (
-                <p className="mt-1.5 flex items-center gap-1 text-meta text-accent">
-                  {t('review.lessonScope', {
-                    title:
-                      lessonOptions.find(l => l.id === selectedLessonId)?.title ||
-                      t('review.lessonFallback')
-                  })}
-                  <button type="button" onClick={() => setSelectedLessonId('')} className="underline text-muted hover:text-ink">
-                    quitar
-                  </button>
-                </p>
-              )}
-            </div>
-
-            {(mode === 'practice' || mode === 'mixed') && (
-              <div>
-                <label className="mb-1 block text-meta font-medium text-muted" htmlFor="study-topic">Tema o consulta guía</label>
-                <input
-                  id="study-topic"
-                  type="text"
-                  value={topic}
-                  onChange={e => setTopic(e.target.value)}
-                  placeholder={t('review.tagPlaceholder')}
-                  className={INPUT_CLS}
-                />
-              </div>
-            )}
-          </div>
-
-          {(mode === 'practice' || mode === 'mixed') && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-meta font-medium text-muted" htmlFor="study-count">Número de preguntas ({count})</label>
-                <input id="study-count" type="range" min="3" max="6" value={count} onChange={e => setCount(parseInt(e.target.value, 10))} className="w-full cursor-pointer accent-accent" />
-              </div>
-              <div>
-                <span className="mb-1 block text-meta font-medium text-muted" id="study-difficulty-label">Dificultad</span>
-                <div className="grid grid-cols-3 gap-1 rounded-xl border border-line bg-canvas p-1" role="group" aria-labelledby="study-difficulty-label">
-                  {(['easy', 'medium', 'hard'] as StudyDifficulty[]).map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setDifficulty(d)}
-                      aria-pressed={difficulty === d}
-                      className={cn(
-                        'rounded-lg py-1.5 text-meta capitalize transition-colors',
-                        difficulty === d ? 'bg-ink font-semibold text-canvas' : 'text-muted hover:text-ink'
-                      )}
-                    >
-                      {t(`study.difficulty.${d}`)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2.5 border-t border-line pt-4">
-            <Button variant="solid" onClick={handleStart}>
-              <Play size={14} aria-hidden="true" /> Iniciar sesión
-            </Button>
-            <Button variant="outline" onClick={() => setIsFlashcardModalOpen(true)}>
-              <Sparkles size={14} aria-hidden="true" /> Generar flashcards
-            </Button>
-            <Button variant="outline" onClick={() => setIsOcclusionModalOpen(true)}>
-              <Layers size={14} aria-hidden="true" /> Oclusión de imagen
-            </Button>
-          </div>
-
-          {state.phase === 'failed' && state.error && (
-            <InlineStatus tone="error">
-              <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
-              <span>{state.error}</span>
-            </InlineStatus>
-          )}
-        </section>
+        <ReviewConfigPanel
+          mode={mode}
+          onModeChange={setMode}
+          dueCount={dueCount}
+          originFilter={originFilter}
+          onOriginFilterChange={setOriginFilter}
+          flashcards={flashcards}
+          resources={resources}
+          selectedResourceId={selectedResourceId}
+          onSelectedResourceChange={setSelectedResourceId}
+          selectedLessonId={selectedLessonId}
+          onClearSelectedLesson={() => setSelectedLessonId('')}
+          lessonOptions={lessonOptions}
+          topic={topic}
+          onTopicChange={setTopic}
+          count={count}
+          onCountChange={setCount}
+          difficulty={difficulty}
+          onDifficultyChange={setDifficulty}
+          onStart={handleStart}
+          onOpenFlashcardModal={() => setIsFlashcardModalOpen(true)}
+          onOpenOcclusionModal={() => setIsOcclusionModalOpen(true)}
+          error={state.phase === 'failed' ? state.error : null}
+        />
       )}
 
       {(isPreparing || state.phase === 'starting') && (
@@ -802,207 +677,22 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
 
               {currentCard && (
                 <div className="space-y-4">
-                  {currentCard.card_type === 'image_occlusion' && currentCard.extra_data ? (
-                    (() => {
-                      const occlusionData = parseImageOcclusionData(currentCard.extra_data);
-                      if (occlusionData) {
-                        return (
-                          <div className="space-y-4 rounded-xl border border-line bg-raised p-5 shadow-pop sm:p-7">
-                            <div className="flex items-center justify-between">
-                              <span className="type-micro text-accent">
-                                Oclusión de imagen · {showAnswer ? 'Respuestas visibles' : 'Área oculta'}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleToggleAudio();
-                                  }}
-                                  aria-label={isPlayingAudio ? 'Detener lectura en voz alta' : 'Leer tarjeta en voz alta (R)'}
-                                  className="p-1.5 rounded-lg border border-line bg-canvas text-muted hover:text-ink hover:bg-accent-soft transition-colors cursor-pointer"
-                                  title="Leer en voz alta (R)"
-                                >
-                                  {isPlayingAudio ? (
-                                    <VolumeX size={14} className="text-accent animate-pulse" aria-hidden="true" />
-                                  ) : (
-                                    <Volume2 size={14} aria-hidden="true" />
-                                  )}
-                                </button>
-                                <span className="text-meta text-muted">
-                                  SM-2 · {currentCard.interval_days}d
-                                </span>
-                              </div>
-                            </div>
-                            <h2 className="font-serif text-lg font-bold leading-snug text-ink md:text-xl">
-                              {currentCard.front}
-                            </h2>
+                  <ReviewCard
+                    card={currentCard}
+                    showAnswer={showAnswer}
+                    onToggleAnswer={() => setShowAnswer(v => !v)}
+                    isPlayingAudio={isPlayingAudio}
+                    onToggleAudio={handleToggleAudio}
+                    activeMaskIndex={activeMaskIndex}
+                    onSelectMask={setActiveMaskIndex}
+                  />
 
-                            <ImageOcclusionViewer
-                              data={occlusionData}
-                              activeMaskIndex={activeMaskIndex}
-                              isRevealed={showAnswer}
-                              onToggleReveal={() => setShowAnswer(v => !v)}
-                              onSelectMask={(idx) => setActiveMaskIndex(idx)}
-                            />
-
-                            {showAnswer && currentCard.back && (
-                              <div className="border-t border-line pt-3 text-meta text-muted">
-                                <p className="whitespace-pre-line leading-relaxed">{currentCard.back}</p>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })() || (
-                      <button
-                        type="button"
-                        onClick={() => setShowAnswer(v => !v)}
-                        aria-expanded={showAnswer}
-                        aria-label={showAnswer ? 'Ocultar respuesta de la tarjeta' : 'Revelar respuesta de la tarjeta'}
-                        className="flex min-h-[240px] w-full flex-col justify-between rounded-xl border border-line bg-raised p-7 text-left shadow-pop transition-colors duration-fast hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:p-9"
-                      >
-                        <div>
-                          <div className="flex items-center justify-between">
-                            <span className="type-micro text-accent">
-                              {showAnswer ? 'Reverso / Respuesta' : 'Anverso / Pregunta'}
-                            </span>
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleAudio();
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.stopPropagation();
-                                  handleToggleAudio();
-                                }
-                              }}
-                              aria-label={isPlayingAudio ? 'Detener lectura en voz alta' : 'Leer tarjeta en voz alta (R)'}
-                              className="p-1.5 rounded-lg border border-line bg-canvas text-muted hover:text-ink hover:bg-accent-soft transition-colors cursor-pointer"
-                              title="Leer en voz alta (R)"
-                            >
-                              {isPlayingAudio ? (
-                                <VolumeX size={14} className="text-accent animate-pulse" aria-hidden="true" />
-                              ) : (
-                                <Volume2 size={14} aria-hidden="true" />
-                              )}
-                            </span>
-                          </div>
-                          <h2 className="mt-4 font-serif text-xl font-bold leading-relaxed text-ink md:text-2xl">
-                            {currentCard.front}
-                          </h2>
-                        </div>
-                        {showAnswer ? (
-                          <div className="mt-6 border-t border-line pt-6">
-                            <p className="text-body leading-relaxed text-ink" style={{ lineHeight: 1.7 }}>
-                              {currentCard.back}
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="pt-8 text-center">
-                            <span className="inline-flex items-center gap-1.5 text-meta text-faint">
-                              <Sparkles size={13} aria-hidden="true" /> Pulsa o presiona <Kbd>Espacio</Kbd> para revelar la respuesta
-                            </span>
-                          </div>
-                        )}
-                      </button>
-                    )
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowAnswer(v => !v)}
-                      aria-expanded={showAnswer}
-                      aria-label={showAnswer ? 'Ocultar respuesta de la tarjeta' : 'Revelar respuesta de la tarjeta'}
-                      className="flex min-h-[240px] w-full flex-col justify-between rounded-xl border border-line bg-raised p-7 text-left shadow-pop transition-colors duration-fast hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:p-9"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <span className="type-micro text-accent">
-                            {showAnswer ? 'Reverso / Respuesta' : 'Anverso / Pregunta'}
-                          </span>
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleAudio();
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.stopPropagation();
-                                handleToggleAudio();
-                              }
-                            }}
-                            aria-label={isPlayingAudio ? 'Detener lectura en voz alta' : 'Leer tarjeta en voz alta (R)'}
-                            className="p-1.5 rounded-lg border border-line bg-canvas text-muted hover:text-ink hover:bg-accent-soft transition-colors cursor-pointer"
-                            title="Leer en voz alta (R)"
-                          >
-                            {isPlayingAudio ? (
-                              <VolumeX size={14} className="text-accent animate-pulse" aria-hidden="true" />
-                            ) : (
-                              <Volume2 size={14} aria-hidden="true" />
-                            )}
-                          </span>
-                        </div>
-                        <h2 className="mt-4 font-serif text-xl font-bold leading-relaxed text-ink md:text-2xl">
-                          {currentCard.front}
-                        </h2>
-                      </div>
-                      {showAnswer ? (
-                        <div className="mt-6 border-t border-line pt-6">
-                          <p className="text-body leading-relaxed text-ink" style={{ lineHeight: 1.7 }}>
-                            {currentCard.back}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="pt-8 text-center">
-                          <span className="inline-flex items-center gap-1.5 text-meta text-faint">
-                            <Sparkles size={13} aria-hidden="true" /> Pulsa o presiona <Kbd>Espacio</Kbd> para revelar la respuesta
-                          </span>
-                        </div>
-                      )}
-                    </button>
-                  )}
-
-                  {gradeFeedback ? (
-                    <div className="space-y-3 rounded-xl border border-success/30 bg-success-soft p-5 text-center" aria-live="polite">
-                      <p className="text-body font-semibold text-ink">Repaso registrado · {gradeFeedback.label}</p>
-                      <p className="text-secondary text-muted">
-                        Próximo repaso: <strong className="text-success">{gradeFeedback.nextReview}</strong>
-                      </p>
-                      <Button variant="solid" onClick={advance} className="gap-2">
-                        {itemIndex + 1 < items.length ? t('review.nextItem') : t('review.viewSummary')} <ArrowRight size={14} aria-hidden="true" />
-                        <Kbd className="border-current/25 bg-black/10 text-inherit">Espacio</Kbd>
-                      </Button>
-                    </div>
-                  ) : showAnswer && (
-                    <div className="space-y-2">
-                      <p className="text-center text-meta font-medium text-muted">¿Qué tan fácil recordaste este concepto?</p>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
-                        {GRADE_OPTIONS.map(opt => (
-                          <button
-                            key={opt.grade}
-                            onClick={() => handleGrade(opt.grade)}
-                            aria-label={t('review.gradeAria', { label: t(opt.labelKey), hint: t(opt.hintKey) })}
-                            className={cn(
-                              'flex flex-col justify-between rounded-xl border p-3 text-meta font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
-                              opt.tone
-                            )}
-                          >
-                            <div className="flex w-full items-center justify-between gap-1">
-                              <span>{opt.grade} · {t(opt.labelKey)}</span>
-                              <Kbd className="border-current/30 bg-transparent text-current opacity-80">{opt.grade}</Kbd>
-                            </div>
-                            <span className="mt-0.5 block text-left text-micro font-normal opacity-80">{t(opt.hintKey)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <RatingBar
+                    gradeFeedback={gradeFeedback}
+                    onGrade={handleGrade}
+                    onAdvance={advance}
+                    isLastItem={itemIndex + 1 >= items.length}
+                  />
                 </div>
               )}
 
@@ -1081,52 +771,11 @@ export const ReviewCenter: React.FC<ReviewCenterProps> = ({ flashcards, onRefres
       )}
 
       {(state.phase === 'completed' || state.phase === 'cancelled') && (
-        <div className="space-y-4 rounded-xl border border-line bg-surface p-6 text-center shadow-card sm:p-8">
-          <div className={cn(
-            'mx-auto flex h-14 w-14 items-center justify-center rounded-xl border',
-            state.phase === 'completed' ? 'border-success/30 bg-success-soft text-success' : 'border-line bg-canvas text-muted'
-          )}>
-            {state.phase === 'completed' ? <CheckCircle2 size={28} aria-hidden="true" /> : <X size={28} aria-hidden="true" />}
-          </div>
-          <div>
-            <h2 className="type-title text-ink">
-              {state.phase === 'completed' ? t('review.completedTitle') : t('review.cancelledTitle')}
-            </h2>
-            <p className="type-secondary mt-1">
-              {state.phase === 'completed' ? t('review.completedBody') : t('review.cancelledBody')}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-left sm:grid-cols-4">
-            <div className="rounded-xl border border-line bg-canvas p-3">
-              <p className="type-micro">Ítems repasados</p>
-              <p className="mt-1 text-lg font-semibold text-ink">{sessionSummary.itemsReviewed}</p>
-            </div>
-            <div className="rounded-xl border border-line bg-canvas p-3">
-              <p className="type-micro">Tarjetas</p>
-              <p className="mt-1 text-lg font-semibold text-ink">{sessionSummary.flashcards}</p>
-            </div>
-            <div className="rounded-xl border border-line bg-canvas p-3">
-              <p className="type-micro">Preguntas</p>
-              <p className="mt-1 text-lg font-semibold text-ink">{sessionSummary.questions}</p>
-            </div>
-            <div className="rounded-xl border border-line bg-canvas p-3">
-              <p className="type-micro">Duración</p>
-              <p className="mt-1 text-lg font-semibold text-ink">{sessionSummary.durationMinutes} min</p>
-            </div>
-          </div>
-
-          {sessionSummary.questions > 0 && (
-            <p className="text-secondary text-muted">
-              Práctica: <strong className="text-success">{sessionSummary.correct}</strong> correctas ·{' '}
-              <strong className="text-error">{sessionSummary.incorrect}</strong> incorrectas
-            </p>
-          )}
-
-          <Button variant="solid" onClick={resetToIdle}>
-            <RotateCcw size={14} aria-hidden="true" /> Nueva sesión
-          </Button>
-        </div>
+        <ReviewSummary
+          phase={state.phase}
+          sessionSummary={sessionSummary}
+          onReset={resetToIdle}
+        />
       )}
 
       <FlashcardGenerationModal

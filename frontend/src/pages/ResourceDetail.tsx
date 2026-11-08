@@ -31,7 +31,7 @@ import { useLanguage } from '../hooks/useLanguage.ts';
 import { FlashcardGenerationModal } from '../components/study/FlashcardGenerationModal.tsx';
 import { PracticeWorkPanel } from '../components/practice/PracticeWorkPanel.tsx';
 import { downloadJsonFile, slugifyForFilename } from '../db/exportImport.ts';
-import { Button, Badge, InlineStatus, cn } from '../components/ui/index.tsx';
+import { Button, Badge, InlineStatus, cn, ENTITY_ICONS } from '../components/ui/index.tsx';
 
 interface ResourceDetailProps {
   resourceId: string;
@@ -44,16 +44,7 @@ interface ResourceDetailProps {
   onExplainResource: (id: string, label: string) => void;
 }
 
-const RELATED_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; className?: string }>> = {
-  course: Layers,
-  book: BookOpen,
-  module: Layers,
-  lesson: FileText,
-  note: FileText,
-  concept: Lightbulb,
-  practice: ClipboardList,
-  resource: BookOpen
-};
+const RELATED_ICONS = ENTITY_ICONS;
 
 export const ResourceDetail: React.FC<ResourceDetailProps> = ({
   resourceId,

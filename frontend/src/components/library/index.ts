@@ -1,0 +1,12 @@
+export { CatalogFilterBar } from './CatalogFilterBar.tsx';
+export type { CatalogFilterBarProps, LibraryFilterMode } from './CatalogFilterBar.tsx';
+export { CourseCreationModal } from './CourseCreationModal.tsx';
+export type { CourseCreationModalProps, CourseFormData } from './CourseCreationModal.tsx';
+export { DocumentImportModal } from './DocumentImportModal.tsx';
+export type { DocumentImportModalProps, DocumentPreviewData } from './DocumentImportModal.tsx';
+export { DocumentProvenanceModal } from './DocumentProvenanceModal.tsx';
+export type { DocumentProvenanceModalProps, DocumentSourceMeta } from './DocumentProvenanceModal.tsx';
+export { BookProgressEditor } from './BookProgressEditor.tsx';
+export type { BookProgressEditorProps, BookMetaFormData } from './BookProgressEditor.tsx';
+export { UnorganizedResourcesSection } from './UnorganizedResourcesSection.tsx';
+export type { UnorganizedResourcesSectionProps } from './UnorganizedResourcesSection.tsx';

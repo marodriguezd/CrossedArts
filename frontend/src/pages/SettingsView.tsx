@@ -17,12 +17,17 @@ import { localAiRuntime, type LocalAiStatus } from '../services/localAiRuntime.t
 import { dao } from '../db/dao.ts';
 import { formatLocalClockTime } from '../services/localDate.ts';
 import { assessImportCapacity, formatBytes } from '../services/storageGuards.ts';
-import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
-import { ThemeToggle } from '../components/common/ThemeToggle.tsx';
+import { getTheme, setTheme } from '../services/theme.ts';
 import { useLanguage } from '../hooks/useLanguage.ts';
-import { AUTO_LANGUAGE, SUPPORTED_LANGUAGES } from '../i18n/languages.ts';
 import { Button, Badge, InlineStatus, ProgressBar, SectionHeading, cn } from '../components/ui/index.tsx';
 import { WebGpuDiagnosticGuide } from '../components/ai/WebGpuDiagnosticGuide.tsx';
+import {
+  AppearanceSection,
+  VoiceSection,
+  DatabaseSection,
+  LLMConfigSection,
+  SemanticIndexSection,
+} from '../components/settings/index.ts';
 
 interface SettingsViewProps {
   onDataReset: () => void;
@@ -215,6 +220,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     await refreshEmbeddingCount();
     setIndexingText(t('settings.vectorCacheCleared'));
     later(() => setIndexingText(null), 2000);
+  };
+
+  const handleSelectEmbeddingModel = async (newId: string) => {
+    setSelectedEmbeddingModelId(newId);
+    setStoredEmbeddingModelId(newId);
+    try {
+      await localEmbeddingEngine.loadModel(newId);
+      await refreshEmbeddingCount(newId);
+      localAiRuntime.scheduleIndexing(aiConfig.provider);
+    } catch {}
   };
 
   const handleSaveAi = (e: React.FormEvent) => {
@@ -443,7 +458,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
   const selectedModelDef = getLocalModelById(aiConfig.localModelId);
 
   const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none disabled:opacity-50';
-  const LABEL_CLS = 'mb-1 block text-meta font-medium text-muted';
+  const lastPersistedFormatted = storageReport.lastPersistedTimestamp
+    ? formatLocalClockTime(storageReport.lastPersistedTimestamp)
+    : 'Al inicio';
 
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-10">
@@ -454,753 +471,86 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         </p>
       </header>
 
-      <section aria-labelledby="settings-storage" className="space-y-4">
-        <SectionHeading
-          id="settings-storage"
-          title="Almacenamiento y respaldos"
-          description="SQLite WASM e IndexedDB: tus datos nunca salen de este navegador."
-        />
-
-        <div className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-item text-ink">
-              <Database size={17} className="text-accent" aria-hidden="true" />
-              Base de datos local
-            </span>
-            <Badge
-              tone={
-                storageReport.state === 'ready' || storageReport.state === 'persisted'
-                  ? 'success'
-                  : storageReport.state === 'persisting'
-                    ? 'info'
-                    : 'error'
-              }
-            >
-              Estado: {storageReport.state.toUpperCase()}
-            </Badge>
-          </div>
-
-          {/* Real storage metrics */}
-          <dl className="grid grid-cols-1 gap-3 rounded-lg border border-line bg-canvas p-3 text-meta sm:grid-cols-3">
-            <div>
-              <dt className="text-faint">Tamaño BD SQLite</dt>
-              <dd className="font-mono text-ink">
-                {storageReport.databaseSizeBytes ? `${(storageReport.databaseSizeBytes / 1024).toFixed(1)} KB` : 'Desconocido'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-faint">IndexedDB</dt>
-              <dd className="font-mono text-ink">
-                {storageReport.hasIndexedDB ? 'Disponible (navegador)' : 'No soportado (memoria)'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-faint">Última persistencia</dt>
-              <dd className="font-mono text-ink">
-                {storageReport.lastPersistedTimestamp ? formatLocalClockTime(storageReport.lastPersistedTimestamp) : 'Al inicio'}
-              </dd>
-            </div>
-          </dl>
-
-          {/* Protección del almacenamiento: solo se solicita con un gesto explícito. */}
-          <div className="space-y-2 rounded-lg border border-line bg-canvas p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="type-micro">{t('settings.storageTitle')}</span>
-              <Badge tone={storageReport.isPersistentGranted ? 'success' : 'warning'}>
-                {storageReport.isPersistentGranted ? t('settings.storageProtected') : t('settings.storageNotProtected')}
-              </Badge>
-            </div>
-            <p className="text-meta text-muted">{t('settings.storageBody')}</p>
-            <p className="text-meta font-mono text-ink">
-              {storageEstimate && (storageEstimate.quota ?? 0) > 0
-                ? t('settings.storageUsage', {
-                    used: formatBytes(storageEstimate.usage ?? 0),
-                    quota: formatBytes(storageEstimate.quota)
-                  })
-                : t('settings.storageUsageUnknown')}
-            </p>
-            {!storageReport.isPersistentGranted && (
-              <Button variant="outline" onClick={() => void handleRequestPersistence()} disabled={persistRequesting}>
-                <Database size={15} aria-hidden="true" />
-                {persistRequesting ? t('settings.storageRequesting') : t('settings.storageProtect')}
-              </Button>
-            )}
-            {persistFeedback && (
-              <InlineStatus tone={persistFeedback.type === 'success' ? 'success' : 'error'}>
-                {persistFeedback.type === 'success'
-                  ? <Check size={14} className="shrink-0" aria-hidden="true" />
-                  : <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />}
-                <span>{persistFeedback.text}</span>
-              </InlineStatus>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Button variant="outline" onClick={handleExport}>
-              <Download size={15} aria-hidden="true" /> Exportar (.sqlite)
-            </Button>
-            <Button variant="outline" onClick={() => void exportJsonBackup()}>
-              <Download size={15} aria-hidden="true" /> Exportar JSON
-            </Button>
-            <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-secondary font-medium text-ink transition-colors hover:bg-accent-soft/60">
-              <Upload size={15} aria-hidden="true" /> Importar respaldo
-              <input type="file" accept=".sqlite,.db,.json" onChange={handleFileUpload} className="hidden" />
-            </label>
-          </div>
-
-          {/* Course packages (teacher -> student): additive import. */}
-          <div className="rounded-lg border border-line bg-canvas p-3">
-            <p className="type-micro mb-2">Paquete de curso</p>
-            <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-secondary font-medium text-ink transition-colors hover:bg-accent-soft/60">
-              <Upload size={15} aria-hidden="true" /> Importar paquete (.json)
-              <input type="file" accept=".json" onChange={handlePackageUpload} className="hidden" />
-            </label>
-            <p className="type-meta mt-2 text-muted">
-              Importar un paquete de curso AÑADE el material (recurso, módulos, lecciones y trabajo
-              práctico) sin borrar ni sobrescribir nada de lo que ya tienes. Exporta un paquete desde
-              el detalle de cualquier recurso.
-            </p>
-            {packageFeedback && (
-              <InlineStatus tone={packageFeedback.type === 'success' ? 'success' : 'error'}>
-                {packageFeedback.type === 'success'
-                  ? <Check size={14} className="shrink-0" aria-hidden="true" />
-                  : <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />}
-                <span>{packageFeedback.text}</span>
-              </InlineStatus>
-            )}
-          </div>
-
-          {lastExported && (
-            <p className="flex items-center gap-1 text-meta text-success">
-              <Check size={13} aria-hidden="true" /> Último respaldo descargado:{' '}
-              <span className="font-mono text-muted">{lastExported}</span>
-            </p>
-          )}
-
-          {dbFeedback && (
-            <InlineStatus tone={dbFeedback.type === 'success' ? 'success' : 'error'}>
-              {dbFeedback.type === 'success' ? <Check size={14} className="shrink-0" aria-hidden="true" /> : <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />}
-              <span>{dbFeedback.text}</span>
-            </InlineStatus>
-          )}
-
-          {/* Informational note on storage domains */}
-          <div className="flex items-start gap-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
-            <Info size={15} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-            <span>
-              <strong className="text-ink">{t('settings.backupLimitsTitle')}</strong>{' '}
-              {t('settings.backupLimitsBody')}
-            </span>
-          </div>
-
-          <div className="border-t border-line pt-3">
-            <button
-              onClick={() => setIsResetConfirmOpen(true)}
-              className="flex items-center gap-2 text-meta font-medium text-error hover:opacity-80"
-            >
-              <RotateCcw size={13} aria-hidden="true" /> Reiniciar datos al dataset de demostración
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Accessible confirmation for destructive data actions (replaces native confirm()) */}
-      <ConfirmDialog
-        isOpen={!!pendingImport}
-        title="Restaurar base de datos"
-        consequence={`Esta acción reemplazará por completo tus datos locales actuales con el contenido de "${pendingImport?.name || ''}". Asegúrate de haber realizado un respaldo previo si deseas conservarlos.`}
-        confirmLabel="Restaurar"
-        onCancel={() => setPendingImport(null)}
-        onConfirm={executeImport}
+      <DatabaseSection
+        storageReport={storageReport}
+        lastPersistedFormatted={lastPersistedFormatted}
+        storageEstimate={storageEstimate}
+        persistRequesting={persistRequesting}
+        onRequestPersistence={handleRequestPersistence}
+        persistFeedback={persistFeedback}
+        onExportSqlite={handleExport}
+        onExportJson={async () => { await exportJsonBackup(); }}
+        onImportBackup={handleFileUpload}
+        onImportPackage={handlePackageUpload}
+        packageFeedback={packageFeedback}
+        lastExported={lastExported}
+        dbFeedback={dbFeedback}
+        onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
+        isResetConfirmOpen={isResetConfirmOpen}
+        onCloseResetConfirm={() => setIsResetConfirmOpen(false)}
+        onExecuteResetDemo={executeResetDemo}
+        pendingImport={pendingImport}
+        onClosePendingImport={() => setPendingImport(null)}
+        onExecuteImport={executeImport}
       />
 
-      <ConfirmDialog
-        isOpen={isResetConfirmOpen}
-        title={t('settings.demoResetTitle')}
-        consequence={t('settings.demoResetConsequence')}
-        confirmLabel="Reiniciar"
-        onCancel={() => setIsResetConfirmOpen(false)}
-        onConfirm={executeResetDemo}
+      <AppearanceSection
+        theme={getTheme()}
+        onThemeChange={setTheme}
       />
 
-      <section aria-labelledby="settings-theme" className="space-y-4">
-        <SectionHeading
-          id="settings-theme"
-          title="Apariencia"
-          description="El tema se guarda localmente y se aplica antes de la primera carga."
-        />
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-surface p-5 shadow-card">
-          <div className="flex items-start gap-3">
-            <Palette size={17} className="mt-0.5 text-accent" aria-hidden="true" />
-            <div>
-              <p className="text-item text-ink">Tema de la aplicación</p>
-              <p className="type-meta mt-0.5 max-w-md">
-                <strong className="text-muted">Claro (crema)</strong> es el tema por defecto:{' '}
-                superficies cálidas, tinta carbón y acento ciruela contenido.{' '}
-                <strong className="text-muted">Oscuro (carbón)</strong> es bajo en saturación y brillo,
-                sin negros puros ni morados neón.
-              </p>
-            </div>
-          </div>
-          <ThemeToggle />
-        </div>
-      </section>
+      <VoiceSection
+        speechConfig={speechConfig}
+        availableVoices={availableVoices}
+        onUpdateSpeech={handleUpdateSpeech}
+        onTestVoice={handleTestVoice}
+        isTestingVoice={isTestingVoice}
+      />
 
-      <section aria-labelledby="settings-language" className="space-y-4">
-        <SectionHeading
-          id="settings-language"
-          title={t('settings.language.title')}
-          description={t('settings.language.desc')}
-        />
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-surface p-5 shadow-card">
-          <label className="text-item text-ink" htmlFor="app-language">
-            {t('settings.language.title')}
-          </label>
-          <select
-            id="app-language"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value as typeof language)}
-            className="rounded-lg border border-line bg-canvas px-3 py-2 text-secondary text-ink"
-          >
-            <option value={AUTO_LANGUAGE}>{t('settings.language.auto')}</option>
-            {SUPPORTED_LANGUAGES.map((lang) => (
-              <option key={lang.code} value={lang.code}>
-                {lang.nativeName}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
-
-      <section aria-labelledby="settings-speech" className="space-y-4">
-        <SectionHeading
-          id="settings-speech"
-          title="Audio y Accesibilidad por Voz"
-          description="Lectura en voz alta de tarjetas/notas y dictado continuo 100% en tu navegador (Web Speech API)."
+      <form onSubmit={handleSaveAi} className="space-y-6">
+        <LLMConfigSection
+          aiConfig={aiConfig}
+          onAiConfigChange={setAiConfig}
+          onProviderChange={(nextProvider) => {
+            const updated = { ...aiConfig, provider: nextProvider };
+            setAiConfig(updated);
+            aiService.saveSettings(updated);
+            if (nextProvider === 'local' && localAiRuntime.hasConsent()) {
+              void localAiRuntime.prepareForTutor('local');
+            }
+          }}
+          runtimeStatus={runtimeStatus}
+          engineStatus={engineStatus}
+          onActivateLocalAi={async () => {
+            handleActivateLocalAi();
+          }}
+          gpuReport={gpuReport}
+          onGpuReportChange={setGpuReport}
+          loadedModel={localLlmEngine.getLoadedModelId()}
+          onReleaseMemory={handleUnloadLocalModel}
+          onTryLlama={() => {
+            void handleSwitchAndLoadModel("Llama-3.2-1B-Instruct-q4f16_1-MLC");
+          }}
+          onSwitchToWasm={() => {
+            void handleSwitchAndLoadModel("onnx-community/Qwen2.5-0.5B-Instruct");
+          }}
         />
 
-        <div className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={LABEL_CLS} htmlFor="speech-rate">
-                Velocidad de habla ({speechConfig.rate}x)
-              </label>
-              <div className="flex items-center gap-2">
-                {[0.8, 1.0, 1.25, 1.5].map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => handleUpdateSpeech({ rate: r })}
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg border text-meta transition-colors cursor-pointer',
-                      speechConfig.rate === r
-                        ? 'border-accent bg-accent-soft font-semibold text-accent'
-                        : 'border-line bg-canvas text-muted hover:text-ink'
-                    )}
-                  >
-                    {r}x
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className={LABEL_CLS} htmlFor="speech-voice">
-                Voz del sistema operativo
-              </label>
-              <select
-                id="speech-voice"
-                value={speechConfig.voiceUri || ''}
-                onChange={(e) => handleUpdateSpeech({ voiceUri: e.target.value })}
-                className={INPUT_CLS}
-              >
-                <option value="">Automática / Predeterminada</option>
-                {availableVoices.map((v) => (
-                  <option key={v.voiceURI} value={v.voiceURI}>
-                    {v.name} ({v.lang})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line pt-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={speechConfig.autoReadFlashcards}
-                onChange={(e) => handleUpdateSpeech({ autoReadFlashcards: e.target.checked })}
-                className="w-4 h-4 rounded border-line accent-accent"
-              />
-              <span className="text-secondary text-ink">
-                Auto-reproducir audio de tarjetas en el Centro de Repaso
-              </span>
-            </label>
-
-            <Button
-              size="sm"
-              variant="outline"
-              type="button"
-              onClick={handleTestVoice}
-              disabled={isTestingVoice}
-            >
-              {isTestingVoice ? <VolumeX size={14} className="text-accent animate-pulse" /> : <Volume2 size={14} />}
-              <span>{isTestingVoice ? 'Reproduciendo…' : 'Probar voz'}</span>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <form onSubmit={handleSaveAi} className="space-y-4" aria-labelledby="settings-ai">
-        <SectionHeading
-          id="settings-ai"
-          title="Tutor IA y proveedores"
-          description="Elige el motor de inferencia. La privacidad depende del proveedor seleccionado."
-        />
-
-        <div className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
-          <div>
-            <label className={LABEL_CLS} htmlFor="ai-provider">Proveedor de inferencia activo</label>
-            <select
-              id="ai-provider"
-              value={aiConfig.provider}
-              onChange={e => {
-                const nextProvider = e.target.value as any;
-                const updated = { ...aiConfig, provider: nextProvider };
-                setAiConfig(updated);
-                aiService.saveSettings(updated);
-                if (nextProvider === 'local' && localAiRuntime.hasConsent()) {
-                  void localAiRuntime.prepareForTutor('local');
-                }
-              }}
-              className={INPUT_CLS}
-            >
-              <option value="demo">Modo demostración / heurístico (sin conexión)</option>
-              <option value="local">IA local en navegador (WebGPU / CPU WASM, 100% en el dispositivo)</option>
-              <option value="ollama">Ollama local (http://localhost:11434)</option>
-              <option value="openai">OpenAI API (GPT-4o / GPT-4o-mini)</option>
-            </select>
-            {/* Honest per-provider privacy boundary */}
-            <p className="type-meta mt-1.5">
-              {aiConfig.provider === 'demo' && t('settings.providerDemoNote')}
-              {aiConfig.provider === 'local' && t('settings.providerLocalNote')}
-              {aiConfig.provider === 'ollama' && t('settings.providerOllamaNote')}
-              {aiConfig.provider === 'openai' && t('settings.providerOpenaiNote')}
-            </p>
-          </div>
-
-          {aiConfig.provider === 'local' && (
-            <div className="space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
-              {/* Product state: preparation is automatic. */}
-              <div className="rounded-lg border border-line bg-surface p-3" role="status" aria-live="polite">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-meta font-semibold text-ink">IA local</span>
-                  <Badge
-                    tone={
-                      runtimeStatus.stage === 'ready'
-                        ? 'success'
-                        : runtimeStatus.stage === 'unsupported' || runtimeStatus.stage === 'error'
-                          ? 'error'
-                          : 'info'
-                    }
-                  >
-                    {runtimeStatus.stage === 'ready'
-                      ? t('settings.runtimeReady')
-                      : runtimeStatus.stage === 'unsupported'
-                        ? t('settings.runtimeUnsupported')
-                        : runtimeStatus.stage === 'consent-required'
-                          ? t('settings.runtimeConsent')
-                          : runtimeStatus.stage === 'error'
-                            ? t('settings.runtimeError')
-                            : runtimeStatus.stage === 'idle'
-                              ? t('settings.runtimeIdle')
-                              : t('settings.runtimePreparing')}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-secondary text-muted">{runtimeStatus.message}</p>
-                {runtimeStatus.stage !== 'ready' && runtimeStatus.stage !== 'unsupported' && (
-                  <div className="mt-2">
-                    <Button size="sm" variant="solid" disabled={engineStatus === 'loading'} onClick={handleActivateLocalAi}>
-                      {runtimeStatus.stage === 'consent-required' ? 'Activar IA local' : 'Preparar IA local'}
-                    </Button>
-                  </div>
-                )}
-                {runtimeStatus.errorAction && (
-                  <p className="mt-1 text-micro text-muted">{runtimeStatus.errorAction}</p>
-                )}
-              </div>
-
-              <WebGpuDiagnosticGuide
-                initialReport={gpuReport}
-                onCapabilityChange={setGpuReport}
-                className="mt-2"
-              />
-
-              <div className="space-y-2">
-                <label className={LABEL_CLS} htmlFor="local-model">
-                  Modelo de lenguaje seleccionado
-                </label>
-                <select
-                  id="local-model"
-                  value={aiConfig.localModelId}
-                  onChange={e => setAiConfig({ ...aiConfig, localModelId: e.target.value })}
-                  disabled={gpuReport.state !== 'supported' && !gpuReport.hasWasmFallback}
-                  className={INPUT_CLS}
-                >
-                  <optgroup label={t('settings.multilingualGroup')}>
-                    {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'multilingual').map(m => {
-                      const isDisabled = m.runtimeBackend === 'webgpu' && gpuReport.state !== 'supported';
-                      return (
-                        <option key={m.id} value={m.id} disabled={isDisabled}>
-                          {m.name} · {m.downloadSizeApprox} ({m.vramRequiredMB} MB VRAM)
-                          {isDisabled ? ' [Requiere WebGPU]' : ''}
-                          {m.recommended ? ' ★ Recomendado' : ''}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                  <optgroup label="⚡ Ultraligero WebGPU (Baja VRAM)">
-                    {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'ultralight').map(m => {
-                      const isDisabled = m.runtimeBackend === 'webgpu' && gpuReport.state !== 'supported';
-                      return (
-                        <option key={m.id} value={m.id} disabled={isDisabled}>
-                          {m.name} · {m.downloadSizeApprox} ({m.vramRequiredMB} MB VRAM)
-                          {isDisabled ? ' [Requiere WebGPU]' : ''}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                  <optgroup label="🧠 CPU / RAM (WebAssembly, sin GPU requerida)">
-                    {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'cpu_wasm').map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} · {m.downloadSizeApprox} (100% CPU / RAM)
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="🚀 Avanzado (Equipos potentes con GPU dedicada)">
-                    {LOCAL_MODELS_REGISTRY.filter(m => m.category === 'advanced').map(m => {
-                      const isDisabled = m.runtimeBackend === 'webgpu' && gpuReport.state !== 'supported';
-                      return (
-                        <option key={m.id} value={m.id} disabled={isDisabled}>
-                          {m.name} · {m.downloadSizeApprox} ({m.vramRequiredMB} MB VRAM)
-                          {isDisabled ? ' [Requiere WebGPU]' : ''}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                </select>
-
-                {selectedModelDef && (
-                  <div className="rounded-lg border border-line bg-canvas p-3 text-meta">
-                    <p className="text-ink">{selectedModelDef.description}</p>
-                    {selectedModelDef.languages && selectedModelDef.languages.length > 0 && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-micro text-muted">
-                        <span className="font-medium text-ink">Idiomas optimizados:</span>
-                        {selectedModelDef.languages.map(lang => (
-                          <Badge key={lang} tone="neutral" className="uppercase px-1.5 py-0 text-[10px]">
-                            {lang}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Honest download notice */}
-              <div className="flex items-start gap-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
-                <Info size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-                <span>
-                  <strong className="text-ink">Descarga y persistencia en caché:</strong> La primera
-                  carga de un modelo local requiere conexión a internet para descargar sus pesos (
-                  {selectedModelDef?.downloadSizeApprox || '~1 GB'}). Una vez descargado, el navegador
-                  lo guarda en su caché HTTP (Cache Storage) y funcionará 100% offline. Los vectores
-                  semánticos se guardan aparte, en IndexedDB.
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-3 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-meta">
-                  <span className="text-faint">Estado del motor: </span>
-                  <span className={cn('font-semibold',
-                    engineStatus === 'ready' ? 'text-success' :
-                    engineStatus === 'loading' || engineStatus === 'generating' ? 'text-accent' :
-                    engineStatus === 'error' ? 'text-error' : 'text-muted'
-                  )}>
-                    {engineStatus === 'ready' ? 'Listo para inferencia' :
-                     engineStatus === 'loading' ? `Cargando (${engineProgress.progress}%)` :
-                     engineStatus === 'generating' ? 'Generando respuesta…' :
-                     engineStatus === 'error' ? 'Error al inicializar' : 'Descargado / Inactivo'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {engineStatus === 'ready' && (
-                    <Button size="sm" variant="outline" onClick={handleUnloadLocalModel}>
-                      <Trash2 size={13} aria-hidden="true" /> Liberar memoria
-                    </Button>
-                  )}
-
-                  {engineStatus !== 'ready' && (
-                    <Button
-                      size="sm"
-                      variant="solid"
-                      disabled={
-                        (gpuReport.state !== 'supported' && !gpuReport.hasWasmFallback) ||
-                        engineStatus === 'loading'
-                      }
-                      onClick={handleLoadLocalModel}
-                    >
-                      {engineStatus === 'loading' ? <RefreshCw size={13} className="animate-spin" aria-hidden="true" /> : <Cpu size={13} aria-hidden="true" />}
-                      {engineStatus === 'loading' ? 'Cargando modelo…' : 'Cargar modelo (avanzado)'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {engineStatus === 'loading' && (
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-micro">
-                    <span className="max-w-[280px] truncate">{engineProgress.text || 'Descargando y compilando shaders…'}</span>
-                    <span className="font-bold text-accent">{engineProgress.progress}%</span>
-                  </div>
-                  <ProgressBar value={engineProgress.progress} label="Progreso de carga del modelo" />
-                </div>
-              )}
-
-              {loadingError && (
-                <div className="space-y-2 rounded-lg border border-error/30 bg-error-soft/30 p-3 text-meta text-ink">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle size={15} className="mt-0.5 shrink-0 text-error" aria-hidden="true" />
-                    <div>
-                      <p className="font-semibold text-error">Fallo al inicializar el modelo local</p>
-                      <p className="mt-0.5 text-muted">{loadingError}</p>
-                    </div>
-                  </div>
-                  {/shader|index_kernel|comput|incompatibilidad/i.test(loadingError) && (
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        variant="solid"
-                        onClick={() => void handleSwitchAndLoadModel('Llama-3.2-1B-Instruct-q4f16_1-MLC')}
-                      >
-                        Probar con Llama 3.2 1B (WebGPU)
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleSwitchAndLoadModel('onnx-community/Qwen2.5-0.5B-Instruct')}
-                      >
-                        Cambiar a CPU / WASM
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {aiConfig.provider === 'ollama' && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className={LABEL_CLS} htmlFor="ollama-url">URL de Ollama</label>
-                <input
-                  id="ollama-url"
-                  type="text"
-                  value={aiConfig.ollamaUrl}
-                  onChange={e => setAiConfig({ ...aiConfig, ollamaUrl: e.target.value })}
-                  placeholder="http://localhost:11434"
-                  className={INPUT_CLS}
-                />
-              </div>
-              <div>
-                <label className={LABEL_CLS} htmlFor="ollama-model">Modelo de Ollama</label>
-                <input
-                  id="ollama-model"
-                  type="text"
-                  value={aiConfig.ollamaModel}
-                  onChange={e => setAiConfig({ ...aiConfig, ollamaModel: e.target.value })}
-                  placeholder="llama3:8b"
-                  className={INPUT_CLS}
-                />
-              </div>
-            </div>
-          )}
-
-          {aiConfig.provider === 'openai' && (
-            <div className="space-y-3">
-              <div>
-                <label className={LABEL_CLS} htmlFor="openai-key">Clave de API de OpenAI</label>
-                <input
-                  id="openai-key"
-                  type="password"
-                  value={aiConfig.apiKey}
-                  onChange={e => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
-                  placeholder="sk-..."
-                  autoComplete="off"
-                  spellCheck={false}
-                  className={INPUT_CLS}
-                />
-                <p className="type-micro text-meta mt-1.5">
-                  {aiConfig.apiKey ? t('settings.apiKeySet') : t('settings.apiKeyMemory')}
-                </p>
-              </div>
-
-              <label className="flex items-start gap-2 rounded-lg border border-line bg-canvas px-3 py-2.5 text-meta text-muted">
-                <input
-                  type="checkbox"
-                  checked={aiConfig.persistApiKey === true}
-                  onChange={e => setAiConfig({ ...aiConfig, persistApiKey: e.target.checked })}
-                  className="mt-0.5"
-                />
-                <span>
-                  Recordar la clave en este navegador.
-                  <span className="block text-micro text-warning">
-                    El almacenamiento del navegador no es seguro para secretos: cualquier
-                    extensión o script que se ejecute en el origen puede leerla. Actívalo
-                    solo si aceptas ese riesgo.
-                  </span>
-                </span>
-              </label>
-            </div>
-          )}
-
-          {/* Local semantic-index section (on-device embeddings) */}
-          <div className="space-y-3 border-t border-line pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h4 className="flex items-center gap-1.5 text-item text-ink">
-                  <Database size={14} className="text-accent" aria-hidden="true" />
-                  Índice semántico local (embeddings en navegador)
-                </h4>
-                <p className="type-meta mt-0.5 max-w-xl">
-                  La búsqueda semántica se prepara e indexa automáticamente al usarla o al importar
-                  contenido. Este panel es una acción avanzada de mantenimiento o recuperación.
-                </p>
-              </div>
-              <Badge tone={embCount > 0 ? 'success' : 'neutral'}>
-                <span className="font-mono">{embCount}</span> fragmentos en caché
-              </Badge>
-            </div>
-
-            <div className="space-y-2">
-              <label className={LABEL_CLS} htmlFor="embedding-model">
-                Modelo de embeddings para búsqueda semántica
-              </label>
-              <select
-                id="embedding-model"
-                value={selectedEmbeddingModelId}
-                onChange={async (e) => {
-                  const newId = e.target.value;
-                  setSelectedEmbeddingModelId(newId);
-                  // The choice survives the session: automatic indexing reads it
-                  // instead of silently falling back to the default model.
-                  setStoredEmbeddingModelId(newId);
-                  try {
-                    await localEmbeddingEngine.loadModel(newId);
-                    await refreshEmbeddingCount(newId);
-                    // Switching identity leaves the new model without vectors: the
-                    // library is re-indexed in the background (never blocking).
-                    localAiRuntime.scheduleIndexing(aiConfig.provider);
-                  } catch {}
-                }}
-                className={INPUT_CLS}
-              >
-                <optgroup label="⚡ Recomendado (Ligero: se ejecuta en CPU/WASM)">
-                  {EMBEDDING_MODELS_REGISTRY.filter(m => m.tier === 'light' || m.recommended).map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} · {m.downloadSizeApprox} ({m.dimensions || m.dimension}d) ★ Recomendado
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="🚀 Avanzado (Multimodal / Equipos potentes)">
-                  {EMBEDDING_MODELS_REGISTRY.filter(m => m.tier === 'advanced').map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} · {m.downloadSizeApprox} ({m.dimensions || m.dimension}d)
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Otros modelos de embeddings">
-                  {EMBEDDING_MODELS_REGISTRY.filter(m => !m.recommended && m.tier !== 'advanced').map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} · {m.downloadSizeApprox} ({m.dimensions || m.dimension}d)
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-              {selectedEmbeddingModelDef && (
-                <div className="rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
-                  <p className="text-ink">{selectedEmbeddingModelDef.description}</p>
-                  {/* Backend EFECTIVO: nunca se anuncia WebGPU si los vectores se
-                      calculan en CPU. */}
-                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-micro text-faint">
-                    <Badge tone={embBackend === 'webgpu' ? 'accent' : 'neutral'}>
-                      {embBackend === 'webgpu' ? 'WebGPU (GPU)' : embBackend === 'wasm' ? 'CPU · WASM' : 'Sin cargar'}
-                    </Badge>
-                    {selectedEmbeddingModelDef.preferredBackend === 'wasm' && (
-                      <span>Este modelo se ejecuta siempre en CPU/WASM.</span>
-                    )}
-                  </p>
-                  <p className="mt-1 text-micro text-faint">
-                    Dimensión vectorial: {selectedEmbeddingModelDef.dimensions || selectedEmbeddingModelDef.dimension}d · Idiomas: {selectedEmbeddingModelDef.languages} · Licencia: {selectedEmbeddingModelDef.license}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2 rounded-lg border border-line bg-canvas p-3 text-meta text-muted">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <strong className="text-ink">Aislamiento de vectores:</strong> Los embeddings se
-                  persisten en una base de datos IndexedDB dedicada (
-                  <span className="font-mono text-accent">CrossedArts_Embeddings</span>). Tu SQLite
-                  canónico permanece ligero y libre de matrices binarias.
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {embStatus === 'ready' && (
-                    <Button size="sm" variant="quiet" onClick={handleReleaseEmbeddingMemory}>
-                      <Trash2 size={12} aria-hidden="true" /> Liberar memoria
-                    </Button>
-                  )}
-                  {embCount > 0 && (
-                    <Button size="sm" variant="quiet" onClick={handleClearSemanticCache}>
-                      <Trash2 size={12} aria-hidden="true" /> Vaciar caché
-                    </Button>
-                  )}
-                  {embStatus === 'embedding' ? (
-                    <Button size="sm" variant="danger" onClick={handleCancelIndexing}>
-                      <RotateCcw size={12} aria-hidden="true" /> Cancelar
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="solid"
-                      disabled={embStatus === 'loading'}
-                      onClick={handleBuildSemanticIndex}
-                    >
-                      {embStatus === 'loading' ? (
-                        <RefreshCw size={12} className="animate-spin" aria-hidden="true" />
-                      ) : (
-                        <Database size={12} aria-hidden="true" />
-                      )}
-                      {embStatus === 'loading' ? 'Preparando…' : 'Reindexar contenido (avanzado)'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {indexingText && (
-                <div className="flex items-center gap-1.5 pt-1 text-accent">
-                  <RefreshCw size={12} className="animate-spin" aria-hidden="true" />
-                  <span>{indexingText}</span>
-                </div>
-              )}
-
-              {embError && (
-                <div className="pt-1 text-error">⚠️ {embError}</div>
-              )}
-            </div>
-          </div>
+        <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+          <SemanticIndexSection
+            selectedEmbeddingModel={selectedEmbeddingModelId}
+            onSelectEmbeddingModel={handleSelectEmbeddingModel}
+            selectedEmbeddingModelDef={selectedEmbeddingModelDef}
+            embBackend={embBackend}
+            embStatus={embStatus}
+            embCount={embCount}
+            onReleaseMemory={handleReleaseEmbeddingMemory}
+            onClearCache={handleClearSemanticCache}
+            onCancelIndexing={handleCancelIndexing}
+            onBuildIndex={handleBuildSemanticIndex}
+            indexingText={indexingText}
+            embError={embError}
+          />
         </div>
 
         <div className="flex items-center justify-end gap-3">

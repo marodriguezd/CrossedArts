@@ -128,24 +128,40 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({
     return () => removeOverlay('ai-drawer');
   }, [isOpen]);
 
-  // Escape closes the drawer only while it is the TOPMOST overlay, and first
-  // dismisses consent while the activation modal is open.
+  // Escape closes the drawer only while it is the TOPMOST overlay.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || !isTopOverlay('ai-drawer')) return;
-      const consentIsOpen =
-        localAiRuntime.getStatus().stage === 'consent-required' && !consentDismissed;
-      if (consentIsOpen) {
-        e.preventDefault();
-        setConsentDismissed(true);
-        return;
-      }
       handleClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, handleClose, consentDismissed]);
+  }, [isOpen, handleClose]);
+
+  // The first-download consent dialog is an overlay on top of the drawer.
+  // Registering it as 'confirm-dialog' coordinates with overlayStack and z-[60]
+  // so Escape dismisses consent first without closing the conversation underneath.
+  const isConsentModalOpen =
+    isOpen &&
+    currentSettings.provider === 'local' &&
+    runtimeStatus.stage === 'consent-required' &&
+    !consentDismissed;
+  useEffect(() => {
+    if (!isConsentModalOpen) return;
+    pushOverlay('confirm-dialog');
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isTopOverlay('confirm-dialog')) {
+        e.preventDefault();
+        setConsentDismissed(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      removeOverlay('confirm-dialog');
+    };
+  }, [isConsentModalOpen]);
 
   // Local AI preparation is automatic: it reflects in the UI without the user
   // managing models, WebGPU, or indexes.

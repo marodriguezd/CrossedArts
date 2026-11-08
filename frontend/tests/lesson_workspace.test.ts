@@ -354,11 +354,14 @@ test('15.14 CourseDetail hosts the LessonWorkspace without duplicating lesson de
   assert.ok(!courseDetail.includes('window.confirm'), 'Sin diálogos nativos');
 
   const workspace = readFileSync(new URL('../src/components/lesson/LessonWorkspace.tsx', import.meta.url), 'utf8');
+  const header = readFileSync(new URL('../src/components/lesson/LessonHeader.tsx', import.meta.url), 'utf8');
+  const notesAndRelations = readFileSync(new URL('../src/components/lesson/LessonNotesAndRelations.tsx', import.meta.url), 'utf8');
+  const combined = workspace + '\n' + header + '\n' + notesAndRelations;
   for (const label of ['Estudiar esta lección', 'Repasar flashcards', 'Preguntas de práctica', 'Explicar esta lección', 'Generar flashcards']) {
-    assert.ok(workspace.includes(label), `El workspace debe exponer la acción "${label}"`);
+    assert.ok(combined.includes(label), `El workspace debe exponer la acción "${label}"`);
   }
-  assert.ok(workspace.includes('Aprendizaje relacionado'), 'Debe incluir el panel de aprendizaje relacionado');
-  assert.ok(workspace.includes('Continuar'), 'Debe incluir la acción de continuación');
+  assert.ok(combined.includes('Aprendizaje relacionado'), 'Debe incluir el panel de aprendizaje relacionado');
+  assert.ok(combined.includes('Continuar'), 'Debe incluir la acción de continuación');
 });
 
 test('15.15 Lesson workspace notes and progress stay isolated per lesson (regression)', async () => {

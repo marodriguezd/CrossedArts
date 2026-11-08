@@ -1,58 +1,28 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '../../hooks/useLanguage.ts';
-import {
+import type {
   Lesson,
   LessonWorkspace as LessonWorkspaceModel,
   StudySessionMode,
-  GraphNodeType,
   Flashcard
 } from '../../types/models.ts';
-import {
-  CheckCircle,
-  Circle,
-  Play,
-  Video,
-  Clock,
-  Check,
-  Brain,
-  Sparkles,
-  ListChecks,
-  ClipboardList,
-  Plus,
-  FileText,
-  Edit3,
-  X,
-  Save,
-  Lightbulb,
-  BookOpen,
-  Layers,
-  ArrowUp,
-  ArrowDown,
-  ArrowRight,
-  AlertCircle,
-  Loader2,
-  RotateCcw,
-  RotateCw,
-  Gauge,
-  PictureInPicture,
-  Trash2
-} from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { dao } from '../../db/dao.ts';
 import { localMediaService } from '../../services/localMediaService.ts';
 import {
-  GRAPH_NODE_LABELS,
-  GRAPH_RELATION_LABELS,
-  formatPlaybackTime,
-  extractTimestampParts,
   calculatePlaybackJump,
-  resolveNextPlaybackSpeed,
-  parseUtcTimestamp,
-  SUPPORTED_PLAYBACK_SPEEDS
+  resolveNextPlaybackSpeed
 } from '../../services/domainLogic.ts';
 import { FlashcardGenerationModal } from '../study/FlashcardGenerationModal.tsx';
-import { MarkdownViewer } from '../common/MarkdownViewer.tsx';
 import { ConfirmDialog } from '../common/ConfirmDialog.tsx';
-import { Button, Badge, EmptyState, InlineStatus, cn } from '../ui/index.tsx';
+import { InlineStatus } from '../ui/index.tsx';
+import {
+  LessonHeader,
+  LessonVideoPlayer,
+  LessonContentEditor,
+  LessonFlashcardsSection,
+  LessonNotesAndRelations
+} from './index.ts';
 
 interface LessonWorkspaceProps {
   courseId: string;
@@ -68,23 +38,6 @@ interface LessonWorkspaceProps {
   onOpenResource: (resourceId: string) => void;
   onOpenConcept: (conceptId: string) => void;
 }
-
-const RELATED_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; className?: string }>> = {
-  course: Layers,
-  book: BookOpen,
-  module: Layers,
-  lesson: FileText,
-  note: FileText,
-  concept: Lightbulb,
-  practice: ClipboardList,
-  resource: BookOpen
-};
-
-const PROGRESS_LABELS: Record<LessonWorkspaceModel['progress'], string> = {
-  NOT_STARTED: 'Sin empezar',
-  IN_PROGRESS: 'En progreso',
-  COMPLETED: 'Completada'
-};
 
 export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
   courseId,
@@ -162,6 +115,16 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
         localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(cur));
       } catch {
         // Ignore
+      }
+    }
+  };
+
+  const handlePause = () => {
+    if (videoRef.current) {
+      try {
+        localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
+      } catch {
+        // Ignore storage failure
       }
     }
   };
@@ -511,676 +474,92 @@ export const LessonWorkspace: React.FC<LessonWorkspaceProps> = ({
 
   const { notes, resources, concepts, relatedBooks, flashcardCount, progress } = workspace;
   const flashcards = workspace.flashcards || [];
-  const progressTone =
-    progress === 'COMPLETED'
-      ? 'success'
-      : progress === 'IN_PROGRESS'
-        ? 'warning'
-        : 'neutral';
-
-  const INPUT_CLS = 'w-full rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-body text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <p className="type-micro">{moduleTitle}</p>
-            <h2 className="type-title mt-0.5 break-words text-ink">{lesson.title}</h2>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge tone={progressTone as any}>
-                {progress === 'COMPLETED' ? <CheckCircle size={11} aria-hidden="true" /> : <Circle size={11} aria-hidden="true" />}
-                {PROGRESS_LABELS[progress]}
-              </Badge>
-              <span className="flex items-center gap-1 text-meta text-muted">
-                <Clock size={12} aria-hidden="true" /> {lesson.duration_minutes} min
-              </span>
-              <span className="flex items-center gap-1 text-meta text-muted">
-                <FileText size={12} aria-hidden="true" /> {lesson.lesson_type}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="quiet"
-              onClick={() => onMoveLesson(lesson.id, 'up')}
-              aria-label={`Mover la lección ${lesson.title} hacia arriba`}
-            >
-              <ArrowUp size={13} aria-hidden="true" /> Subir
-            </Button>
-            <Button
-              size="sm"
-              variant="quiet"
-              onClick={() => onMoveLesson(lesson.id, 'down')}
-              aria-label={`Mover la lección ${lesson.title} hacia abajo`}
-            >
-              <ArrowDown size={13} aria-hidden="true" /> Bajar
-            </Button>
-            <Button
-              size="sm"
-              variant={lesson.is_completed ? 'outline' : 'solid'}
-              onClick={handleToggleComplete}
-              aria-label={lesson.is_completed ? t('lessonWorkspace.reopen') : t('lessonWorkspace.markDone')}
-              className={lesson.is_completed ? 'border-success/40 text-success' : ''}
-            >
-              {lesson.is_completed ? <><Check size={13} aria-hidden="true" /> Completada</> : <><CheckCircle size={13} aria-hidden="true" /> Marcar completada</>}
-            </Button>
-          </div>
-        </div>
+      <LessonHeader
+        moduleTitle={moduleTitle}
+        lesson={lesson}
+        progress={progress}
+        onMoveLesson={(dir) => onMoveLesson(lesson.id, dir)}
+        onToggleComplete={handleToggleComplete}
+        onStudyLesson={(mode) => onStudyLesson(lesson.id, mode)}
+        onExplainResource={() => onExplainResource(courseId, lesson.title, lesson.id)}
+        onOpenGenerateModal={() => setIsGenOpen(true)}
+        feedback={feedback}
+      />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-          <Button size="sm" variant="solid" onClick={() => onStudyLesson(lesson.id, 'mixed')}>
-            <Play size={13} aria-hidden="true" /> Estudiar esta lección
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onStudyLesson(lesson.id, 'flashcards')}>
-            <Brain size={13} aria-hidden="true" /> Repasar flashcards
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onStudyLesson(lesson.id, 'practice')}>
-            <ListChecks size={13} aria-hidden="true" /> Preguntas de práctica
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onExplainResource(courseId, lesson.title, lesson.id)}>
-            <Sparkles size={13} aria-hidden="true" /> Explicar esta lección
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setIsGenOpen(true)}>
-            <Sparkles size={13} aria-hidden="true" /> Generar flashcards
-          </Button>
-        </div>
+      <LessonVideoPlayer
+        lesson={lesson}
+        playbackUrl={playbackUrl}
+        isLocalMedia={isLocalMedia}
+        mediaLoading={mediaLoading}
+        videoRef={videoRef}
+        currentPlaybackSeconds={currentPlaybackSeconds}
+        resumedTime={resumedTime}
+        playbackSpeed={playbackSpeed}
+        playerOverlayToast={playerOverlayToast}
+        onLoadedMetadata={handleLoadedMetadata}
+        onTimeUpdate={handleTimeUpdate}
+        onPause={handlePause}
+        onJump={handleJump}
+        onSpeedChange={handleSpeedChange}
+        onTogglePip={handleTogglePip}
+        onAssociateFile={handleAssociateFile}
+      />
 
-        {feedback && (
-          <div className="mt-3">
-            <InlineStatus tone={feedback.type === 'success' ? 'success' : 'error'}>
-              {feedback.type === 'success' ? <CheckCircle size={14} className="shrink-0" aria-hidden="true" /> : <AlertCircle size={14} className="shrink-0" aria-hidden="true" />}
-              <span>{feedback.text}</span>
-            </InlineStatus>
-          </div>
-        )}
-      </div>
+      <LessonContentEditor
+        lesson={lesson}
+        isEditing={isEditing}
+        setIsEditing={setIsEditing}
+        editForm={editForm}
+        setEditForm={setEditForm}
+        isSaving={isSaving}
+        onSaveLesson={handleSaveLesson}
+        onSeekTo={(seconds) => handleSeekTo(seconds, true)}
+      />
 
-      <div className={cn('relative overflow-hidden rounded-xl border border-line', playbackUrl ? 'bg-black' : 'bg-surface')}>
-        {playbackUrl ? (
-          <div className="relative group">
-            <video
-              ref={videoRef}
-              key={lesson.id}
-              src={playbackUrl}
-              controls
-              onLoadedMetadata={handleLoadedMetadata}
-              onTimeUpdate={handleTimeUpdate}
-              onPause={() => {
-                if (videoRef.current) {
-                  try {
-                    localStorage.setItem(`crossedarts-playback:${lesson.id}`, String(videoRef.current.currentTime));
-                  } catch {
-                    // Ignore storage failure
-                  }
-                }
-              }}
-              className="max-h-[420px] w-full bg-black object-contain"
-            />
-            {playerOverlayToast && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <span className="animate-fade-in rounded-lg bg-black/85 px-4 py-2 font-mono text-title font-bold text-white shadow-lg backdrop-blur-sm">
-                  {playerOverlayToast}
-                </span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <Video size={34} className="mb-2 text-faint" aria-hidden="true" />
-            <p className="text-secondary text-muted">No hay archivo multimedia local disponible para esta lección.</p>
-            <p className="type-meta mt-1">
-              Usa «Vincular carpeta local» en la Biblioteca o asocia un archivo individual.
-            </p>
-            {!mediaLoading && lesson.media_url && (
-              <p className="mt-2 break-all font-mono text-micro text-accent">Archivo esperado: {lesson.media_url}</p>
-            )}
-          </div>
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2.5 text-meta text-muted">
-            <span className="flex items-center gap-1.5">
-              <Video size={13} className="text-accent" aria-hidden="true" />
-              {isLocalMedia
-                ? t('lessonWorkspace.mediaLocal')
-                : playbackUrl
-                  ? t('lessonWorkspace.mediaRemote')
-                  : t('lessonWorkspace.mediaNone')}
-            </span>
-            {playbackUrl && (
-              <>
-                <span className="inline-flex items-center gap-1 font-mono text-micro text-ink">
-                  <Clock size={11} className="text-accent" aria-hidden="true" />
-                  {formatPlaybackTime(currentPlaybackSeconds)}
-                </span>
+      <LessonFlashcardsSection
+        flashcards={flashcards}
+        isCreatingCard={isCreatingCard}
+        setIsCreatingCard={setIsCreatingCard}
+        cardForm={cardForm}
+        setCardForm={setCardForm}
+        isSavingCard={isSavingCard}
+        onCreateCard={handleCreateCard}
+        editingCardId={editingCardId}
+        setEditingCardId={setEditingCardId}
+        editCardForm={editCardForm}
+        setEditCardForm={setEditCardForm}
+        onUpdateCard={handleUpdateCard}
+        onStartEditCard={handleStartEditCard}
+        onDeleteCardClick={(cardId) => setDeletingCardId(cardId)}
+        onStudyFlashcards={() => onStudyLesson(lesson.id, 'flashcards')}
+        onOpenGenerateModal={() => setIsGenOpen(true)}
+      />
 
-                <span className="text-line-strong" aria-hidden="true">|</span>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleJump(-10)}
-                    title="Retroceder 10s (Atajo: J o Flecha Izquierda)"
-                    className="inline-flex items-center gap-0.5 rounded px-1.5 py-1 text-meta text-muted transition hover:bg-accent-soft/60 hover:text-ink"
-                  >
-                    <RotateCcw size={12} aria-hidden="true" />
-                    <span>-10s</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleJump(10)}
-                    title="Avanzar 10s (Atajo: L o Flecha Derecha)"
-                    className="inline-flex items-center gap-0.5 rounded px-1.5 py-1 text-meta text-muted transition hover:bg-accent-soft/60 hover:text-ink"
-                  >
-                    <RotateCw size={12} aria-hidden="true" />
-                    <span>+10s</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-0.5 rounded-lg border border-line bg-canvas px-1 py-0.5" title={t('lessonWorkspace.playbackSpeedTitle')}>
-                  <Gauge size={12} className="mx-1 text-muted" aria-hidden="true" />
-                  {SUPPORTED_PLAYBACK_SPEEDS.map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => handleSpeedChange(s)}
-                      className={cn(
-                        'rounded px-1.5 py-0.5 text-micro font-medium transition',
-                        playbackSpeed === s
-                          ? 'bg-accent text-on-accent shadow-xs'
-                          : 'text-muted hover:text-ink'
-                      )}
-                    >
-                      {s}x
-                    </button>
-                  ))}
-                </div>
-
-                {typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && (
-                  <button
-                    type="button"
-                    onClick={() => void handleTogglePip()}
-                    title="Ventana flotante Picture-in-Picture"
-                    className="rounded p-1.5 text-muted transition hover:bg-accent-soft/60 hover:text-ink"
-                    aria-label="Ventana flotante Picture-in-Picture"
-                  >
-                    <PictureInPicture size={14} aria-hidden="true" />
-                  </button>
-                )}
-              </>
-            )}
-            {resumedTime !== null && resumedTime > 0 && (
-              <Badge tone="info" className="font-mono text-micro">
-                Reanudado en {formatPlaybackTime(resumedTime)}
-              </Badge>
-            )}
-          </div>
-          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-meta font-medium text-muted transition-colors hover:bg-accent-soft/60 hover:text-ink">
-            <Video size={13} aria-hidden="true" />
-            <span>Asociar archivo local</span>
-            <input
-              type="file"
-              accept="video/*,audio/*,.mp4,.webm,.ogg,.mov,.m4v,.mp3,.wav,.m4a"
-              className="hidden"
-              aria-label={t('lessonWorkspace.attachMediaLabel')}
-              onChange={async e => {
-                const file = e.target.files?.[0];
-                if (file) await handleAssociateFile(file);
-                e.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-      </div>
-
-      <section className="rounded-xl border border-line bg-surface p-5 shadow-card sm:p-7" aria-label={t('lessonWorkspace.contentSectionLabel')}>
-        <div className="mb-4 flex items-center justify-between gap-3 border-b border-line pb-3">
-          <h3 className="type-section text-ink">Contenido</h3>
-          {!isEditing && (
-            <Button
-              size="sm"
-              variant="quiet"
-              onClick={() => setIsEditing(true)}
-              aria-label={`Editar contenido de la lección ${lesson.title}`}
-            >
-              <Edit3 size={13} aria-hidden="true" /> Editar
-            </Button>
-          )}
-        </div>
-
-        {isEditing ? (
-          <div className="space-y-3">
-            <div>
-              <label className="sr-only" htmlFor="lesson-title-input">Título de la lección</label>
-              <input
-                id="lesson-title-input"
-                type="text"
-                value={editForm.title}
-                onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
-                aria-label={t('lessonWorkspace.titleLabel')}
-                className={INPUT_CLS}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-meta text-muted" htmlFor="lesson-duration">Duración (min)</label>
-              <input
-                id="lesson-duration"
-                type="number"
-                min="0"
-                value={editForm.durationMinutes}
-                onChange={e => setEditForm(f => ({ ...f, durationMinutes: parseInt(e.target.value, 10) || 0 }))}
-                className="w-20 rounded-lg border border-line bg-canvas px-2 py-1.5 text-right text-body text-ink focus:border-accent/50 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="sr-only" htmlFor="lesson-content-input">Contenido de la lección (texto o Markdown)</label>
-              <textarea
-                id="lesson-content-input"
-                value={editForm.content}
-                onChange={e => setEditForm(f => ({ ...f, content: e.target.value }))}
-                rows={12}
-                aria-label={t('lessonWorkspace.contentLabel')}
-                placeholder={t('lessonWorkspace.contentPlaceholder')}
-                className={cn(INPUT_CLS, 'min-h-56 resize-y font-mono text-secondary')}
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button size="sm" variant="quiet" onClick={() => setIsEditing(false)}>
-                <X size={13} aria-hidden="true" /> Cancelar
-              </Button>
-              <Button size="sm" variant="solid" onClick={handleSaveLesson} disabled={isSaving}>
-                <Save size={13} aria-hidden="true" /> {isSaving ? 'Guardando…' : 'Guardar'}
-              </Button>
-            </div>
-          </div>
-        ) : lesson.content && lesson.content.trim() ? (
-          <MarkdownViewer
-            content={lesson.content}
-            onSeekTimestamp={seconds => handleSeekTo(seconds, true)}
-          />
-        ) : (
-          <EmptyState
-            title={t('lessonWorkspace.emptyContentTitle')}
-            hint={t('lessonWorkspace.emptyContentHint')}
-          />
-        )}
-      </section>
-
-      <section className="rounded-xl border border-line bg-surface p-4 shadow-card sm:p-5" aria-label={t('lessonWorkspace.cardsSectionLabel')}>
-        <div className="mb-4 flex flex-col gap-3 border-b border-line pb-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Brain size={18} className="text-accent" aria-hidden="true" />
-            <h3 className="type-section text-ink">Tarjetas de estudio ({flashcards.length})</h3>
-            <Badge tone={flashcards.length > 0 ? 'success' : 'neutral'} className="font-mono text-micro">
-              SM-2
-            </Badge>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {flashcards.length > 0 && (
-              <Button size="sm" variant="solid" onClick={() => onStudyLesson(lesson.id, 'flashcards')}>
-                <Play size={12} aria-hidden="true" /> Repasar tarjetas
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => setIsCreatingCard(v => !v)}>
-              <Plus size={12} aria-hidden="true" /> {isCreatingCard ? 'Cerrar' : 'Nueva tarjeta'}
-            </Button>
-            <Button size="sm" variant="quiet" onClick={() => setIsGenOpen(true)}>
-              <Sparkles size={12} aria-hidden="true" /> Generar con IA
-            </Button>
-          </div>
-        </div>
-
-        {isCreatingCard && (
-          <form onSubmit={handleCreateCard} className="mb-4 space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
-            <p className="text-meta font-semibold text-ink">Nueva tarjeta de estudio para esta lección</p>
-            <div>
-              <label className="mb-1 block text-meta font-medium text-muted" htmlFor="new-card-front">
-                Anverso (pregunta, concepto o prompt)
-              </label>
-              <textarea
-                id="new-card-front"
-                rows={2}
-                value={cardForm.front}
-                onChange={e => setCardForm(f => ({ ...f, front: e.target.value }))}
-                placeholder={t('lessonWorkspace.cardFrontPlaceholder')}
-                required
-                className={cn(INPUT_CLS, 'resize-y')}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-meta font-medium text-muted" htmlFor="new-card-back">
-                Reverso (respuesta esperada o explicación clave)
-              </label>
-              <textarea
-                id="new-card-back"
-                rows={3}
-                value={cardForm.back}
-                onChange={e => setCardForm(f => ({ ...f, back: e.target.value }))}
-                placeholder="La respuesta clave fundamentada en el contenido..."
-                required
-                className={cn(INPUT_CLS, 'resize-y')}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button size="sm" variant="quiet" onClick={() => setIsCreatingCard(false)}>
-                <X size={12} aria-hidden="true" /> Cancelar
-              </Button>
-              <Button size="sm" variant="solid" type="submit" disabled={isSavingCard}>
-                <Save size={12} aria-hidden="true" /> {isSavingCard ? 'Guardando…' : 'Guardar tarjeta'}
-              </Button>
-            </div>
-          </form>
-        )}
-
-        {flashcards.length === 0 && !isCreatingCard ? (
-          <EmptyState
-            title={t('lessonWorkspace.emptyCardsTitle')}
-            hint={t('lessonWorkspace.emptyCardsHint')}
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {flashcards.map(card => {
-              const isEditingThis = editingCardId === card.id;
-              const isDueToday = parseUtcTimestamp(card.due_date) <= Date.now();
-
-              if (isEditingThis) {
-                return (
-                  <div key={card.id} className="col-span-full space-y-3 rounded-lg border border-accent bg-surface p-4 shadow-sm">
-                    <p className="text-meta font-semibold text-ink">Editando tarjeta</p>
-                    <div>
-                      <label className="mb-1 block text-meta font-medium text-muted" htmlFor={`edit-front-${card.id}`}>Anverso</label>
-                      <textarea
-                        id={`edit-front-${card.id}`}
-                        rows={2}
-                        value={editCardForm.front}
-                        onChange={e => setEditCardForm(f => ({ ...f, front: e.target.value }))}
-                        className={cn(INPUT_CLS, 'resize-y')}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-meta font-medium text-muted" htmlFor={`edit-back-${card.id}`}>Reverso</label>
-                      <textarea
-                        id={`edit-back-${card.id}`}
-                        rows={3}
-                        value={editCardForm.back}
-                        onChange={e => setEditCardForm(f => ({ ...f, back: e.target.value }))}
-                        className={cn(INPUT_CLS, 'resize-y')}
-                      />
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="quiet" onClick={() => setEditingCardId(null)}>
-                        <X size={12} aria-hidden="true" /> Cancelar
-                      </Button>
-                      <Button size="sm" variant="solid" onClick={() => void handleUpdateCard(card.id)}>
-                        <Save size={12} aria-hidden="true" /> Guardar cambios
-                      </Button>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div
-                  key={card.id}
-                  className="flex flex-col justify-between rounded-lg border border-line bg-canvas p-3.5 transition hover:border-line-strong"
-                >
-                  <div className="space-y-2">
-                    <div>
-                      <span className="text-micro font-semibold uppercase tracking-wider text-faint">Anverso</span>
-                      <p className="mt-0.5 text-meta font-medium text-ink break-words">{card.front}</p>
-                    </div>
-                    <div className="border-t border-line/60 pt-2">
-                      <span className="text-micro font-semibold uppercase tracking-wider text-faint">Reverso</span>
-                      <p className="mt-0.5 text-secondary text-muted break-words">{card.back}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2.5 text-micro">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge tone={isDueToday ? 'warning' : 'neutral'} className="font-mono">
-                        {isDueToday ? 'Para repasar' : `${card.interval_days}d`}
-                      </Badge>
-                      <span className="text-faint font-mono">
-                        Reps: {card.repetition_count} · EF: {card.ease_factor.toFixed(2)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="quiet"
-                        onClick={() => handleStartEditCard(card)}
-                        aria-label="Editar tarjeta"
-                        className="h-7 px-2"
-                      >
-                        <Edit3 size={11} aria-hidden="true" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => setDeletingCardId(card.id)}
-                        aria-label="Eliminar tarjeta"
-                        className="h-7 px-2"
-                      >
-                        <Trash2 size={11} aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label={t('lessonWorkspace.notesSectionLabel')}>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="type-section text-ink">Notas ({notes.length})</h3>
-            <Button size="sm" variant="quiet" onClick={() => setIsCreatingNote(v => !v)}>
-              <Plus size={13} aria-hidden="true" /> Crear nota
-            </Button>
-          </div>
-
-          {isCreatingNote && (
-            <form onSubmit={handleCreateNote} className="mb-3 space-y-2 rounded-lg border border-accent/30 bg-accent-soft/50 p-3">
-              <div>
-                <label className="sr-only" htmlFor="new-note-title">Título de la nueva nota</label>
-                <input
-                  id="new-note-title"
-                  type="text"
-                  value={noteForm.title}
-                  onChange={e => setNoteForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder={t('lessonWorkspace.noteTitlePlaceholder')}
-                  required
-                  aria-label={t('lessonWorkspace.newNoteTitleLabel')}
-                  className={INPUT_CLS}
-                />
-              </div>
-              <div>
-                <div className="mb-1 flex items-center justify-between">
-                  <label className="text-micro font-medium text-muted" htmlFor="new-note-content">Contenido</label>
-                  {playbackUrl && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cur = videoRef.current?.currentTime || currentPlaybackSeconds || 0;
-                        const stamp = `[${formatPlaybackTime(cur)}]`;
-                        setNoteForm(f => ({
-                          ...f,
-                          content: f.content ? `${f.content} ${stamp} ` : `${stamp} `
-                        }));
-                      }}
-                      className="inline-flex items-center gap-1 rounded border border-line bg-canvas px-1.5 py-0.5 text-micro font-medium text-muted hover:border-line-strong hover:text-ink transition-colors"
-                      title={t('lessonWorkspace.insertTimestampTitle')}
-                    >
-                      <Clock size={11} className="text-accent" aria-hidden="true" />
-                      <span>Marca [{formatPlaybackTime(videoRef.current?.currentTime || currentPlaybackSeconds || 0)}]</span>
-                    </button>
-                  )}
-                </div>
-                <textarea
-                  id="new-note-content"
-                  value={noteForm.content}
-                  onChange={e => setNoteForm(f => ({ ...f, content: e.target.value }))}
-                  rows={3}
-                  placeholder={t('lessonWorkspace.noteContentPlaceholder')}
-                  aria-label="Contenido de la nueva nota"
-                  className={cn(INPUT_CLS, 'resize-y')}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button size="sm" variant="quiet" onClick={() => setIsCreatingNote(false)}>
-                  Cancelar
-                </Button>
-                <Button size="sm" variant="solid" type="submit">
-                  <Save size={13} aria-hidden="true" /> Guardar nota
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {notes.length === 0 ? (
-            <p className="type-meta">Aún no hay notas asociadas a esta lección.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {notes.map(note => (
-                <li key={note.id} className="space-y-1.5 rounded-lg border border-line bg-canvas p-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-meta font-semibold text-ink">{note.title}</span>
-                    <Button
-                      size="sm"
-                      variant="quiet"
-                      className="shrink-0"
-                      onClick={() => onOpenNote(note.id)}
-                      aria-label={`Abrir nota ${note.title}`}
-                    >
-                      Abrir <ArrowRight size={12} aria-hidden="true" />
-                    </Button>
-                  </div>
-                  <div className="text-micro text-muted break-words leading-relaxed">
-                    {extractTimestampParts(note.content.slice(0, 160)).map((part, pIdx) => {
-                      if (part.isTimestamp && part.seconds !== undefined) {
-                        return (
-                          <button
-                            key={pIdx}
-                            type="button"
-                            onClick={() => handleSeekTo(part.seconds!, true)}
-                            className="mx-0.5 inline-flex items-center gap-0.5 rounded border border-accent/40 bg-accent-soft px-1.5 py-0.5 font-mono text-micro font-semibold text-accent transition-colors hover:border-accent hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
-                            title={`Saltar a ${part.rawTimestamp} en el vídeo`}
-                          >
-                            <Clock size={10} aria-hidden="true" />
-                            {part.rawTimestamp}
-                          </button>
-                        );
-                      }
-                      return <span key={pIdx}>{part.text}</span>;
-                    })}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Recursos relacionados">
-          <h3 className="type-section mb-3 text-ink">Recursos relacionados ({resources.length})</h3>
-          {resources.length === 0 ? (
-            <p className="type-meta">Sin recursos asociados. Puedes añadirlos desde el Grafo de Conocimiento.</p>
-          ) : (
-            <ul className="grid grid-cols-1 gap-1.5">
-              {resources.map(item => {
-                const Icon = RELATED_ICONS[item.type] || FileText;
-                const relationLabel = (GRAPH_RELATION_LABELS as Record<string, string>)[item.relation] || item.relation;
-                return (
-                  <li key={`${item.id}-${item.relation}`} className="rounded-lg border border-line bg-canvas p-2.5">
-                    <button
-                      onClick={() => onOpenResource(item.id)}
-                      className="flex w-full items-start gap-2 text-left"
-                      aria-label={`Abrir ${GRAPH_NODE_LABELS[item.type]}: ${item.title}`}
-                    >
-                      <Icon size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-                      <span className="min-w-0">
-                        <span className="block truncate text-meta font-semibold text-ink">{item.title}</span>
-                        <span className="block text-micro">{GRAPH_NODE_LABELS[item.type]} · {relationLabel}</span>
-                      </span>
-                    </button>
-                    {item.type !== 'module' && item.type !== 'lesson' && (
-                      <div className="mt-1 flex flex-wrap items-center gap-2 pl-6">
-                        <button
-                          onClick={() => onStudyResource(item.id, 'mixed')}
-                          className="inline-flex items-center gap-0.5 text-micro text-muted hover:text-ink"
-                        >
-                          <Brain size={11} aria-hidden="true" /> Estudiar
-                        </button>
-                        <button
-                          onClick={() => onExplainResource(item.id, item.title)}
-                          className="inline-flex items-center gap-0.5 text-micro text-accent hover:opacity-80"
-                        >
-                          <Sparkles size={11} aria-hidden="true" /> Explicar
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        <div className="space-y-5">
-          {concepts.length > 0 && (
-            <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Conceptos">
-              <h3 className="type-section mb-3 text-ink">Conceptos ({concepts.length})</h3>
-              <div className="flex flex-wrap gap-1.5">
-                {concepts.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => onOpenConcept(c.id)}
-                    className="inline-flex items-center gap-1 rounded-full border border-line bg-canvas px-2.5 py-1 text-meta text-ink transition-colors hover:border-accent/40 hover:bg-accent-soft/50"
-                    aria-label={`Abrir concepto ${c.title}`}
-                  >
-                    <Lightbulb size={11} className="text-accent" aria-hidden="true" /> {c.title}
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {(relatedBooks.length > 0 || notes.length > 0 || resources.length > 0 || concepts.length > 0) && (
-            <section className="rounded-xl border border-line bg-surface p-4 shadow-card" aria-label="Aprendizaje relacionado">
-              <h3 className="type-section mb-2 text-ink">Aprendizaje relacionado</h3>
-              <dl className="divide-y divide-line text-meta">
-                <div className="flex justify-between py-1.5"><dt className="text-faint">Notas</dt><dd className="font-semibold text-ink">{notes.length}</dd></div>
-                <div className="flex justify-between py-1.5"><dt className="text-faint">Recursos</dt><dd className="font-semibold text-ink">{resources.length}</dd></div>
-                <div className="flex justify-between py-1.5"><dt className="text-faint">Conceptos</dt><dd className="font-semibold text-ink">{concepts.length}</dd></div>
-                <div className="flex justify-between py-1.5"><dt className="text-faint">Libros</dt><dd className="font-semibold text-ink">{relatedBooks.length}</dd></div>
-                <div className="flex justify-between py-1.5"><dt className="text-faint">Tarjetas SM-2 del curso</dt><dd className="font-semibold text-ink">{flashcardCount}</dd></div>
-              </dl>
-              <p className="mt-2 text-micro">
-                Relaciones canónicas locales (explícitas + estructurales). Sin descubrimiento automático.
-              </p>
-            </section>
-          )}
-        </div>
-      </div>
-
-      {nextLesson && (
-        <div className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent-soft/60 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="type-item text-ink">
-              {nextLesson.allCompleted
-                ? t('courseDetail.courseDone')
-                : t('lessonWorkspace.continueLearning')}
-            </p>
-            <p className="type-meta mt-0.5 truncate">{nextLesson.moduleTitle} › {nextLesson.title}</p>
-          </div>
-          <Button variant="solid" size="sm" className="self-start" onClick={() => onSelectLesson(nextLesson.id)}>
-            <ArrowRight size={13} aria-hidden="true" /> Continuar
-          </Button>
-        </div>
-      )}
+      <LessonNotesAndRelations
+        notes={notes}
+        resources={resources}
+        concepts={concepts}
+        relatedBooks={relatedBooks}
+        flashcardCount={flashcardCount}
+        nextLesson={nextLesson}
+        isCreatingNote={isCreatingNote}
+        setIsCreatingNote={setIsCreatingNote}
+        noteForm={noteForm}
+        setNoteForm={setNoteForm}
+        onCreateNote={handleCreateNote}
+        playbackUrl={playbackUrl}
+        currentPlaybackSeconds={currentPlaybackSeconds}
+        onSeekTo={(seconds) => handleSeekTo(seconds, true)}
+        onOpenNote={onOpenNote}
+        onOpenResource={onOpenResource}
+        onOpenConcept={onOpenConcept}
+        onStudyResource={onStudyResource}
+        onExplainResource={onExplainResource}
+        onSelectLesson={onSelectLesson}
+      />
 
       <ConfirmDialog
         isOpen={Boolean(deletingCardId)}

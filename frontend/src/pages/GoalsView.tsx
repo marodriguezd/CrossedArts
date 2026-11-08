@@ -11,6 +11,7 @@ import {
   Target,
   Trash2,
   TriangleAlert,
+  type LucideIcon,
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { resolveLocalDay } from '../services/localDate.ts';
@@ -32,7 +33,7 @@ import type { LanguageCode } from '../i18n/languages.ts';
 import { useLanguage } from '../hooks/useLanguage.ts';
 import type { GoalKind, LearningGoal } from '../types/models.ts';
 import { useGoalProgress } from '../hooks/useGoalProgress.ts';
-import { Badge, Button, EmptyState, Panel, cn } from '../components/ui/index.tsx';
+import { Badge, Button, EmptyState, Panel, cn, INPUT_CLS } from '../components/ui/index.tsx';
 import { ConfirmDialog } from '../components/common/ConfirmDialog.tsx';
 
 interface GoalsViewProps {
@@ -45,10 +46,7 @@ interface GoalsViewProps {
   initialGoalId?: string | null;
 }
 
-const INPUT_CLS =
-  'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-meta text-ink placeholder:text-faint focus:border-accent/50 focus:outline-none';
-
-const KIND_ICONS: Partial<Record<GoalKind, React.ComponentType<any>>> = {
+const KIND_ICONS: Partial<Record<GoalKind, LucideIcon>> = {
   course: GraduationCap,
   book: BookOpen,
   study_time: Flag,
@@ -614,7 +612,7 @@ function fallbackProgress(lang: LanguageCode = 'es'): GoalProgress {
     current: null,
     target: null,
     percent: null,
-    unit: 'ninguna',
+    unit: 'none',
     basis: translateKey(lang, 'goals.page.calcProgress'),
     missingResource: false,
     reachedTarget: false

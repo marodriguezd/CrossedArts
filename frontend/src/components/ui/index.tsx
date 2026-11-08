@@ -10,6 +10,12 @@ import { useLanguage } from '../../hooks/useLanguage.ts';
  */
 export { cn, Kbd, ProgressBar, resolveProgress, SectionHeading } from './primitives.ts';
 export type { KbdProps, ProgressBarProps, ResolvedProgress, SectionHeadingProps } from './primitives.ts';
+export { ModalShell } from './ModalShell.tsx';
+export type { ModalShellProps } from './ModalShell.tsx';
+export { INPUT_CLS, InputField, TextareaField, SelectField } from './InputField.tsx';
+export type { InputFieldProps, TextareaFieldProps, SelectFieldProps } from './InputField.tsx';
+export { EntityIcon, ENTITY_ICONS } from './EntityIcon.tsx';
+export type { EntityIconProps } from './EntityIcon.tsx';
 
 type ButtonVariant = 'solid' | 'outline' | 'quiet' | 'danger';
 type ButtonSize = 'sm' | 'md';

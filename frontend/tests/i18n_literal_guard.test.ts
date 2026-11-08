@@ -49,9 +49,6 @@ const SPANISH_LITERAL_BUDGET: Record<string, number> = {
   // Un solo «¡» en la lista de separadores de palabra: es un signo que el
   // tokenizador de la paleta necesita, no texto de interfaz.
   'services/commandPalette.ts': 1,
-  // `GoalUnit` usa 'lecciones' y 'páginas' como identificadores de dominio
-  // persistidos; se traducen con `goals.unit.*`, pero el valor no es copy.
-  'services/goals.ts': 2,
 };
 
 function sourceFiles(dir: string): string[] {

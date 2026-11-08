@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react';
 import { useLanguage } from '../hooks/useLanguage.ts';
-import { Course, Book, SearchResult, UnorganizedResource, GraphNodeType } from '../types/models.ts';
+import { Course, Book, SearchResult, UnorganizedResource, GraphNodeType, LearningResource } from '../types/models.ts';
 import { isTopOverlay, pushOverlay, removeOverlay } from '../services/overlayStack.ts';
 import { Search, FolderOpen, Play, BookOpen, Layers, Plus, CheckCircle, AlertTriangle, FolderCheck, X, Bookmark, Edit3, Check, FileUp, Loader2, Link2, GraduationCap, FileText, Lightbulb, Brain, Sparkles, ListChecks, ClipboardList, ArrowUpRight, UploadCloud, Target } from 'lucide-react';
 import { resolveSearchResultDestination, filterSupportedFiles, adjustBookPage } from '../services/domainLogic.ts';
@@ -9,6 +9,14 @@ import { dao } from '../db/dao.ts';
 import { localIngestionService } from '../lib/localIngestion/service.ts';
 import type { IngestionProgress } from '../lib/localIngestion/types.ts';
 import { Button, Chip, SearchInput, Panel, SectionHeading, Badge, InlineStatus, ProgressBar, EmptyState, cn } from '../components/ui/index.tsx';
+import {
+  CatalogFilterBar,
+  CourseCreationModal,
+  DocumentImportModal,
+  DocumentProvenanceModal,
+  BookProgressEditor,
+  UnorganizedResourcesSection,
+} from '../components/library/index.ts';
 
 interface LibraryProps {
   courses: Course[];
@@ -76,7 +84,7 @@ export const Library: React.FC<LibraryProps> = ({
   const [previewEnableSemantic, setPreviewEnableSemantic] = useState<boolean>(false);
   const [sourceViewerMeta, setSourceViewerMeta] = useState<{
     isOpen: boolean;
-    data?: { resource: any; sourceType: string; fileName?: string; fingerprint?: string; sectionCount: number; notesCount: number };
+    data?: { resource: LearningResource | null; sourceType: string; fileName?: string; fingerprint?: string; sectionCount: number; notesCount: number };
   }>({ isOpen: false });
 
   // Unified local search and orphan-resource organization
@@ -516,54 +524,18 @@ export const Library: React.FC<LibraryProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="type-display text-ink">Biblioteca</h1>
-          <p className="type-secondary mt-1">
-            Explora y organiza todos tus recursos de aprendizaje.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Hidden file-selection input */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFilesSelected}
-            multiple
-            accept=".txt,.md,.markdown,.pdf,.epub"
-            className="hidden"
-          />
-
-          <Button
-            variant="outline"
-            onClick={() => { setCourseError(null); setIsCreateCourseOpen(true); }}
-            title="Crear un curso estructurado"
-          >
-            <Plus size={15} aria-hidden="true" />
-            Crear curso
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={handleTriggerFilePicker}
-            disabled={isImporting}
-            title="Importar documentos locales (.txt, .md, .pdf, .epub)"
-          >
-            {isImporting ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <FileUp size={15} aria-hidden="true" />}
-            {isImporting ? 'Importando…' : 'Importar documentos'}
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={onMountLocalFolder}
-            title="Escanear carpeta local con File System Access API"
-          >
-            <FolderOpen size={15} aria-hidden="true" />
-            Vincular carpeta local
-          </Button>
-        </div>
-      </div>
+      <CatalogFilterBar
+        query={query}
+        onQueryChange={setQuery}
+        filter={filter}
+        onFilterChange={setFilter}
+        onCreateCourse={() => { setCourseError(null); setIsCreateCourseOpen(true); }}
+        onImportDocuments={handleTriggerFilePicker}
+        onMountLocalFolder={onMountLocalFolder}
+        isImporting={isImporting}
+        fileInputRef={fileInputRef}
+        onFilesSelected={handleFilesSelected}
+      >
 
       {isImporting && ingestionProgress && (
         <InlineStatus tone="info" className="justify-between">
@@ -688,22 +660,7 @@ export const Library: React.FC<LibraryProps> = ({
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <SearchInput
-          label={t('library.searchLabel')}
-          placeholder={t('library.searchPlaceholder')}
-          value={query}
-          onChange={setQuery}
-          className="sm:w-80"
-        />
-        <div className="flex items-center gap-1.5" role="group" aria-label="Filtrar por tipo">
-          {(['all', 'courses', 'books'] as const).map(mode => (
-            <Chip key={mode} active={filter === mode} onClick={() => setFilter(mode)}>
-              {mode === 'all' ? 'Todo' : mode === 'courses' ? 'Cursos' : 'Libros'}
-            </Chip>
-          ))}
-        </div>
-      </div>
+      </CatalogFilterBar>
 
       {/* Unified local search (no embeddings, works offline) */}
       {query.trim().length >= 2 && (
@@ -746,65 +703,18 @@ export const Library: React.FC<LibraryProps> = ({
         </Panel>
       )}
 
-      {unorganized.length > 0 && (
-        <Panel className="border-warning/40 p-4">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="type-micro flex items-center gap-2 text-warning">
-              <Link2 size={13} aria-hidden="true" />
-              Recursos sin organizar ({unorganized.length})
-            </h2>
-            {organizeFeedback && <span className="type-meta">{organizeFeedback}</span>}
-          </div>
-          <p className="type-meta">
-            Documentos importados que aún no están asociados a ningún curso, libro o concepto.
-          </p>
-          <ul className="mt-3 space-y-2">
-            {unorganized.map(item => (
-              <li key={item.resource.id} className="flex flex-col gap-2 rounded-lg border border-line bg-canvas p-3 sm:flex-row sm:items-center">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-meta font-semibold text-ink">{item.resource.title}</p>
-                  <p className="type-meta">{item.noteCount} fragmentos de estudio · sin conexiones</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onOpenResource?.(item.resource.id)}
-                    aria-label={`Abrir recurso ${item.resource.title}`}
-                  >
-                    <ArrowUpRight size={12} aria-hidden="true" /> Abrir
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onStudyResource?.(item.resource.id, 'mixed')}
-                    aria-label={`Estudiar recurso ${item.resource.title}`}
-                  >
-                    <Brain size={12} aria-hidden="true" /> Estudiar
-                  </Button>
-                  <select
-                    value={organizeTarget[item.resource.id] || ''}
-                    onChange={e => setOrganizeTarget(prev => ({ ...prev, [item.resource.id]: e.target.value }))}
-                    className="rounded-lg border border-line bg-canvas px-2 py-1.5 text-meta text-ink focus:border-accent/50 focus:outline-none"
-                    aria-label={`Asociar ${item.resource.title} a un curso`}
-                  >
-                    <option value="">Elegir curso…</option>
-                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  </select>
-                  <Button
-                    size="sm"
-                    variant="solid"
-                    onClick={() => handleOrganizeResource(item.resource.id)}
-                    disabled={!organizeTarget[item.resource.id]}
-                  >
-                    Asociar
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
+      <UnorganizedResourcesSection
+        unorganized={unorganized}
+        organizeFeedback={organizeFeedback}
+        organizeTarget={organizeTarget}
+        onOrganizeTargetChange={(resourceId, courseId) =>
+          setOrganizeTarget((prev) => ({ ...prev, [resourceId]: courseId }))
+        }
+        onOrganizeResource={handleOrganizeResource}
+        courses={courses}
+        onOpenResource={onOpenResource}
+        onStudyResource={onStudyResource}
+      />
 
       {(filter === 'all' || filter === 'courses') && (
         <section>
@@ -915,141 +825,27 @@ export const Library: React.FC<LibraryProps> = ({
                       >
                         <ListChecks size={11} aria-hidden="true" /> Practicar
                       </button>
-                      <button
-                        onClick={() => onExplainResource?.(book.id, book.title)}
-                        className="flex items-center gap-0.5 text-meta text-accent hover:opacity-80"
-                      >
-                        <Sparkles size={11} aria-hidden="true" /> Explicar
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingBookMeta(editingBookMeta === book.id ? null : book.id);
-                          setBookMetaForm({ author: book.author || '', pageCount: String(book.page_count || '') });
-                        }}
-                        className="flex items-center gap-0.5 text-meta text-muted hover:text-ink"
-                      >
-                        <Edit3 size={11} aria-hidden="true" /> Metadatos
-                      </button>
                     </div>
 
-                    {editingBookMeta === book.id && (
-                      <div className="mt-2 space-y-1.5 rounded-lg border border-line bg-canvas p-2">
-                        <label className="sr-only" htmlFor={`meta-author-${book.id}`}>Autor del libro</label>
-                        <input
-                          id={`meta-author-${book.id}`}
-                          type="text"
-                          value={bookMetaForm.author}
-                          onChange={e => setBookMetaForm(f => ({ ...f, author: e.target.value }))}
-                          placeholder="Autor"
-                          className="w-full rounded-md border border-line bg-surface px-2 py-1 text-meta text-ink focus:border-accent/50 focus:outline-none"
-                        />
-                        <div className="flex items-center gap-1.5">
-                          <label className="sr-only" htmlFor={`meta-pages-${book.id}`}>Páginas totales</label>
-                          <input
-                            id={`meta-pages-${book.id}`}
-                            type="number"
-                            min="1"
-                            value={bookMetaForm.pageCount}
-                            onChange={e => setBookMetaForm(f => ({ ...f, pageCount: e.target.value }))}
-                            placeholder={t('library.pagesPlaceholder')}
-                            className="w-20 rounded-md border border-line bg-surface px-2 py-1 text-right text-meta text-ink focus:border-accent/50 focus:outline-none"
-                          />
-                          <span className="text-meta">páginas totales</span>
-                          <Button size="sm" variant="solid" className="ml-auto" onClick={() => handleSaveBookMeta(book)}>
-                            <Check size={11} aria-hidden="true" /> Guardar
-                          </Button>
-                        </div>
-                      </div>
-                    )}
+                    <BookProgressEditor
+                      book={book}
+                      isEditingMeta={editingBookMeta === book.id}
+                      onToggleMeta={() => {
+                        setEditingBookMeta(editingBookMeta === book.id ? null : book.id);
+                        setBookMetaForm({ author: book.author || '', pageCount: String(book.page_count || '') });
+                      }}
+                      metaForm={bookMetaForm}
+                      onMetaFormChange={setBookMetaForm}
+                      onSaveMeta={handleSaveBookMeta}
+                      isEditingProgress={editingBookId === book.id}
+                      onToggleProgress={() => setEditingBookId(null)}
+                      inputPage={inputPage}
+                      onInputPageChange={setInputPage}
+                      onSaveProgress={handleSaveProgress}
+                      onExplain={onExplainResource ? () => onExplainResource(book.id, book.title) : undefined}
+                    />
 
-                    {editingBookId === book.id ? (
-                      <div className="mt-2 space-y-2.5 rounded-xl border border-accent/40 bg-accent-soft/30 p-3 shadow-sm">
-                        <div className="flex items-center justify-between text-meta">
-                          <span className="font-semibold text-ink">Progreso de lectura</span>
-                          <span className="font-semibold text-accent">
-                            {Math.round(((parseInt(inputPage, 10) || 0) / (book.page_count || 1)) * 100)}%
-                          </span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <input
-                            type="range"
-                            min="0"
-                            max={book.page_count}
-                            value={parseInt(inputPage, 10) || 0}
-                            onChange={(e) => setInputPage(e.target.value)}
-                            className="w-full accent-accent cursor-pointer"
-                            aria-label={`Deslizador de lectura para ${book.title}`}
-                          />
-                          <div className="flex items-center justify-between text-micro text-muted">
-                            <span>0 pág</span>
-                            <span className="font-medium text-ink">
-                              Página {parseInt(inputPage, 10) || 0} de {book.page_count}
-                            </span>
-                            <span>{book.page_count} pág</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 10, book.page_count ?? 0)))}
-                            className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
-                            title={t('library.advance10')}
-                          >
-                            +10 pág
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 25, book.page_count ?? 0)))}
-                            className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
-                            title={t('library.advance25')}
-                          >
-                            +25 pág
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setInputPage(String(adjustBookPage(parseInt(inputPage, 10) || 0, 50, book.page_count ?? 0)))}
-                            className="rounded-md border border-line bg-surface px-2 py-0.5 text-micro font-medium text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
-                            title={t('library.advance50')}
-                          >
-                            +50 pág
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setInputPage(String(book.page_count))}
-                            className="rounded-md border border-success/40 bg-success-soft px-2 py-0.5 text-micro font-medium text-success hover:opacity-80 transition-colors cursor-pointer"
-                            title="Marcar libro como completado"
-                          >
-                            Terminado (100%)
-                          </button>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-2 border-t border-line/60 pt-2">
-                          <div className="flex items-center gap-1.5">
-                            <label htmlFor={`page-input-${book.id}`} className="text-micro text-muted">Pág:</label>
-                            <input
-                              id={`page-input-${book.id}`}
-                              type="number"
-                              min="0"
-                              max={book.page_count}
-                              value={inputPage}
-                              onChange={(e) => setInputPage(e.target.value)}
-                              className="w-16 rounded-md border border-line bg-surface px-2 py-1 text-right text-meta text-ink focus:border-accent/50 focus:outline-none"
-                            />
-                            <span className="text-meta text-muted">/ {book.page_count}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Button size="sm" variant="quiet" onClick={() => setEditingBookId(null)}>
-                              Cancelar
-                            </Button>
-                            <Button size="sm" variant="solid" onClick={() => handleSaveProgress(book)}>
-                              <Check size={12} aria-hidden="true" /> Guardar
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
+                    {editingBookId !== book.id && (
                       <div
                         className="mt-2 cursor-pointer group/progress rounded-lg p-1.5 -m-1.5 hover:bg-canvas/60 transition-colors"
                         onClick={() => handleStartEdit(book)}
@@ -1080,239 +876,34 @@ export const Library: React.FC<LibraryProps> = ({
       )}
 
       {/* Document preview modal before persisting */}
-      {previewDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-labelledby="preview-title" className="max-h-[90vh] w-full max-w-lg animate-fade-in space-y-4 overflow-y-auto rounded-xl border border-line bg-raised p-6 shadow-pop">
-            <div className="flex items-center justify-between border-b border-line pb-3">
-              <h3 id="preview-title" className="type-section flex items-center gap-2 text-ink">
-                <FileUp size={17} className="text-accent" aria-hidden="true" /> Previsualización de importación
-              </h3>
-              <button onClick={() => setPreviewDoc(null)} aria-label={t('library.closePreview')} className="text-faint hover:text-ink">
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
+      <DocumentImportModal
+        previewDoc={previewDoc}
+        previewDestinationType={previewDestinationType}
+        onDestinationTypeChange={setPreviewDestinationType}
+        previewTargetId={previewTargetId}
+        onTargetIdChange={setPreviewTargetId}
+        previewEnableSemantic={previewEnableSemantic}
+        onEnableSemanticChange={setPreviewEnableSemantic}
+        isImporting={isImporting}
+        courses={courses}
+        onClose={() => setPreviewDoc(null)}
+        onConfirm={handleConfirmPreviewImport}
+      />
 
-            <div className="space-y-2.5 text-body">
-              <dl className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-canvas p-3 text-meta">
-                <div>
-                  <dt className="text-faint">Archivo:</dt>
-                  <dd className="break-all font-semibold text-ink">{previewDoc.parsed.fileName}</dd>
-                </div>
-                <div>
-                  <dt className="text-faint">Formato:</dt>
-                  <dd className="font-semibold uppercase text-accent">{previewDoc.parsed.fileType}</dd>
-                </div>
-                <div>
-                  <dt className="text-faint">Título detectado:</dt>
-                  <dd className="font-semibold text-ink">{previewDoc.parsed.title}</dd>
-                </div>
-                <div>
-                  <dt className="text-faint">Autor:</dt>
-                  <dd className="text-muted">{previewDoc.parsed.author || 'No especificado'}</dd>
-                </div>
-                <div>
-                  <dt className="text-faint">Páginas/Secciones:</dt>
-                  <dd className="font-semibold text-ink">{previewDoc.parsed.pageCount || previewDoc.parsed.sections.length}</dd>
-                </div>
-                <div>
-                  <dt className="text-faint">Palabras aproximadas:</dt>
-                  <dd className="font-semibold text-ink">{previewDoc.parsed.estimatedWords || '~'}</dd>
-                </div>
-              </dl>
+      <DocumentProvenanceModal
+        isOpen={sourceViewerMeta.isOpen}
+        data={sourceViewerMeta.data}
+        onClose={() => setSourceViewerMeta({ isOpen: false })}
+      />
 
-              {previewDoc.isDuplicate && (
-                <InlineStatus tone="warning">
-                  <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  <span>
-                    <strong>Documento ya existente.</strong>{' '}
-                    Este archivo tiene la misma huella SHA-256 que un recurso ya registrado en CrossedArts.
-                  </span>
-                </InlineStatus>
-              )}
-
-              <div className="space-y-1.5 pt-1">
-                <label className={LABEL_CLS} htmlFor="preview-destination">Destino del recurso:</label>
-                <select
-                  id="preview-destination"
-                  value={previewDestinationType}
-                  onChange={(e) => setPreviewDestinationType(e.target.value as any)}
-                  className={INPUT_CLS}
-                >
-                  <option value="standalone">Recurso independiente (Standalone)</option>
-                  <option value="book">Nuevo libro / manual en Biblioteca</option>
-                  <option value="course">Asociar a curso existente</option>
-                  <option value="lesson">Asociar a lección existente</option>
-                </select>
-              </div>
-
-              {previewDestinationType === 'course' && (
-                <div className="space-y-1">
-                  <label className={LABEL_CLS} htmlFor="preview-target">Selecciona el curso:</label>
-                  <select
-                    id="preview-target"
-                    value={previewTargetId}
-                    onChange={(e) => setPreviewTargetId(e.target.value)}
-                    className={INPUT_CLS}
-                  >
-                    <option value="">-- Elige un curso --</option>
-                    {courses.map(c => (
-                      <option key={c.id} value={c.id}>{c.title}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between rounded-lg border border-line bg-canvas p-2.5">
-                <label htmlFor="preview-semantic" className="text-meta font-medium text-ink">
-                  Indexación semántica en segundo plano
-                </label>
-                <input
-                  id="preview-semantic"
-                  type="checkbox"
-                  checked={previewEnableSemantic}
-                  onChange={(e) => setPreviewEnableSemantic(e.target.checked)}
-                  className="h-4 w-4 cursor-pointer accent-accent"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-line pt-3">
-              <Button variant="quiet" onClick={() => setPreviewDoc(null)}>
-                Cancelar
-              </Button>
-              <Button variant="solid" onClick={handleConfirmPreviewImport} disabled={isImporting || previewDoc.isDuplicate}>
-                {isImporting ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
-                Importar a CrossedArts
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {sourceViewerMeta.isOpen && sourceViewerMeta.data && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-labelledby="source-title" className="w-full max-w-md animate-fade-in space-y-4 rounded-xl border border-line bg-raised p-6 shadow-pop">
-            <div className="flex items-center justify-between border-b border-line pb-3">
-              <h3 id="source-title" className="type-section flex items-center gap-2 text-ink">
-                <Bookmark size={17} className="text-accent" aria-hidden="true" /> Origen del recurso
-              </h3>
-              <button onClick={() => setSourceViewerMeta({ isOpen: false })} aria-label="Cerrar visor de origen" className="text-faint hover:text-ink">
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-
-            <dl className="space-y-2 rounded-lg border border-line bg-canvas p-3 text-meta">
-              <div>
-                <dt className="text-faint">Título:</dt>
-                <dd className="font-semibold text-ink">{sourceViewerMeta.data.resource?.title}</dd>
-              </div>
-              <div>
-                <dt className="text-faint">Tipo de fuente:</dt>
-                <dd className="font-semibold text-accent">{sourceViewerMeta.data.sourceType}</dd>
-              </div>
-              {sourceViewerMeta.data.fileName && (
-                <div>
-                  <dt className="text-faint">Archivo original:</dt>
-                  <dd className="break-all font-mono text-ink">{sourceViewerMeta.data.fileName}</dd>
-                </div>
-              )}
-              {sourceViewerMeta.data.fingerprint && (
-                <div>
-                  <dt className="text-faint">Huella digital (SHA-256):</dt>
-                  <dd className="break-all font-mono text-muted">{sourceViewerMeta.data.fingerprint}</dd>
-                </div>
-              )}
-              <div>
-                <dt className="text-faint">Fragmentos de estudio creados:</dt>
-                <dd className="font-semibold text-success">{sourceViewerMeta.data.sectionCount} fragmentos</dd>
-              </div>
-            </dl>
-
-            <div className="flex justify-end pt-2">
-              <Button variant="outline" onClick={() => setSourceViewerMeta({ isOpen: false })}>
-                Cerrar
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isCreateCourseOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm">
-          <form onSubmit={handleCreateCourse} role="dialog" aria-modal="true" aria-labelledby="create-course-title" className="max-h-[90vh] w-full max-w-md animate-fade-in space-y-4 overflow-y-auto rounded-xl border border-line bg-raised p-6 shadow-pop">
-            <div className="flex items-center justify-between border-b border-line pb-3">
-              <h3 id="create-course-title" className="type-section flex items-center gap-2 text-ink">
-                <GraduationCap size={17} className="text-accent" aria-hidden="true" /> Crear curso
-              </h3>
-              <button type="button" onClick={() => setIsCreateCourseOpen(false)} aria-label={t('library.closeDialog')} className="text-faint hover:text-ink">
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className={LABEL_CLS} htmlFor="course-title">Título</label>
-                <input
-                  id="course-title"
-                  type="text"
-                  value={courseForm.title}
-                  onChange={e => setCourseForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder="Ej. Arquitectura de Sistemas"
-                  className={INPUT_CLS}
-                  required
-                />
-              </div>
-              <div>
-                <label className={LABEL_CLS} htmlFor="course-desc">Descripción</label>
-                <textarea
-                  id="course-desc"
-                  rows={3}
-                  value={courseForm.description}
-                  onChange={e => setCourseForm(f => ({ ...f, description: e.target.value }))}
-                  className={cn(INPUT_CLS, 'resize-none')}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LABEL_CLS} htmlFor="course-category">Categoría</label>
-                  <input
-                    id="course-category"
-                    type="text"
-                    value={courseForm.category}
-                    onChange={e => setCourseForm(f => ({ ...f, category: e.target.value }))}
-                    className={INPUT_CLS}
-                  />
-                </div>
-                <div>
-                  <label className={LABEL_CLS} htmlFor="course-instructor">Instructor</label>
-                  <input
-                    id="course-instructor"
-                    type="text"
-                    value={courseForm.instructor}
-                    onChange={e => setCourseForm(f => ({ ...f, instructor: e.target.value }))}
-                    className={INPUT_CLS}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {courseError && (
-              <div className="rounded-lg border border-error/30 bg-error-soft px-3 py-2 text-meta text-error" role="alert">
-                {courseError}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <Button variant="quiet" onClick={() => setIsCreateCourseOpen(false)}>
-                Cancelar
-              </Button>
-              <Button variant="solid" type="submit">
-                Crear curso
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
+      <CourseCreationModal
+        isOpen={isCreateCourseOpen}
+        onClose={() => setIsCreateCourseOpen(false)}
+        onSubmit={handleCreateCourse}
+        form={courseForm}
+        onChange={setCourseForm}
+        error={courseError}
+      />
 
       {/* Full-screen overlay while dragging files anywhere in the window */}
       {isWindowDragging && (

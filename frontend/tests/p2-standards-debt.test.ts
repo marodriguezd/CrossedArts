@@ -110,7 +110,13 @@ test('P2.5: la paleta heredada `brand` no vuelve al tema', () => {
 });
 
 test('P2.5: Ajustes no afirma que los modelos vivan en IndexedDB', () => {
-  const settings = readFileSync(new URL('../src/pages/SettingsView.tsx', import.meta.url), 'utf-8');
+  const sources = [readFileSync(new URL('../src/pages/SettingsView.tsx', import.meta.url), 'utf-8')];
+  try {
+    sources.push(readFileSync(new URL('../src/components/settings/LLMConfigSection.tsx', import.meta.url), 'utf-8'));
+  } catch {
+    // LLMConfigSection optional
+  }
+  const settings = sources.join('\n');
   assert.ok(
     settings.includes('Cache Storage'),
     'debe explicar que los pesos se guardan en la caché HTTP/Cache Storage'

@@ -1,7 +1,7 @@
 import React from 'react';
-import { GraduationCap, BookOpen, Layers, FileText, ClipboardList, Lightbulb } from 'lucide-react';
 import type { Options } from 'vis-network/esnext';
 import type { GraphNodeType } from '../../types/models.ts';
+import { ENTITY_ICONS } from '../ui/EntityIcon.tsx';
 
 /**
  * Knowledge-graph presentation: palette, tokens, and vis-network options.
@@ -121,16 +121,7 @@ export function nodeColors(type: GraphNodeType, theme: ThemeMode): { background:
   };
 }
 
-export const NODE_ICONS: Record<GraphNodeType, React.ComponentType<{ size?: number; className?: string }>> = {
-  course: GraduationCap,
-  book: BookOpen,
-  module: Layers,
-  lesson: FileText,
-  note: FileText,
-  practice: ClipboardList,
-  concept: Lightbulb,
-  resource: BookOpen
-};
+export const NODE_ICONS = ENTITY_ICONS;
 
 export const FILTER_ORDER: GraphNodeType[] = ['course', 'book', 'module', 'lesson', 'note', 'concept', 'practice', 'resource'];
 

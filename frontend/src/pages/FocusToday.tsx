@@ -7,7 +7,8 @@ import {
   Flame,
   History,
   ListTodo,
-  Sparkles
+  Sparkles,
+  type LucideIcon,
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { resolveLocalDay } from '../services/localDate.ts';
@@ -44,7 +45,7 @@ interface FocusTodayProps {
   onOpenDestination: (destination: ResourceDestination) => void;
 }
 
-const KIND_ICONS: Partial<Record<FocusItem['kind'], React.ComponentType<any>>> = {
+const KIND_ICONS: Partial<Record<FocusItem['kind'], LucideIcon>> = {
   reviews: Sparkles,
   practice: ListTodo,
   continue_lesson: Compass,

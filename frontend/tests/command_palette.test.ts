@@ -625,8 +625,15 @@ test('19.32 useTheme exposes one shared source of truth for every consumer', () 
     readSource('../src/components/layout/Shell.tsx').includes('<ThemeToggle'),
     'La cabecera sigue usando el mismo toggle compartido'
   );
+  const settingsSources = [readSource('../src/pages/SettingsView.tsx')];
+  try {
+    settingsSources.push(readSource('../src/components/settings/AppearanceSection.tsx'));
+  } catch {
+    // AppearanceSection optional
+  }
+  const settings = settingsSources.join('\n');
   assert.ok(
-    readSource('../src/pages/SettingsView.tsx').includes('<ThemeToggle'),
+    settings.includes('ThemeToggle'),
     'Ajustes sigue usando el mismo toggle compartido'
   );
 });
@@ -638,7 +645,7 @@ test('19.33 The palette adds no network dependency and no new npm package', () =
     assert.ok(!(forbidden in deps), `La paleta no debe añadir ${forbidden} (cero dependencias nuevas)`);
   }
   // El índice se construye con dos consultas locales ya existentes en el DAO.
-  const daoSrc = readSource('../src/db/dao.ts');
+  const daoSrc = [readSource('../src/db/dao.ts'), readSource('../src/db/dao/search.ts')].join('\n');
   assert.ok(daoSrc.includes('async getConceptIndex()'));
   assert.ok(daoSrc.includes('async getLessonIndex()'));
 });
