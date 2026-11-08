@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, model_validator
 from backend.app.schemas.common import BaseResponse
-from backend.app.models.activity import resolve_session_scope
+from backend.app.models.activity import resolve_effective_session_scope, resolve_session_scope
 
 
 class LearningSessionResponse(BaseResponse):
@@ -11,14 +11,29 @@ class LearningSessionResponse(BaseResponse):
     resource_id: Optional[uuid.UUID] = None
     lesson_id: Optional[uuid.UUID] = None
     #: Canonical explicit session scope: `lesson`, `resource`, or `global`
-    #: (cross-cutting review without anchors).
+    #: (cross-cutting review without anchors). This is the DECLARED/persisted
+    #: value; `effective_scope` is what the anchors present still support.
     scope: str = "global"
+    #: Scope re-derived from the anchors actually present. Differs from `scope`
+    #: only after `ON DELETE SET NULL` unlinked the session's anchor: history is
+    #: preserved and the UI never presents "lesson" for a session whose lesson
+    #: can no longer be opened.
+    effective_scope: str = "global"
     started_at: datetime
     ended_at: Optional[datetime] = None
     #: `True` once the session is formally finalized (see idempotent
     #: `SessionService.end_session`).
     finalized: bool = False
     duration_minutes: int
+
+    @model_validator(mode="after")
+    def derive_effective_scope(self) -> "LearningSessionResponse":
+        object.__setattr__(
+            self,
+            "effective_scope",
+            resolve_effective_session_scope(self.scope, self.resource_id, self.lesson_id),
+        )
+        return self
 
 
 class StartSessionRequest(BaseModel):

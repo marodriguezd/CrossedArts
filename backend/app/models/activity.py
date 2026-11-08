@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Integer, DateTime, Boolean, Float, event
+from typing import TYPE_CHECKING, Literal, Optional, cast
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Integer, DateTime, Boolean, Float, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base, GUID
@@ -14,13 +14,42 @@ if TYPE_CHECKING:
 
 #: Canonical study-session scopes. Match the frontend (SQLite WASM):
 #: `frontend/src/services/sessionScope.ts`. SINGLE domain rule shared by both layers.
-SESSION_SCOPES = ("global", "resource", "lesson")
+SessionScope = Literal["global", "resource", "lesson"]
+SESSION_SCOPES: tuple[SessionScope, ...] = ("global", "resource", "lesson")
+
+
+def resolve_effective_session_scope(
+    declared_scope: Optional[str],
+    resource_id: Optional[uuid.UUID] = None,
+    lesson_id: Optional[uuid.UUID] = None,
+) -> SessionScope:
+    """
+    EFFECTIVE scope of an already persisted session.
+
+    Mirrors `resolveEffectiveStudySessionScope` in
+    `frontend/src/services/sessionScope.ts`. Takes the declared (persisted)
+    scope plus the anchors actually present: when the declared scope can no
+    longer be represented because `ON DELETE SET NULL` unlinked its anchor,
+    re-derives from the remaining anchors. Deterministic, no title guessing.
+    """
+    derived = resolve_session_scope(resource_id, lesson_id)
+    if declared_scope not in SESSION_SCOPES:
+        return derived
+    if declared_scope == "lesson" and lesson_id is None:
+        return derived
+    if declared_scope == "resource" and resource_id is None:
+        return derived
+    if declared_scope == "global" and (resource_id is not None or lesson_id is not None):
+        return derived
+    # The guards above already proved membership in the domain; a bare `str`
+    # cannot be narrowed to the Literal by `in`, so the cast states the rule.
+    return cast(SessionScope, declared_scope)
 
 
 def resolve_session_scope(
     resource_id: Optional[uuid.UUID] = None,
     lesson_id: Optional[uuid.UUID] = None,
-) -> str:
+) -> SessionScope:
     """
     Derive a session's scope from its present anchors.
 
@@ -47,9 +76,13 @@ class LearningSession(Base):
     # Scope is persisted explicitly in `scope`.
     #
     # The DB only enforces the value domain and that a `global` scope never
-    # carries an anchor, because `ON DELETE SET NULL` can unlink the lesson of
-    # an ALREADY-FINALIZED lesson session: history is preserved and the effective
-    # scope is re-derived from anchors on read.
+    # carries an anchor. It deliberately does NOT require an anchor for
+    # `resource` or `lesson`: `ON DELETE SET NULL` unlinks either anchor from an
+    # ALREADY-FINALIZED session (history is preserved) and SQLite evaluates
+    # CHECK constraints on that internal UPDATE, so an anchor-requiring CHECK
+    # would make deleting a resource fail instead of unlinking it. Write paths
+    # still validate the declared scope; the effective scope is re-derived from
+    # anchors on read by `resolve_effective_session_scope`.
     __table_args__ = (
         CheckConstraint(
             "scope IN ('global', 'resource', 'lesson')",
@@ -59,22 +92,18 @@ class LearningSession(Base):
             "scope <> 'global' OR (resource_id IS NULL AND lesson_id IS NULL)",
             name="ck_learning_session_scope",
         ),
-        CheckConstraint(
-            "scope <> 'resource' OR resource_id IS NOT NULL",
-            name="ck_learning_session_resource_scope",
-        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     resource_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         GUID,
-        ForeignKey("learning_resource.id", ondelete="CASCADE"),
+        ForeignKey("learning_resource.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )
     lesson_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         GUID,
-        ForeignKey("lesson.id", ondelete="CASCADE"),
+        ForeignKey("lesson.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )
@@ -111,12 +140,38 @@ def _derive_session_scope(mapper, connection, target: "LearningSession") -> None
     """Keep `scope` consistent with the row's real anchors.
 
     Deriving scope in the model itself avoids relying on every caller
-    remembering to write it, and guarantees a global scope never declares anchors.
+    remembering to write it, and guarantees a global scope never declares
+    anchors. A `resource` scope whose resource was unlinked is a legitimate
+    post-deletion state (history survives the resource), so it is not rewritten
+    here: `resolve_effective_session_scope` reclassifies it on read.
     """
     if target.scope not in SESSION_SCOPES or (
         target.scope == "global" and (target.resource_id is not None or target.lesson_id is not None)
-    ) or (target.scope == "resource" and target.resource_id is None):
+    ):
         target.scope = resolve_session_scope(target.resource_id, target.lesson_id)
+
+
+#: Neutral title for a note whose content has no usable text.
+DEFAULT_NOTE_TITLE = "Nota"
+
+
+def derive_note_title(content: str) -> str:
+    """Title a note gets when the caller does not provide one.
+
+    Mirrors the canonical schema's `title NOT NULL`: the first non-empty line of
+    the content is a real, human-readable title; only content without any usable
+    text falls back to the neutral default. Never returns an empty string.
+
+    SINGLE implementation for the backend; the same rule lives in
+    `frontend/src/db/dao/notes.ts` (`deriveNoteTitle`) and in the
+    `d2e3f4a5b6c7` migration backfill (which cannot import application code).
+    Changing it means changing all of them.
+    """
+    for line in (content or "").splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped[:255]
+    return DEFAULT_NOTE_TITLE
 
 
 class Note(Base, TimestampMixin):
@@ -132,6 +187,11 @@ class Note(Base, TimestampMixin):
     Deleting a resource or lesson never destroys the note: it unlinks it
     (`ON DELETE SET NULL`), same as the frontend. User work always survives
     library reorganization.
+
+    `title` is part of the contract, not a display hint: the browser schema
+    declares `note.title` NOT NULL, so a note created through the backend keeps
+    a real title even when the caller omits it (derived from the first non-empty
+    line of the content). `tags` stays optional, exactly like the frontend.
     """
 
     __tablename__ = "note"
@@ -152,10 +212,30 @@ class Note(Base, TimestampMixin):
         ForeignKey("lesson.id", ondelete="SET NULL"),
         nullable=True
     )
+    # `title` is contract, not decoration: the listeners below derive it from
+    # the content when the caller sent none, so this default is only the last
+    # resort for content with no usable text.
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default=DEFAULT_NOTE_TITLE)
     content: Mapped[str] = mapped_column(String(5000), nullable=False)
+    tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     resource: Mapped[Optional["LearningResource"]] = relationship("LearningResource", back_populates="notes")
     lesson: Mapped[Optional["Lesson"]] = relationship("Lesson", back_populates="notes")
+
+
+@event.listens_for(Note, "before_insert", propagate=True)
+@event.listens_for(Note, "before_update", propagate=True)
+def _derive_note_title_on_write(mapper, connection, target: "Note") -> None:
+    """Keep `title` derived from the content for EVERY construction path.
+
+    `NoteService` derives it, but a `Note(content=...)` built directly kept the
+    column default and stored the placeholder as a title, so the same note had
+    two different headlines depending on how it was written. Deriving it in the
+    model is the same reason `_derive_session_scope` exists: the contract cannot
+    depend on every caller remembering it. A real title is never replaced.
+    """
+    if not (target.title or "").strip():
+        target.title = derive_note_title(target.content)
 
 
 class MediaProgress(Base, TimestampMixin):

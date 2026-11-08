@@ -2,7 +2,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, or_
 
 from backend.app.core.database import get_db
 from backend.app.core.settings import settings
@@ -131,22 +131,29 @@ def update_resource(
 @router.delete("/{resource_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
     """
-    Delete a learning resource and all its data (modules, lessons, assets, notes,
-    sessions), cascading through the model relationships.
+    Delete a learning resource and the data it owns (modules, lessons, media
+    assets and their derived content). User work is NOT destroyed: notes and
+    study sessions survive, unlinked by the database (`ON DELETE SET NULL`), as
+    the domain contract requires; a session's effective scope is re-derived on
+    read.
+
+    The rows are committed BEFORE the linked files are removed: the opposite
+    order loses the files of a delete whose commit failed, leaving live rows
+    pointing at a folder that no longer exists.
     """
     resource = db.get(LearningResource, resource_id)
     if not resource:
         raise get_http_exception("RESOURCE_NOT_FOUND", f"El recurso con ID {resource_id} no existe.")
 
-    # Fetch IDs of Note, MediaAsset, ContentIndex, TranscriptSegment, and Lesson related to this resource
-    from backend.app.models.activity import Note
+    # Fetch IDs of MediaAsset, ContentIndex, TranscriptSegment and Lesson to
+    # purge their DERIVED data. Notes are deliberately absent: they survive the
+    # resource, so their embeddings and knowledge connections are still valid
+    # and must survive with them.
     from backend.app.models.resource import MediaAsset
     from backend.app.models.content import EmbeddingRecord, ContentIndex, TranscriptSegment, Transcript
     from backend.app.models.course_structure import Lesson, Module
     from backend.app.models.knowledge import KnowledgeConnection
-    from sqlalchemy import or_, select
 
-    note_ids = db.scalars(select(Note.id).where(Note.resource_id == resource_id)).all()
     media_asset_ids = db.scalars(select(MediaAsset.id).where(MediaAsset.resource_id == resource_id)).all()
 
     content_index_ids = []
@@ -167,8 +174,9 @@ def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
         .where(Module.course_id == resource_id)
     ).all()
 
-    # Collect all related IDs plus the resource ID itself to prevent any orphan records
-    target_ids = list(note_ids) + list(media_asset_ids) + list(content_index_ids) + list(transcript_segment_ids) + list(lesson_ids) + [resource_id]
+    # Collect the ids of entities that really disappear plus the resource id
+    # itself; their derived records must not outlive them.
+    target_ids = list(media_asset_ids) + list(content_index_ids) + list(transcript_segment_ids) + list(lesson_ids) + [resource_id]
 
     if target_ids:
         # Chunk in 500s to stay under SQLite's variable limit (999).
@@ -184,8 +192,11 @@ def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
             ).delete(synchronize_session=False)
 
     db.delete(resource)
+    db.commit()
 
-    # Remove linked physical files.
+    # Purge the physical files only once the rows are gone: a commit that fails
+    # must lose nothing, and a folder that cannot be removed is a warning, never
+    # a failed request (the rows are already deleted and cannot come back).
     import shutil
     storage_dir = settings.media_dir / str(resource_id)
     if storage_dir.exists() and storage_dir.is_dir():
@@ -193,6 +204,4 @@ def delete_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)):
             shutil.rmtree(storage_dir)
         except Exception as e:
             logger.warning("No se pudo eliminar la carpeta física %s: %s", storage_dir, e)
-
-    db.commit()
 

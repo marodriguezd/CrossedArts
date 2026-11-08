@@ -46,10 +46,15 @@ class LearningResource(Base, TimestampMixin):
         "polymorphic_identity": "learning_resource"
     }
 
+    # No delete cascade: a study session is HISTORY, not owned data. Deleting
+    # the resource unlinks it via `ON DELETE SET NULL` and preserves it (the
+    # effective scope is re-derived on read). `passive_deletes` leaves the
+    # unlink to the database instead of loading and deleting every session.
     sessions: Mapped[List["LearningSession"]] = relationship(
         "LearningSession",
         back_populates="resource",
-        cascade="all, delete-orphan"
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
 
     # No `delete-orphan`: a note is user work and can stand alone. Deleting the
