@@ -24,6 +24,7 @@ import {
   Clock,
   CalendarCheck,
   Target,
+  Sparkles,
 } from 'lucide-react';
 import { dao } from '../db/dao.ts';
 import { getStoredPlaybackSeconds, formatPlaybackTime } from '../services/domainLogic.ts';
@@ -55,6 +56,7 @@ interface DashboardProps {
   /** Opens any resource (book, imported document, concept) in its detail view. */
   onOpenResource?: (resourceId: string) => void;
   onNavigate: (tab: string) => void;
+  onOpenDemoSelector?: () => void;
 }
 
 interface ContinueTarget {
@@ -81,6 +83,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenLesson,
   onOpenResource,
   onNavigate,
+  onOpenDemoSelector,
 }) => {
   const { t, effective } = useLanguage();
   const today = kpis?.today;
@@ -353,14 +356,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
           )}
         </div>
       ) : (
-        <ResourceGallery
-          items={[]}
-          title={t('dashboard.keepLearning')}
-          description={t('dashboard.keepLearningDesc')}
-          onSeeAll={() => onNavigate('library')}
-          limit={6}
-          emptyHint={t('dashboard.galleryEmpty')}
-        />
+        <div className="rounded-2xl border border-line bg-surface p-6 sm:p-8 shadow-card space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Badge tone="accent">{t('dashboard.welcomeCleanBadge')}</Badge>
+          </div>
+          <div>
+            <h2 className="type-title text-2xl text-ink">{t('dashboard.welcomeCleanTitle')}</h2>
+            <p className="type-secondary mt-1.5 max-w-2xl text-sm leading-relaxed">{t('dashboard.welcomeCleanDesc')}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            {onOpenDemoSelector && (
+              <Button variant="solid" onClick={onOpenDemoSelector}>
+                <Sparkles size={15} aria-hidden="true" />
+                {t('dashboard.exploreDemos')}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => onNavigate('library')}>
+              <Library size={15} aria-hidden="true" />
+              {t('dashboard.createFirstCourse')}
+            </Button>
+          </div>
+        </div>
       )}
 
       <div className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card md:grid-cols-4 md:divide-x">

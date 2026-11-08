@@ -5,6 +5,7 @@ import initSqlJs from 'sql.js';
 import type { Database, SqlJsConfig, SqlJsStatic } from 'sql.js';
 import { SCHEMA_SQL, KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL, buildPracticeWorkTableSql, buildLearningSessionTableSql, PRACTICE_WORK_INDEX_SQL } from './schema.ts';
 import { SEED_SQL } from './seedDemo.ts';
+import { getDemoPresetSql, type DemoPresetId } from './demoPresets.ts';
 import { resolveSqliteWasmUrl, deployedSqliteWasmFilename } from './sqliteWasmUrl.ts';
 
 const DB_STORE_NAME = 'crossedarts_sqlite_store';
@@ -453,7 +454,8 @@ class SQLiteBridge {
           }
         }
       } else {
-        this.db = this.buildFreshDatabase(SQL);
+        const defaultSeed = typeof window === 'undefined';
+        this.db = this.buildFreshDatabase(SQL, defaultSeed);
         this.isInitialized = true;
         this.initState = 'ready';
         this.setStorageState('ready');
@@ -481,14 +483,16 @@ class SQLiteBridge {
   }
 
   /**
-   * Fresh database with the canonical schema, the demo seed and the dependent
+   * Fresh database with the canonical schema, optional demo preset and dependent
    * indexes. One sequence, so first run and «restablecer demo» cannot drift.
    */
-  private buildFreshDatabase(SQL: SqlJsStatic): Database {
+  private buildFreshDatabase(SQL: SqlJsStatic, withSeed = false, presetId: DemoPresetId = 'full'): Database {
     const db = new SQL.Database();
     db.run('PRAGMA foreign_keys = ON;');
     db.run(SCHEMA_SQL);
-    db.run(SEED_SQL);
+    if (withSeed) {
+      db.run(getDemoPresetSql(presetId));
+    }
     db.run(KNOWLEDGE_CONNECTION_UNIQUE_INDEX_SQL);
     db.run('CREATE INDEX IF NOT EXISTS idx_flashcard_lesson ON flashcard(lesson_id);');
     return db;
@@ -1253,13 +1257,28 @@ class SQLiteBridge {
     return bytes;
   }
 
-  public async resetDemo(): Promise<void> {
+  public async resetDemo(presetId: DemoPresetId = 'full'): Promise<void> {
     const options = await this.getSqlJsOptions();
     const SQL = await initSqlJs(options);
     if (this.db) {
       try { this.db.close(); } catch {}
     }
-    this.db = this.buildFreshDatabase(SQL);
+    this.db = this.buildFreshDatabase(SQL, true, presetId);
+    this.isInitialized = true;
+    await this.persist();
+  }
+
+  public async loadDemoPreset(presetId: DemoPresetId = 'full'): Promise<void> {
+    return this.resetDemo(presetId);
+  }
+
+  public async resetClean(): Promise<void> {
+    const options = await this.getSqlJsOptions();
+    const SQL = await initSqlJs(options);
+    if (this.db) {
+      try { this.db.close(); } catch {}
+    }
+    this.db = this.buildFreshDatabase(SQL, false);
     this.isInitialized = true;
     await this.persist();
   }

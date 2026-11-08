@@ -36,6 +36,7 @@ interface LibraryProps {
   onOpenConcept?: (conceptId: string) => void;
   /** Opens the Goals view, optionally with one goal selected. */
   onOpenGoals?: (goalId?: string) => void;
+  onOpenDemoSelector?: () => void;
 }
 
 export const Library: React.FC<LibraryProps> = ({ 
@@ -53,7 +54,8 @@ export const Library: React.FC<LibraryProps> = ({
   onOpenResource,
   onOpenNote,
   onOpenConcept,
-  onOpenGoals
+  onOpenGoals,
+  onOpenDemoSelector,
 }) => {
   const { t } = useLanguage();
   const [filter, setFilter] = useState<'all' | 'courses' | 'books'>('all');
@@ -723,7 +725,18 @@ export const Library: React.FC<LibraryProps> = ({
             description={t('library.coursesDescription')}
           />
           {filteredCourses.length === 0 ? (
-            <EmptyState title={t('library.emptyCoursesTitle')} hint={t('library.emptyCoursesHint')} />
+            <EmptyState
+              title={t('library.emptyCoursesTitle')}
+              hint={t('library.emptyCoursesHint')}
+              action={
+                onOpenDemoSelector ? (
+                  <Button variant="outline" size="sm" onClick={onOpenDemoSelector}>
+                    <Sparkles size={14} aria-hidden="true" />
+                    {t('library.exploreDemos')}
+                  </Button>
+                ) : undefined
+              }
+            />
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredCourses.map(course => (

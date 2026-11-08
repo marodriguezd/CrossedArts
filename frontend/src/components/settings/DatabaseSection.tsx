@@ -7,6 +7,7 @@ import {
   Info,
   RotateCcw,
   Upload,
+  Sparkles,
 } from 'lucide-react';
 import type { StorageReport } from '../../db/sqliteBridge.ts';
 import { Badge, Button, InlineStatus, SectionHeading } from '../ui/index.tsx';
@@ -30,7 +31,8 @@ export interface DatabaseSectionProps {
   onOpenResetConfirm: () => void;
   isResetConfirmOpen: boolean;
   onCloseResetConfirm: () => void;
-  onExecuteResetDemo: () => Promise<void>;
+  onExecuteResetClean: () => Promise<void>;
+  onOpenDemoSelector?: () => void;
   pendingImport: File | null;
   onClosePendingImport: () => void;
   onExecuteImport: () => Promise<void>;
@@ -60,7 +62,8 @@ export const DatabaseSection: React.FC<DatabaseSectionProps> = ({
   onOpenResetConfirm,
   isResetConfirmOpen,
   onCloseResetConfirm,
-  onExecuteResetDemo,
+  onExecuteResetClean,
+  onOpenDemoSelector,
   pendingImport,
   onClosePendingImport,
   onExecuteImport,
@@ -232,12 +235,22 @@ export const DatabaseSection: React.FC<DatabaseSectionProps> = ({
             </span>
           </div>
 
-          <div className="border-t border-line pt-3">
+          <div className="border-t border-line pt-3 flex flex-wrap items-center justify-between gap-3">
+            {onOpenDemoSelector && (
+              <button
+                type="button"
+                onClick={onOpenDemoSelector}
+                className="flex items-center gap-2 text-meta font-medium text-accent hover:opacity-80 transition-opacity"
+              >
+                <Sparkles size={14} aria-hidden="true" /> {t('settings.demoSelectorButton')}
+              </button>
+            )}
             <button
+              type="button"
               onClick={onOpenResetConfirm}
-              className="flex items-center gap-2 text-meta font-medium text-error hover:opacity-80"
+              className="flex items-center gap-2 text-meta font-medium text-error hover:opacity-80 transition-opacity"
             >
-              <RotateCcw size={13} aria-hidden="true" /> Reiniciar datos al dataset de demostración
+              <RotateCcw size={13} aria-hidden="true" /> {t('settings.cleanDatabaseButton')}
             </button>
           </div>
         </div>
@@ -255,11 +268,11 @@ export const DatabaseSection: React.FC<DatabaseSectionProps> = ({
 
       <ConfirmDialog
         isOpen={isResetConfirmOpen}
-        title={t('settings.demoResetTitle')}
-        consequence={t('settings.demoResetConsequence')}
-        confirmLabel="Reiniciar"
+        title={t('presets.cleanConfirmTitle')}
+        consequence={t('presets.cleanConfirmConsequence')}
+        confirmLabel={t('presets.cleanAction')}
         onCancel={onCloseResetConfirm}
-        onConfirm={onExecuteResetDemo}
+        onConfirm={onExecuteResetClean}
       />
     </>
   );

@@ -31,9 +31,10 @@ import {
 
 interface SettingsViewProps {
   onDataReset: () => void;
+  onOpenDemoSelector?: () => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset, onOpenDemoSelector }) => {
   const { t, effective, language, setLanguage } = useLanguage();
   const [aiConfig, setAiConfig] = useState<AISettings>(aiService.getSettings());
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -443,15 +444,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
     }
   };
 
-  const executeResetDemo = async () => {
+  const executeResetClean = async () => {
     setIsResetConfirmOpen(false);
     setDbFeedback(null);
     try {
-      await dbBridge.resetDemo();
-      setDbFeedback({ type: 'success', text: t('settings.demoResetDone') });
+      await dbBridge.resetClean();
+      setDbFeedback({ type: 'success', text: t('presets.cleanDesc') });
       onDataReset();
     } catch (err: any) {
-      setDbFeedback({ type: 'error', text: 'Error restableciendo los datos: ' + (err?.message || 'desconocido') });
+      setDbFeedback({ type: 'error', text: 'Error vaciando la base de datos: ' + (err?.message || 'desconocido') });
     }
   };
 
@@ -488,7 +489,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onDataReset }) => {
         onOpenResetConfirm={() => setIsResetConfirmOpen(true)}
         isResetConfirmOpen={isResetConfirmOpen}
         onCloseResetConfirm={() => setIsResetConfirmOpen(false)}
-        onExecuteResetDemo={executeResetDemo}
+        onExecuteResetClean={executeResetClean}
+        onOpenDemoSelector={onOpenDemoSelector}
         pendingImport={pendingImport}
         onClosePendingImport={() => setPendingImport(null)}
         onExecuteImport={executeImport}

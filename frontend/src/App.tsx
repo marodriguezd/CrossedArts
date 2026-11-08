@@ -26,6 +26,8 @@ import {
   type PaletteItem,
 } from './services/commandPalette.ts';
 import { exportSqliteFile } from './db/exportImport.ts';
+import type { DemoPresetId } from './db/demoPresets.ts';
+import { DemoSelectorModal } from './components/common/DemoSelectorModal.tsx';
 import type { ResourceDestination } from './types/models.ts';
 import { parseUrlState, serializeUrlState } from './services/deepLinking.ts';
 import { Loader2, AlertTriangle, X, RotateCcw, RefreshCw } from 'lucide-react';
@@ -75,9 +77,20 @@ export const App: React.FC = () => {
   const [appNotice, setAppNotice] = useState<string | null>(null);
   const [globalQuery, setGlobalQuery] = useState('');
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isDemoSelectorOpen, setIsDemoSelectorOpen] = useState(false);
 
   const { loading, initError, kpis, courses, books, flashcards, notes, resources, practiceWork, recentSessions, goals, selectedCourse, refreshData, selectCourse, retryInit } =
     useAppData(selectedCourseId);
+
+  const handleSelectDemoPreset = async (presetId: DemoPresetId) => {
+    await dbBridge.loadDemoPreset(presetId);
+    await refreshData();
+  };
+
+  const handleResetClean = async () => {
+    await dbBridge.resetClean();
+    await refreshData();
+  };
 
   // Sync React state -> URL hash
   useEffect(() => {
@@ -512,6 +525,9 @@ export const App: React.FC = () => {
       case 'accion:theme':
         toggleTheme();
         return;
+      case 'accion:demos':
+        setIsDemoSelectorOpen(true);
+        return;
       default:
         return;
     }
@@ -635,6 +651,7 @@ export const App: React.FC = () => {
             onOpenLesson={handleOpenLesson}
             onOpenResource={handleOpenResource}
             onNavigate={handleNavigateTab}
+            onOpenDemoSelector={() => setIsDemoSelectorOpen(true)}
           />
         )}
 
@@ -692,6 +709,7 @@ export const App: React.FC = () => {
                 handleNavigateTab('goals');
                 setSelectedGoalId(goalId ?? null);
               }}
+              onOpenDemoSelector={() => setIsDemoSelectorOpen(true)}
             />
           )}
 
@@ -751,7 +769,10 @@ export const App: React.FC = () => {
           )}
 
           {currentTab === 'settings' && (
-            <SettingsView onDataReset={refreshData} />
+            <SettingsView
+              onDataReset={refreshData}
+              onOpenDemoSelector={() => setIsDemoSelectorOpen(true)}
+            />
           )}
         </Suspense>
         </LazyViewBoundary>
@@ -788,6 +809,14 @@ export const App: React.FC = () => {
           handleNavigateTab('library');
           setGlobalQuery(q);
         }}
+      />
+
+      <DemoSelectorModal
+        isOpen={isDemoSelectorOpen}
+        onClose={() => setIsDemoSelectorOpen(false)}
+        onSelectPreset={handleSelectDemoPreset}
+        onResetClean={handleResetClean}
+        hasExistingData={courses.length > 0 || books.length > 0 || resources.length > 0}
       />
     </>
   );

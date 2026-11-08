@@ -296,6 +296,21 @@ async function run() {
   await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(2500);
 
+  // Si la aplicación arranca en limpio (comportamiento por defecto para nuevos usuarios),
+  // cargamos el entorno demo completo a través del selector de demos para que las comprobaciones
+  // visuales de las vistas dependientes de contenido (libros, lecciones, espacio de trabajo)
+  // puedan renderizarse y comprobarse de extremo a extremo.
+  const exploreDemoBtn = page.locator('button', { hasText: 'Explorar versiones demo' }).first();
+  if ((await exploreDemoBtn.count()) && (await exploreDemoBtn.isVisible())) {
+    await exploreDemoBtn.click();
+    await page.waitForTimeout(600);
+    const loadButtons = page.locator('button', { hasText: 'Cargar esta versión' });
+    if (await loadButtons.count()) {
+      await loadButtons.first().click();
+      await page.waitForTimeout(2000);
+    }
+  }
+
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.waitForTimeout(400);
