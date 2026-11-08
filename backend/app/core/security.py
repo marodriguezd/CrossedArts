@@ -42,6 +42,14 @@ def _has_blocked_hidden_part(path: Path) -> bool:
     return False
 
 
+def _is_path_equal_or_subpath(path: str, parent: str) -> bool:
+    """Check if `path` is equal to or located within `parent`, respecting OS case sensitivity."""
+    if os.name == 'nt':
+        p_lower, parent_lower = path.lower(), parent.lower()
+        return p_lower == parent_lower or p_lower.startswith(parent_lower + os.sep)
+    return path == parent or path.startswith(parent + os.sep)
+
+
 def is_safe_path(path: Union[str, Path]) -> bool:
     """
     Check whether a file or directory path is safe, cross-platform (Windows and Linux).
@@ -62,24 +70,14 @@ def is_safe_path(path: Union[str, Path]) -> bool:
 
         # Check the app workspace (always allowed by definition).
         workspace_dir = os.path.abspath(os.path.realpath(str(settings.data_dir)))
-        if os.name == 'nt':
-            in_workspace = resolved_path.lower() == workspace_dir.lower() or resolved_path.lower().startswith(workspace_dir.lower() + os.sep)
-        else:
-            in_workspace = resolved_path == workspace_dir or resolved_path.startswith(workspace_dir + os.sep)
-
-        # Inside the workspace, only check sensitive hidden components, then allow.
-        if in_workspace:
+        if _is_path_equal_or_subpath(resolved_path, workspace_dir):
             return not _has_blocked_hidden_part(Path(resolved_path))
 
         # Check against blocked system directories.
         for blocked_dir in BLOCKED_SYSTEM_DIRS:
             blocked_resolved = os.path.abspath(os.path.realpath(blocked_dir))
-            if os.name == 'nt':
-                if resolved_path.lower() == blocked_resolved.lower() or resolved_path.lower().startswith(blocked_resolved.lower() + os.sep):
-                    return False
-            else:
-                if resolved_path == blocked_resolved or resolved_path.startswith(blocked_resolved + os.sep):
-                    return False
+            if _is_path_equal_or_subpath(resolved_path, blocked_resolved):
+                return False
 
         # Reject hidden folders/files in path components: block any part
         # starting with '.' except allowed namespaces.
@@ -90,18 +88,15 @@ def is_safe_path(path: Union[str, Path]) -> bool:
         # - User-home subfolders (excluding the home itself for safety).
         # - External drives/media under /media or /mnt (Linux) or any drive on Windows.
         home_dir = os.path.abspath(os.path.realpath(os.path.expanduser("~")))
-
-        if os.name == 'nt':
-            in_home_sub = resolved_path.lower().startswith(home_dir.lower() + os.sep)
-            is_exactly_home = resolved_path.lower() == home_dir.lower()
-        else:
-            in_home_sub = resolved_path.startswith(home_dir + os.sep)
-            is_exactly_home = resolved_path == home_dir
-
+        is_exactly_home = (
+            resolved_path.lower() == home_dir.lower()
+            if os.name == 'nt'
+            else resolved_path == home_dir
+        )
         if is_exactly_home:
             return False
 
-        if in_home_sub:
+        if _is_path_equal_or_subpath(resolved_path, home_dir):
             return True
 
         if os.name == 'nt':
@@ -111,10 +106,7 @@ def is_safe_path(path: Union[str, Path]) -> bool:
                 return True
         else:
             # On Linux, explicitly allow /media, /run/media and /mnt.
-            in_media = resolved_path == "/media" or resolved_path.startswith("/media" + os.sep)
-            in_run_media = resolved_path == "/run/media" or resolved_path.startswith("/run/media" + os.sep)
-            in_mnt = resolved_path == "/mnt" or resolved_path.startswith("/mnt" + os.sep)
-            if in_media or in_run_media or in_mnt:
+            if any(_is_path_equal_or_subpath(resolved_path, prefix) for prefix in ("/media", "/run/media", "/mnt")):
                 return True
 
         return False

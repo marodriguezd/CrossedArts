@@ -85,11 +85,17 @@ def test_upload_cover_local_path_symlink(client: TestClient):
     assert dest_path.read_bytes() == img_content
 
 
+def _msg(detail) -> str:
+    if isinstance(detail, dict) and "error" in detail and "message" in detail["error"]:
+        return detail["error"]["message"]
+    return str(detail)
+
+
 def test_upload_cover_invalid_input(client: TestClient):
     # No file or local path
     response = client.post("/api/v1/content/upload-cover")
     assert response.status_code == 400
-    assert "Debe proporcionar" in response.json()["detail"]
+    assert "Debe proporcionar" in _msg(response.json()["detail"])
 
 
 def test_upload_cover_unsafe_path(client: TestClient):
@@ -99,7 +105,7 @@ def test_upload_cover_unsafe_path(client: TestClient):
         data={"local_path": "/etc/passwd", "strategy": "copy"}
     )
     assert response.status_code == 400
-    assert "Acceso denegado" in response.json()["detail"]
+    assert "Acceso denegado" in _msg(response.json()["detail"])
 
 
 def test_upload_cover_invalid_extension(client: TestClient):
@@ -111,7 +117,7 @@ def test_upload_cover_invalid_extension(client: TestClient):
         data={"local_path": str(local_file.resolve()), "strategy": "copy"}
     )
     assert response.status_code == 400
-    assert "Solo se permiten archivos de imagen" in response.json()["detail"]
+    assert "Solo se permiten archivos de imagen" in _msg(response.json()["detail"])
 
 
 def test_serve_cover_path_traversal(client: TestClient):
@@ -127,16 +133,16 @@ def test_serve_cover_path_traversal(client: TestClient):
         with pytest.raises(HTTPException) as exc_info:
             serve_cover_image(bad_filename)
         assert exc_info.value.status_code == 400
-        assert "Nombre de archivo de portada no válido" in exc_info.value.detail
+        assert "Nombre de archivo de portada no válido" in _msg(exc_info.value.detail)
 
 
 def test_serve_cover_invalid_extension(client: TestClient):
     response = client.get("/api/v1/content/cover-image/image.sh")
     assert response.status_code == 400
-    assert "Extensión de archivo de portada no permitida" in response.json()["detail"]
+    assert "Extensión de archivo de portada no permitida" in _msg(response.json()["detail"])
 
 
 def test_serve_cover_non_existent(client: TestClient):
     response = client.get("/api/v1/content/cover-image/does_not_exist.png")
     assert response.status_code == 404
-    assert "Archivo de portada no encontrado" in response.json()["detail"]
+    assert "Archivo de portada no encontrado" in _msg(response.json()["detail"])

@@ -95,16 +95,16 @@ class SearchService:
         notes = db.scalars(stmt_notes).all()
         for n in notes:
             res = n.resource
-            if not res or (resource_type and res.type != resource_type):
+            if resource_type and (not res or res.type != resource_type):
                 continue
 
             # Snippet around the match.
             snippet = SearchService._get_snippet(n.content, clean_query)
 
             results.append({
-                "resource_id": res.id,
-                "resource_title": res.title,
-                "resource_type": res.type,
+                "resource_id": res.id if res else None,
+                "resource_title": res.title if res else (n.title or "Nota"),
+                "resource_type": res.type if res else "note",
                 "match_type": "note",
                 "snippet": f"En notas: {snippet}",
                 "score": 4.0

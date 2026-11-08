@@ -15,6 +15,12 @@ def setup_test_env(tmp_path: Path, monkeypatch):
     settings.ensure_dirs()
 
 
+def _msg(detail) -> str:
+    if isinstance(detail, dict) and "error" in detail and "message" in detail["error"]:
+        return detail["error"]["message"]
+    return str(detail)
+
+
 def test_upload_cover_oversized(client: TestClient, monkeypatch):
     """Prueba que portadas mayores a MAX_COVER_FILE_SIZE se rechacen con HTTP 413."""
     monkeypatch.setattr(ingestion_module, "MAX_COVER_FILE_SIZE", 1024)  # 1 KB keeps the test fast.
@@ -25,7 +31,7 @@ def test_upload_cover_oversized(client: TestClient, monkeypatch):
         files={"file": ("large_cover.png", io.BytesIO(oversized_data), "image/png")}
     )
     assert response.status_code == 413
-    assert "supera el límite" in response.json()["detail"]
+    assert "supera el límite" in _msg(response.json()["detail"])
 
 
 def test_upload_cover_cleanup_on_failure(client: TestClient, monkeypatch):
@@ -78,7 +84,7 @@ def test_import_from_upload_oversized_file(client: TestClient, monkeypatch):
     uploads_root = settings.data_dir / "uploads" / "imports"
     response = client.post("/api/v1/content/import-from-upload", data=data, files=files)
     assert response.status_code == 413
-    assert "supera el límite" in response.json()["detail"]
+    assert "supera el límite" in _msg(response.json()["detail"])
 
     if uploads_root.exists():
         subdirs = list(uploads_root.iterdir())
@@ -104,7 +110,8 @@ def test_import_from_upload_oversized_aggregate(client: TestClient, monkeypatch)
     uploads_root = settings.data_dir / "uploads" / "imports"
     response = client.post("/api/v1/content/import-from-upload", data=data, files=files)
     assert response.status_code == 413
-    assert "límite de 10 GB" in response.json()["detail"] or "límite" in response.json()["detail"]
+    detail_msg = _msg(response.json()["detail"])
+    assert "límite de 10 GB" in detail_msg or "límite" in detail_msg
 
     # Verificar limpieza
     if uploads_root.exists():

@@ -1,11 +1,12 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.services.workflow import WorkflowService
 from backend.app.services.llm import LLMService
+from backend.app.api.dependencies import get_http_exception
 from backend.app.schemas.workflow import (
     LearningPathResponse, CreateLearningPathRequest,
     LearningPathItemResponse, CreateLearningPathItemRequest,
@@ -31,14 +32,14 @@ def get_learning_paths(db: Session = Depends(get_db)):
 def get_learning_path(path_id: uuid.UUID, db: Session = Depends(get_db)):
     path = WorkflowService.get_learning_path(db, path_id)
     if not path:
-        raise HTTPException(status_code=404, detail="Learning path no encontrado.")
+        raise get_http_exception("LEARNING_PATH_NOT_FOUND", "Learning path no encontrado.")
     return path
 
 @router.delete("/paths/{path_id}")
 def delete_learning_path(path_id: uuid.UUID, db: Session = Depends(get_db)):
     success = WorkflowService.delete_learning_path(db, path_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Learning path no encontrado.")
+        raise get_http_exception("LEARNING_PATH_NOT_FOUND", "Learning path no encontrado.")
     return {"detail": "Learning path eliminado correctamente."}
 
 @router.post("/paths/{path_id}/items", response_model=LearningPathItemResponse, status_code=status.HTTP_201_CREATED)
@@ -51,14 +52,14 @@ def add_item_to_path(path_id: uuid.UUID, payload: CreateLearningPathItemRequest,
 def delete_item_from_path(item_id: uuid.UUID, db: Session = Depends(get_db)):
     success = WorkflowService.delete_item_from_path(db, item_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Item no encontrado.")
+        raise get_http_exception("LEARNING_PATH_ITEM_NOT_FOUND", "Item no encontrado.")
     return {"detail": "Item eliminado de la ruta de aprendizaje."}
 
 @router.post("/items/{item_id}/toggle", response_model=LearningPathItemResponse)
 def toggle_item_completion(item_id: uuid.UUID, db: Session = Depends(get_db)):
     item = WorkflowService.toggle_item_completion(db, item_id)
     if not item:
-        raise HTTPException(status_code=404, detail="Item no encontrado.")
+        raise get_http_exception("LEARNING_PATH_ITEM_NOT_FOUND", "Item no encontrado.")
     return item
 
 
@@ -78,14 +79,14 @@ def get_study_plans(db: Session = Depends(get_db)):
 def get_study_plan(plan_id: uuid.UUID, db: Session = Depends(get_db)):
     plan = WorkflowService.get_study_plan(db, plan_id)
     if not plan:
-        raise HTTPException(status_code=404, detail="Plan de estudio no encontrado.")
+        raise get_http_exception("STUDY_PLAN_NOT_FOUND", "Plan de estudio no encontrado.")
     return plan
 
 @router.delete("/plans/{plan_id}")
 def delete_study_plan(plan_id: uuid.UUID, db: Session = Depends(get_db)):
     success = WorkflowService.delete_study_plan(db, plan_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Plan de estudio no encontrado.")
+        raise get_http_exception("STUDY_PLAN_NOT_FOUND", "Plan de estudio no encontrado.")
     return {"detail": "Plan de estudio eliminado correctamente."}
 
 
@@ -103,21 +104,21 @@ def get_goals(db: Session = Depends(get_db)):
 def get_goal(goal_id: uuid.UUID, db: Session = Depends(get_db)):
     goal = WorkflowService.get_goal(db, goal_id)
     if not goal:
-        raise HTTPException(status_code=404, detail="Meta no encontrada.")
+        raise get_http_exception("GOAL_NOT_FOUND", "Meta no encontrada.")
     return goal
 
 @router.delete("/goals/{goal_id}")
 def delete_goal(goal_id: uuid.UUID, db: Session = Depends(get_db)):
     success = WorkflowService.delete_goal(db, goal_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Meta no encontrada.")
+        raise get_http_exception("GOAL_NOT_FOUND", "Meta no encontrada.")
     return {"detail": "Meta eliminada correctamente."}
 
 @router.post("/goals/{goal_id}/progress", response_model=GoalResponse)
 def update_goal_progress(goal_id: uuid.UUID, payload: UpdateGoalProgressRequest, db: Session = Depends(get_db)):
     goal = WorkflowService.update_goal_progress(db, goal_id, payload.value_change, payload.notes)
     if not goal:
-        raise HTTPException(status_code=404, detail="Meta no encontrada.")
+        raise get_http_exception("GOAL_NOT_FOUND", "Meta no encontrada.")
     return goal
 
 
@@ -140,7 +141,7 @@ def record_habit_completion(habit_id: uuid.UUID, db: Session = Depends(get_db)):
 def get_habit_stats(habit_id: uuid.UUID, db: Session = Depends(get_db)):
     stats = WorkflowService.get_habit_stats(db, habit_id)
     if not stats:
-        raise HTTPException(status_code=404, detail="Hábito no encontrado.")
+        raise get_http_exception("HABIT_NOT_FOUND", "Hábito no encontrado.")
     return stats
 
 
@@ -158,7 +159,7 @@ def get_review_items(due_only: bool = False, db: Session = Depends(get_db)):
 def submit_review(item_id: uuid.UUID, payload: SubmitReviewRequest, db: Session = Depends(get_db)):
     item = WorkflowService.submit_review(db, item_id, payload.quality)
     if not item:
-        raise HTTPException(status_code=404, detail="Elemento de repaso no encontrado.")
+        raise get_http_exception("REVIEW_ITEM_NOT_FOUND", "Elemento de repaso no encontrado.")
     return item
 
 @router.get("/reviews/due", response_model=List[ReviewItemResponse])
@@ -174,7 +175,7 @@ async def generate_ai_concept_check(item_id: uuid.UUID, db: Session = Depends(ge
     """
     item = db.get(ReviewItem, item_id)
     if not item:
-        raise HTTPException(status_code=404, detail="Elemento de repaso no encontrado.")
+        raise get_http_exception("REVIEW_ITEM_NOT_FOUND", "Elemento de repaso no encontrado.")
 
     content = ""
     if item.note:

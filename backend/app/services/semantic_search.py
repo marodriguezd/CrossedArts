@@ -199,13 +199,9 @@ class SemanticSearchService:
             contents = db.query(ContentIndex).filter(ContentIndex.id.in_(content_ids)).all()
             entity_map.update({str(c.id): c for c in contents})
 
-        # Resource IDs de las entidades encontradas.
-        rid_set = set()
-        for entity in entity_map.values():
-            rid = getattr(entity, "resource_id", None)
-            if rid:
-                rid_set.add(rid)
-        resource_map = cls._resolve_resource_types(db, rid_set)
+        # Resource IDs de las entidades encontradas resueltos en lote.
+        entity_to_resource = cls._resolve_resource_ids(db, list(entity_map.keys()))
+        resource_map = cls._resolve_resource_types(db, set(entity_to_resource.values()))
 
         # Resultados enriquecidos con fragmento y metadatos.
         enriched = []
@@ -230,7 +226,7 @@ class SemanticSearchService:
                     else "Contenido"
                 )
 
-            rid = getattr(entity, "resource_id", None)
+            rid = entity_to_resource.get(str(hit.entity_id))
             res_info = resource_map.get(rid) if rid else None
 
             enriched.append({

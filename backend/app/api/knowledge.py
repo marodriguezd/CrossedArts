@@ -1,26 +1,14 @@
 import uuid
-from typing import Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
 from backend.app.core.database import get_db
 from backend.app.services.knowledge_service import KnowledgeService
 from backend.app.api.dependencies import get_http_exception
+from backend.app.schemas.knowledge import ConceptCreatePayload, ConnectionCreatePayload
 
 router = APIRouter(prefix="/knowledge", tags=["Knowledge Graph"])
 
-class ConceptCreatePayload(BaseModel):
-    name: str
-    description: Optional[str] = None
-
-class ConnectionCreatePayload(BaseModel):
-    source_id: uuid.UUID
-    source_type: str
-    target_id: uuid.UUID
-    target_type: str
-    connection_type: str = "related_to"
-    weight: float = 1.0
 
 @router.get("/concepts")
 def list_concepts(db: Session = Depends(get_db)):

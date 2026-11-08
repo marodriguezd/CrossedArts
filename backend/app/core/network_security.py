@@ -146,8 +146,9 @@ def requires_network_token(path: str) -> bool:
     navegación, así que cerrarlos dejaba la app inabrible desde otra máquina.
     Los datos de estudio se sirven exclusivamente bajo `/api/*`.
     """
-    normalized = path or "/"
-    if normalized in PUBLIC_PATHS:
+    raw = path or "/"
+    normalized = raw.rstrip("/") or "/"
+    if normalized in PUBLIC_PATHS or raw in PUBLIC_PATHS:
         return False
     return normalized == API_PREFIX or normalized.startswith(f"{API_PREFIX}/")
 

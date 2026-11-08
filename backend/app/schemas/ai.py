@@ -2,8 +2,23 @@
 Pydantic models for AI responses.
 Used with LangChain's structured output for type-safe LLM responses.
 """
+import uuid
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import List, Literal, Optional
+
+
+class TutorQuestionRequest(BaseModel):
+    resource_id: uuid.UUID
+    question: str
+
+
+class QuizGenerationRequest(BaseModel):
+    resource_id: uuid.UUID
+    title: Optional[str] = "Cuestionario de Repaso"
+
+
+class NotesOperationRequest(BaseModel):
+    note_ids: List[uuid.UUID]
 
 
 class QuizQuestion(BaseModel):

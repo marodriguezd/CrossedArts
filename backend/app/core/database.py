@@ -1,9 +1,29 @@
+import sqlite3
+import unicodedata
 import uuid
-from typing import Generator
+from typing import Generator, Optional
 from sqlalchemy import create_engine, event, types
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from sqlalchemy.engine import Engine
 from backend.app.core.settings import settings
+
+
+def remove_accents(s: Optional[str]) -> str:
+    """Normalize string and remove accent marks for accent-insensitive SQL LIKE search."""
+    if s is None:
+        return ""
+    return "".join(c for c in unicodedata.normalize("NFD", str(s)) if unicodedata.category(c) != "Mn")
+
+
+def is_sqlite_connection(dbapi_connection: object) -> bool:
+    """
+    Check if a DBAPI connection is an active SQLite connection.
+    Verifies connection type or module before applying SQLite-specific PRAGMAs.
+    """
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        return True
+    module_name = getattr(dbapi_connection.__class__, "__module__", "")
+    return "sqlite" in module_name.lower() or hasattr(dbapi_connection, "create_function")
 
 # Ensure the database directory exists before creating the engine
 settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -19,19 +39,20 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
-# Explicitly enable foreign-key support and WAL mode on SQLite.
+# Explicitly enable foreign-key support, WAL mode, and custom search functions on SQLite.
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
-    if settings.database_url.startswith("sqlite"):
-        import unicodedata
+    if not is_sqlite_connection(dbapi_connection):
+        return
 
-        def remove_accents(s):
-            if s is None:
-                return ""
-            return "".join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn')
+    # Driver check: register custom SQLite SQL function if supported
+    if hasattr(dbapi_connection, "create_function"):
+        try:
+            dbapi_connection.create_function("remove_accents", 1, remove_accents)
+        except Exception:
+            pass
 
-        dbapi_connection.create_function("remove_accents", 1, remove_accents)
-
+    if hasattr(dbapi_connection, "cursor"):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA journal_mode=WAL")

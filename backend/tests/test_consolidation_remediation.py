@@ -387,3 +387,50 @@ def test_dashboard_recent_activity_lists_a_standalone_note(db: Session, client: 
     assert item["resource_title"] is None
     assert item["resource_type"] is None
     assert item["scope"] is None, "una nota no es una sesión: no declara ámbito"
+
+
+def test_clean_polymorphic_orphans_on_note_deletion(db: Session):
+    """Deleting a note removes its orphan embedding and knowledge connections via polymorphic listener."""
+    from backend.app.models.content import EmbeddingRecord
+    from backend.app.models.knowledge import Concept, KnowledgeConnection
+
+    concept = Concept(id=uuid.uuid4(), name="Concepto Test", description="Desc")
+    note = Note(id=uuid.uuid4(), content="Nota de prueba para embeddings y conexiones")
+    db.add_all([concept, note])
+    db.commit()
+
+    embedding = EmbeddingRecord(
+        id=uuid.uuid4(),
+        entity_id=note.id,
+        entity_type="note",
+        vector=[0.1, 0.2, 0.3],
+        model="test-model",
+        hash_content="hash-123",
+    )
+    connection = KnowledgeConnection(
+        id=uuid.uuid4(),
+        source_id=note.id,
+        source_type="note",
+        target_id=concept.id,
+        target_type="concept",
+        connection_type="references",
+    )
+    db.add_all([embedding, connection])
+    db.commit()
+
+    note_id, embedding_id, connection_id = note.id, embedding.id, connection.id
+
+    # Verify records exist
+    assert db.get(EmbeddingRecord, embedding_id) is not None
+    assert db.get(KnowledgeConnection, connection_id) is not None
+
+    # Delete note
+    db.delete(note)
+    db.commit()
+
+    # Polymorphic cleanup hook must have purged embedding and connection
+    assert db.get(EmbeddingRecord, embedding_id) is None
+    assert db.get(KnowledgeConnection, connection_id) is None
+    # Target concept itself still exists
+    assert db.get(Concept, concept.id) is not None
+

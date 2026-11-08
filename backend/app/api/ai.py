@@ -1,15 +1,11 @@
 import uuid
 import json
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from pydantic import BaseModel
-
 from backend.app.core.database import get_db
 from backend.app.models.content import Quiz, ContentIndex
 from backend.app.models.activity import Note
-
 from backend.app.services.llm import LLMService
 from backend.app.services.context import ContextRetrievalService
 from backend.app.services.insights import LearningInsightsService
@@ -19,20 +15,14 @@ from backend.app.services.ai_validation import (
     validate_flashcards,
     validate_quiz_questions,
 )
+from backend.app.schemas.ai import (
+    TutorQuestionRequest,
+    QuizGenerationRequest,
+    NotesOperationRequest,
+)
+from backend.app.api.dependencies import get_http_exception
 
 router = APIRouter(prefix="/ai", tags=["Learning AI"])
-
-# Request/response schemas.
-class TutorQuestionRequest(BaseModel):
-    resource_id: uuid.UUID
-    question: str
-
-class QuizGenerationRequest(BaseModel):
-    resource_id: uuid.UUID
-    title: Optional[str] = "Cuestionario de Repaso"
-
-class NotesOperationRequest(BaseModel):
-    note_ids: List[uuid.UUID]
 
 
 @router.post("/tutor")
@@ -84,9 +74,10 @@ async def generate_quiz(payload: QuizGenerationRequest, db: Session = Depends(ge
     try:
         questions = validate_quiz_questions(json.loads(strip_code_fences(quiz_json_str)))
     except (json.JSONDecodeError, StudyMaterialValidationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"El material generado por el modelo no superó la validación: {exc}"
+        raise get_http_exception(
+            "AI_VALIDATION_ERROR",
+            f"El material generado por el modelo no superó la validación: {exc}",
+            status_code=status.HTTP_502_BAD_GATEWAY
         )
 
     # Persist the quiz.
@@ -134,7 +125,11 @@ async def summarize_notes(payload: NotesOperationRequest, db: Session = Depends(
     contents = db.scalars(stmt).all()
 
     if not contents:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontraron notas válidas.")
+        raise get_http_exception(
+            "NOTE_NOT_FOUND",
+            "No se encontraron notas válidas.",
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     context = "\n---\n".join(contents)
     summary = await LLMService.generate_response("summarize_notes", context=context)
@@ -150,7 +145,11 @@ async def generate_flashcards(payload: NotesOperationRequest, db: Session = Depe
     contents = db.scalars(stmt).all()
 
     if not contents:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontraron notas válidas.")
+        raise get_http_exception(
+            "NOTE_NOT_FOUND",
+            "No se encontraron notas válidas.",
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     context = "\n---\n".join(contents)
     flashcard_json_str = await LLMService.generate_response("generate_flashcards", context=context)
@@ -160,9 +159,10 @@ async def generate_flashcards(payload: NotesOperationRequest, db: Session = Depe
     try:
         flashcards = validate_flashcards(json.loads(strip_code_fences(flashcard_json_str)))
     except (json.JSONDecodeError, StudyMaterialValidationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"El material generado por el modelo no superó la validación: {exc}"
+        raise get_http_exception(
+            "AI_VALIDATION_ERROR",
+            f"El material generado por el modelo no superó la validación: {exc}",
+            status_code=status.HTTP_502_BAD_GATEWAY
         )
 
     return {"flashcards": flashcards}

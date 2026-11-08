@@ -6,10 +6,48 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import Session
 
+from backend.app.core.errors import DomainError
 from backend.app.models.workflow import (
     LearningPath, LearningPathItem, StudyPlan, Goal, GoalProgress,
     LearningHabit, HabitRecord, ReviewItem, ReviewHistory
 )
+
+
+class WorkflowError(DomainError):
+    """Base domain failure for learning workflow operations."""
+    code = "WORKFLOW_ERROR"
+    http_status = 400
+
+
+class LearningPathNotFoundError(WorkflowError):
+    code = "LEARNING_PATH_NOT_FOUND"
+    http_status = 404
+
+
+class LearningPathItemNotFoundError(WorkflowError):
+    code = "LEARNING_PATH_ITEM_NOT_FOUND"
+    http_status = 404
+
+
+class StudyPlanNotFoundError(WorkflowError):
+    code = "STUDY_PLAN_NOT_FOUND"
+    http_status = 404
+
+
+class GoalNotFoundError(WorkflowError):
+    code = "GOAL_NOT_FOUND"
+    http_status = 404
+
+
+class HabitNotFoundError(WorkflowError):
+    code = "HABIT_NOT_FOUND"
+    http_status = 404
+
+
+class ReviewItemNotFoundError(WorkflowError):
+    code = "REVIEW_ITEM_NOT_FOUND"
+    http_status = 404
+
 
 class WorkflowService:
     @staticmethod

@@ -145,6 +145,7 @@ def test_network_mode_with_valid_token_is_allowed(network_mode):
 def test_health_probe_stays_public_in_network_mode(network_mode):
     client = TestClient(app)
     assert client.get("/api/health").status_code == 200
+    assert client.get("/api/health/").status_code != 401
 
 
 @pytest.mark.parametrize(
@@ -154,6 +155,7 @@ def test_health_probe_stays_public_in_network_mode(network_mode):
         ("/api/v1/resources", True),
         ("/api/v1/ai/chat", True),
         ("/api/health", False),
+        ("/api/health/", False),
         ("/", False),
         ("/index.html", False),
         ("/assets/index-abc.js", False),

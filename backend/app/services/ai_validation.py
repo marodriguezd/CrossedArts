@@ -8,6 +8,8 @@ NEVER persisted or returned as valid.
 """
 from typing import Any, Dict, List, Optional, Tuple
 
+from backend.app.core.errors import DomainError
+
 # Sane size limits: neither empty batches nor absurd volumes.
 MAX_QUESTIONS = 20
 MAX_FLASHCARDS = 30
@@ -17,8 +19,11 @@ MAX_TEXT_LENGTH = 2000
 ALLOWED_QUESTION_TYPES = {"multiple_choice", "short_answer"}
 
 
-class StudyMaterialValidationError(ValueError):
+class StudyMaterialValidationError(DomainError):
     """LLM-generated material fails the minimum structure."""
+
+    code = "STUDY_MATERIAL_INVALID"
+    http_status = 422
 
 
 def _clean_text(value: Any) -> str:

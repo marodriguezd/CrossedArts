@@ -24,10 +24,10 @@ from sqlalchemy.engine import Engine
 # Canonical project alembic.ini path (backend/alembic.ini).
 ALEMBIC_INI_PATH = Path(__file__).resolve().parent.parent.parent / "alembic.ini"
 
-# Tables that only exist once the app schema was created somehow (migration or
-# create_all). They tell a "fresh" database apart from one with a schema but
+# Fallback canonical tables that only exist once the app schema was created somehow
+# (migration or create_all). They tell a "fresh" database apart from one with a schema but
 # no migration record.
-_APPLICATION_TABLES = {
+_CANONICAL_APPLICATION_TABLES = {
     "learning_resource",
     "course",
     "book",
@@ -35,13 +35,29 @@ _APPLICATION_TABLES = {
     "lesson",
     "learning_session",
     "note",
-    "flashcard",
+    "review_item",
     "concept",
     "knowledge_connection",
     "media_asset",
     "transcript",
     "embedding_record",
 }
+
+
+def get_application_tables() -> set[str]:
+    """Dynamically get table names registered on SQLAlchemy Base metadata."""
+    try:
+        from backend.app.core.database import Base
+
+        if Base.metadata.tables:
+            return set(Base.metadata.tables.keys())
+    except Exception:
+        pass
+    return set(_CANONICAL_APPLICATION_TABLES)
+
+
+# Canonical application tables; preserves backward compatibility without phantom entities.
+_APPLICATION_TABLES = _CANONICAL_APPLICATION_TABLES
 
 _UPGRADE_COMMAND = "PYTHONPATH=. alembic -c backend/alembic.ini upgrade head"
 
@@ -83,7 +99,7 @@ def read_database_revision(engine: Engine) -> Optional[str]:
 def has_application_tables(engine: Engine) -> bool:
     """Does the database contain any app-schema table?"""
     inspector = inspect(engine)
-    return bool(set(inspector.get_table_names()) & _APPLICATION_TABLES)
+    return bool(set(inspector.get_table_names()) & get_application_tables())
 
 
 def validate_migration_state(engine: Engine, ini_path: Optional[Path] = None) -> MigrationStateReport:

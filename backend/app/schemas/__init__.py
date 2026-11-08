@@ -5,9 +5,13 @@ from backend.app.schemas.book import UpdateBookProgressRequest, BookDetailRespon
 from backend.app.schemas.note import NoteResponse, CreateNoteRequest, UpdateNoteRequest
 from backend.app.schemas.session import LearningSessionResponse, StartSessionRequest
 from backend.app.schemas.dashboard import DashboardSummaryResponse, RecentActivityItem, StudyTimeReportResponse, StudyTimeDayReport
-from backend.app.schemas.search import SearchResultResponse
+from backend.app.schemas.search import SearchResultResponse, SemanticSearchResultResponse
 from backend.app.schemas.ingestion import ImportResourceRequest, ImportResultResponse, DirectoryValidationResponse
-from backend.app.schemas.ai import QuizQuestion, TutorResponse, ConceptCheck, SummaryResponse, FlashcardSet, Flashcard
+from backend.app.schemas.ai import (
+    QuizQuestion, TutorResponse, ConceptCheck, SummaryResponse, FlashcardSet, Flashcard,
+    TutorQuestionRequest, QuizGenerationRequest, NotesOperationRequest
+)
+from backend.app.schemas.knowledge import ConceptCreatePayload, ConnectionCreatePayload
 
 
 __all__ = [
@@ -35,6 +39,7 @@ __all__ = [
     "StudyTimeReportResponse",
     "StudyTimeDayReport",
     "SearchResultResponse",
+    "SemanticSearchResultResponse",
     "ImportResourceRequest",
     "ImportResultResponse",
     "DirectoryValidationResponse",
@@ -44,5 +49,10 @@ __all__ = [
     "SummaryResponse",
     "FlashcardSet",
     "Flashcard",
+    "TutorQuestionRequest",
+    "QuizGenerationRequest",
+    "NotesOperationRequest",
+    "ConceptCreatePayload",
+    "ConnectionCreatePayload",
 ]
 

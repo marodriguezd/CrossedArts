@@ -13,12 +13,20 @@ from backend.app.models.base import ResourceStatus, CourseDifficulty, LessonType
 from backend.app.core.settings import settings
 from backend.app.core.mime import guess_mime_type
 from backend.app.core.logging import get_logger
+from backend.app.core.errors import DomainError
 from backend.app.schemas.ingestion import (
     ImportResourceRequest, ImportResultResponse,
     StorageStrategy, StructureStrategy, DirectoryValidationResponse
 )
 
 logger = get_logger("services.ingestion")
+
+
+class IngestionError(DomainError):
+    """Base domain failure for content ingestion operations."""
+    code = "INGESTION_ERROR"
+    http_status = 400
+
 
 # Extensiones soportadas por tipo
 MEDIA_EXTENSIONS = {

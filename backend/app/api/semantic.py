@@ -1,23 +1,14 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, BackgroundTasks, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-import uuid
 
 from backend.app.core.database import get_db
 from backend.app.services.semantic_search import SemanticSearchService
 from backend.app.services.embedding import EmbeddingService
+from backend.app.schemas.search import SemanticSearchResultResponse
 
 router = APIRouter(prefix="/semantic", tags=["Semantic"])
 
-class SemanticSearchResultResponse(BaseModel):
-    resource_id: uuid.UUID
-    resource_title: str
-    resource_type: str
-    match_type: str
-    snippet: str
-    score: float
-    match_reason: str
 
 @router.get("/search", response_model=List[SemanticSearchResultResponse])
 def semantic_search(

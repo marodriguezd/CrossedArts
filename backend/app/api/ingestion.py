@@ -36,6 +36,7 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 ALLOWED_COVER_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 CHUNK_SIZE = 64 * 1024  # 64 KB
+HTTP_413_TOO_LARGE = getattr(status, "HTTP_413_CONTENT_TOO_LARGE", 413)
 
 router = APIRouter(prefix="/content", tags=["Content Management"])
 
@@ -106,9 +107,10 @@ async def import_from_upload(
 
             if upload_file.size and upload_file.size > MAX_UPLOAD_FILE_SIZE:
                 shutil.rmtree(upload_dir, ignore_errors=True)
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"El archivo '{original_path}' supera el límite permitido de 2 GB."
+                raise get_http_exception(
+                    "FILE_TOO_LARGE",
+                    f"El archivo '{original_path}' supera el límite permitido de 2 GB.",
+                    status_code=HTTP_413_TOO_LARGE,
                 )
 
             ext = Path(original_path).suffix.lower()
@@ -127,14 +129,16 @@ async def import_from_upload(
                             break
                         current_file_size += len(chunk)
                         if current_file_size > MAX_UPLOAD_FILE_SIZE:
-                            raise HTTPException(
-                                status_code=413,
-                                detail=f"El archivo '{original_path}' supera el límite permitido de 2 GB."
+                            raise get_http_exception(
+                                "FILE_TOO_LARGE",
+                                f"El archivo '{original_path}' supera el límite permitido de 2 GB.",
+                                status_code=HTTP_413_TOO_LARGE,
                             )
                         if total_size + len(chunk) > MAX_TOTAL_IMPORT_SIZE:
-                            raise HTTPException(
-                                status_code=413,
-                                detail="El tamaño total de los archivos subidos supera el límite de 10 GB."
+                            raise get_http_exception(
+                                "TOTAL_IMPORT_TOO_LARGE",
+                                "El tamaño total de los archivos subidos supera el límite de 10 GB.",
+                                status_code=HTTP_413_TOO_LARGE,
                             )
                         buffer.write(chunk)
                         total_size += len(chunk)
@@ -155,7 +159,11 @@ async def import_from_upload(
 
         if uploaded_count == 0:
             shutil.rmtree(upload_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail="No se pudo subir ningún archivo válido. Verifica las extensiones y permisos.")
+            raise get_http_exception(
+                "NO_VALID_FILES",
+                "No se pudo subir ningún archivo válido. Verifica las extensiones y permisos.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
 
         service = IngestionService(db)
         result = service.import_resource(
@@ -204,15 +212,17 @@ async def upload_cover(
         filename = Path(file.filename or "cover.png").name
         ext = Path(filename).suffix.lower()
         if ext not in ALLOWED_COVER_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Solo se permiten archivos de imagen (.jpg, .jpeg, .png, .webp, .gif)"
+            raise get_http_exception(
+                "INVALID_IMAGE_EXTENSION",
+                "Solo se permiten archivos de imagen (.jpg, .jpeg, .png, .webp, .gif)",
+                status_code=status.HTTP_400_BAD_REQUEST
             )
 
         if file.size and file.size > MAX_COVER_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail="El archivo de portada supera el límite permitido de 20 MB."
+            raise get_http_exception(
+                "COVER_TOO_LARGE",
+                "El archivo de portada supera el límite permitido de 20 MB.",
+                status_code=HTTP_413_TOO_LARGE
             )
 
         dest_path = static_dir / filename
@@ -231,9 +241,10 @@ async def upload_cover(
                             break
                         written += len(chunk)
                         if written > MAX_COVER_FILE_SIZE:
-                            raise HTTPException(
-                                status_code=413,
-                                detail="El archivo de portada supera el límite permitido de 20 MB."
+                            raise get_http_exception(
+                                "COVER_TOO_LARGE",
+                                "El archivo de portada supera el límite permitido de 20 MB.",
+                                status_code=HTTP_413_TOO_LARGE
                             )
                         buffer.write(chunk)
 
@@ -245,7 +256,11 @@ async def upload_cover(
         except Exception as e:
             if dest_path.exists():
                 dest_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=500, detail=f"No se pudo guardar el archivo: {str(e)}")
+            raise get_http_exception(
+                "FILE_SAVE_ERROR",
+                f"No se pudo guardar el archivo: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         finally:
             await file.close()
 
@@ -253,15 +268,27 @@ async def upload_cover(
 
     elif local_path:
         if not is_safe_path(local_path):
-            raise HTTPException(status_code=400, detail="Acceso denegado a la ruta del archivo especificado.")
+            raise get_http_exception(
+                "FORBIDDEN_PATH",
+                "Acceso denegado a la ruta del archivo especificado.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         src_path = Path(local_path).resolve()
         if not src_path.is_file():
-            raise HTTPException(status_code=400, detail="La ruta del archivo original no es válida o el archivo no existe.")
+            raise get_http_exception(
+                "FILE_NOT_FOUND",
+                "La ruta del archivo original no es válida o el archivo no existe.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         # Reject disallowed image extensions.
         if src_path.suffix.lower() not in ALLOWED_COVER_EXTENSIONS:
-            raise HTTPException(status_code=400, detail="Solo se permiten archivos de imagen (.jpg, .jpeg, .png, .webp, .gif)")
+            raise get_http_exception(
+                "INVALID_IMAGE_EXTENSION",
+                "Solo se permiten archivos de imagen (.jpg, .jpeg, .png, .webp, .gif)",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         filename = src_path.name
         dest_path = static_dir / filename
@@ -279,17 +306,29 @@ async def upload_cover(
                     os.symlink(src_path, dest_path)
                 await run_in_threadpool(make_symlink)
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"No se pudo crear el enlace simbólico: {str(e)}")
+                raise get_http_exception(
+                    "SYMLINK_ERROR",
+                    f"No se pudo crear el enlace simbólico: {str(e)}",
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
         else:
             try:
                 await run_in_threadpool(shutil.copy2, src_path, dest_path)
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"No se pudo copiar el archivo: {str(e)}")
+                raise get_http_exception(
+                    "COPY_ERROR",
+                    f"No se pudo copiar el archivo: {str(e)}",
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
         return {"cover_path": str(dest_path.resolve()), "url": f"/api/v1/content/cover-image/{filename}"}
 
     else:
-        raise HTTPException(status_code=400, detail="Debe proporcionar un archivo a subir o una ruta de archivo local.")
+        raise get_http_exception(
+            "MISSING_INPUT",
+            "Debe proporcionar un archivo a subir o una ruta de archivo local.",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
 
 @router.get("/cover-image/{filename}")
@@ -299,29 +338,53 @@ def serve_cover_image(filename: str):
     that point outside the root directory.
     """
     if ".." in filename or "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="Nombre de archivo de portada no válido")
+        raise get_http_exception(
+            "INVALID_FILENAME",
+            "Nombre de archivo de portada no válido",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
     _, ext = os.path.splitext(filename.lower())
     if ext not in ALLOWED_COVER_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Extensión de archivo de portada no permitida")
+        raise get_http_exception(
+            "INVALID_IMAGE_EXTENSION",
+            "Extensión de archivo de portada no permitida",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
     covers_dir = settings.covers_dir
     file_path = covers_dir / filename
 
     if not file_path.exists() and not file_path.is_symlink():
-        raise HTTPException(status_code=404, detail="Archivo de portada no encontrado")
+        raise get_http_exception(
+            "COVER_NOT_FOUND",
+            "Archivo de portada no encontrado",
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     real_path = os.path.realpath(file_path)
 
     if not is_safe_path(real_path):
-        raise HTTPException(status_code=400, detail="Acceso denegado a la ruta del archivo especificado.")
+        raise get_http_exception(
+            "FORBIDDEN_PATH",
+            "Acceso denegado a la ruta del archivo especificado.",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
     if not os.path.isfile(real_path):
-        raise HTTPException(status_code=404, detail="El archivo referenciado por la portada no existe en disco")
+        raise get_http_exception(
+            "TARGET_NOT_FOUND",
+            "El archivo referenciado por la portada no existe en disco",
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     # Validar que el tipo MIME del archivo resuelto sea realmente una imagen
     mime_type, _ = mimetypes.guess_type(real_path)
     if not mime_type or not mime_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="El archivo solicitado no es una imagen válida")
+        raise get_http_exception(
+            "INVALID_MIME_TYPE",
+            "El archivo solicitado no es una imagen válida",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
     return FileResponse(real_path)

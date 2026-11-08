@@ -21,6 +21,8 @@ import backend.app.models  # noqa: F401 — registra los modelos en Base.metadat
 from backend.app.core.migrations import (
     ALEMBIC_INI_PATH,
     MigrationStateReport,
+    _APPLICATION_TABLES,
+    get_application_tables,
     has_application_tables,
     read_database_revision,
     validate_migration_state,
@@ -203,3 +205,21 @@ def test_report_is_immutable():
     )
     with pytest.raises(Exception):
         report.status = "behind-head"  # type: ignore[misc]
+
+
+def test_application_tables_metadata_clean_and_dynamic():
+    """Application tables must not include phantom 'flashcard' and should derive dynamically."""
+    from backend.app.core.database import Base
+
+    tables = get_application_tables()
+    assert "flashcard" not in tables
+    assert "review_item" in tables
+    assert "learning_resource" in tables
+
+    # Base.metadata is loaded; tables should match Base.metadata.tables.keys()
+    assert set(Base.metadata.tables.keys()).issubset(tables)
+
+    # _APPLICATION_TABLES constant also contains review_item and no phantom flashcard
+    assert "flashcard" not in _APPLICATION_TABLES
+    assert "review_item" in _APPLICATION_TABLES
+

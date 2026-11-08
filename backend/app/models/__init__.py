@@ -42,29 +42,36 @@ __all__ = [
     "KnowledgeConnection",
 ]
 
+from typing import Any
 from sqlalchemy import event, or_, and_
 
-# Event listener: auto-clean EmbeddingRecord and KnowledgeConnection rows on delete.
-def clean_polymorphic_orphans(mapper, connection, target):
-    target_id = target.id
-    class_name = target.__class__.__name__
+#: Mapping from model class to its polymorphic entity type for cleanup.
+POLYMORPHIC_MODEL_TO_ENTITY: dict[type, str] = {
+    Note: "note",
+    TranscriptSegment: "transcript_segment",
+    ContentIndex: "content_index",
+    Lesson: "lesson",
+    MediaAsset: "media_asset",
+    Concept: "concept",
+    LearningResource: "resource",
+    Course: "resource",
+    Book: "resource",
+}
 
-    # Map the class name to its polymorphic type.
-    entity_type = None
-    if class_name == "Note":
-        entity_type = "note"
-    elif class_name == "TranscriptSegment":
-        entity_type = "transcript_segment"
-    elif class_name == "ContentIndex":
-        entity_type = "content_index"
-    elif class_name == "Lesson":
-        entity_type = "lesson"
-    elif class_name == "MediaAsset":
-        entity_type = "media_asset"
-    elif class_name == "Concept":
-        entity_type = "concept"
-    elif class_name in ("LearningResource", "Course", "Book"):
-        entity_type = "resource"
+POLYMORPHIC_ENTITY_NAME_MAP: dict[str, str] = {
+    cls.__name__: entity_type
+    for cls, entity_type in POLYMORPHIC_MODEL_TO_ENTITY.items()
+}
+
+
+# Event listener: auto-clean EmbeddingRecord and KnowledgeConnection rows on delete.
+def clean_polymorphic_orphans(mapper: Any, connection: Any, target: Any) -> None:
+    target_id = target.id
+    target_class = target.__class__
+    entity_type = (
+        POLYMORPHIC_MODEL_TO_ENTITY.get(target_class)
+        or POLYMORPHIC_ENTITY_NAME_MAP.get(target_class.__name__)
+    )
 
     if entity_type:
         # Delete orphan embedding rows.
@@ -72,7 +79,7 @@ def clean_polymorphic_orphans(mapper, connection, target):
             EmbeddingRecord.__table__.delete().where(
                 and_(
                     EmbeddingRecord.entity_id == target_id,
-                    EmbeddingRecord.entity_type == entity_type
+                    EmbeddingRecord.entity_type == entity_type,
                 )
             )
         )
@@ -81,23 +88,12 @@ def clean_polymorphic_orphans(mapper, connection, target):
             KnowledgeConnection.__table__.delete().where(
                 or_(
                     and_(KnowledgeConnection.source_id == target_id, KnowledgeConnection.source_type == entity_type),
-                    and_(KnowledgeConnection.target_id == target_id, KnowledgeConnection.target_type == entity_type)
+                    and_(KnowledgeConnection.target_id == target_id, KnowledgeConnection.target_type == entity_type),
                 )
             )
         )
 
-# Registrar listeners en las clases correspondientes
-event.listen(Note, "after_delete", clean_polymorphic_orphans)
-event.listen(Lesson, "after_delete", clean_polymorphic_orphans)
-event.listen(MediaAsset, "after_delete", clean_polymorphic_orphans)
-event.listen(ContentIndex, "after_delete", clean_polymorphic_orphans)
-event.listen(TranscriptSegment, "after_delete", clean_polymorphic_orphans)
-event.listen(Concept, "after_delete", clean_polymorphic_orphans)
-event.listen(LearningResource, "after_delete", clean_polymorphic_orphans)
-event.listen(Course, "after_delete", clean_polymorphic_orphans)
-event.listen(Book, "after_delete", clean_polymorphic_orphans)
 
-
-
-
-
+# Register after_delete event listeners across polymorphic models
+for model_cls in POLYMORPHIC_MODEL_TO_ENTITY:
+    event.listen(model_cls, "after_delete", clean_polymorphic_orphans)

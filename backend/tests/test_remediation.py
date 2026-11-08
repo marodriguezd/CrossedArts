@@ -502,7 +502,9 @@ def test_api_quiz_with_malformed_llm_output_returns_error_not_fallback(client: T
 
     response = client.post("/api/v1/ai/quiz", json={"resource_id": str(course.id)})
     assert response.status_code == 502
-    assert "validación" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    message = detail["error"]["message"] if isinstance(detail, dict) and "error" in detail else str(detail)
+    assert "validación" in message.lower()
 
 
 def test_api_quiz_with_wrong_schema_rejected(client: TestClient, db: Session, monkeypatch):

@@ -38,6 +38,20 @@ def list_notes_by_resource(resource_id: uuid.UUID, db: Session = Depends(get_db)
     return NoteService.list_notes_by_resource(db, resource_id)
 
 
+def _schedule_note_embedding(
+    background_tasks: BackgroundTasks, note_id: uuid.UUID, content: str
+) -> None:
+    def index_note_emb():
+        from backend.app.core.database import SessionLocal
+        from backend.app.services.embedding import EmbeddingService
+        db_local = SessionLocal()
+        try:
+            EmbeddingService.index_entity(db_local, note_id, "note", content)
+        finally:
+            db_local.close()
+    background_tasks.add_task(index_note_emb)
+
+
 @router.post("/notes", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
 def create_note(payload: CreateNoteRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
@@ -55,15 +69,7 @@ def create_note(payload: CreateNoteRequest, background_tasks: BackgroundTasks, d
             title=payload.title,
             tags=payload.tags,
         )
-        def index_note_emb():
-            from backend.app.core.database import SessionLocal
-            from backend.app.services.embedding import EmbeddingService
-            db_local = SessionLocal()
-            try:
-                EmbeddingService.index_entity(db_local, note.id, "note", payload.content)
-            finally:
-                db_local.close()
-        background_tasks.add_task(index_note_emb)
+        _schedule_note_embedding(background_tasks, note.id, payload.content)
         return note
     except NoteError as e:
         # The service already decided which code this failure deserves: a
@@ -87,17 +93,7 @@ def update_note(note_id: uuid.UUID, payload: UpdateNoteRequest, background_tasks
             tags=payload.tags,
         )
         if payload.content is not None:
-            content_to_index = payload.content
-
-            def index_note_emb():
-                from backend.app.core.database import SessionLocal
-                from backend.app.services.embedding import EmbeddingService
-                db_local = SessionLocal()
-                try:
-                    EmbeddingService.index_entity(db_local, note.id, "note", content_to_index)
-                finally:
-                    db_local.close()
-            background_tasks.add_task(index_note_emb)
+            _schedule_note_embedding(background_tasks, note.id, payload.content)
         return note
     except NoteError as e:
         # Not every failure while editing a note means the note is missing: a

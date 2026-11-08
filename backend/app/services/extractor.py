@@ -542,7 +542,14 @@ class ContentIntelligenceManager:
                             for suffix in [".srt", ".json", ".vtt"]:
                                 transcript_path = file_path.with_suffix(suffix)
                                 if transcript_path.exists():
-                                    self.extractors[2].extract(self.db, media_asset_id, transcript_path, commit=False)
+                                    transcript_extractor = next(
+                                        (e for e in self.extractors if isinstance(e, TranscriptExtractor)),
+                                        None
+                                    )
+                                    if transcript_extractor:
+                                        transcript_extractor.extract(
+                                            self.db, media_asset_id, transcript_path, commit=False
+                                        )
                                     break
                     if commit:
                         self.db.commit()
