@@ -53,26 +53,41 @@ export function resolveContextBudget(modelId?: string | null): number {
  * Turns are dropped from the OLDEST first: recent exchanges are what the model
  * needs to follow the conversation. A single very long turn is kept as-is (the
  * caller caps the outgoing query) so the model never loses the actual question.
+ *
+ * ORDER IS PRESERVED, system turns included. Hoisting every system turn to the
+ * front (`[...system, ...kept]`) reordered a legitimate transcript: a reminder
+ * injected mid-conversation jumped above the user turns it was answering, and
+ * consecutive user/assistant turns lost their alternation.
  */
 export function trimChatHistory(history: ChatTurn[], budgetTokens: number): TrimResult {
   // The system turn is always kept: it carries the tutor's pedagogical rules.
-  const system = history.filter((turn) => turn.role === 'system');
-  const conversational = history.filter((turn) => turn.role !== 'system');
+  const systemIndexes = new Set<number>();
+  const conversationalIndexes: number[] = [];
+  history.forEach((turn, index) => {
+    if (turn.role === 'system') systemIndexes.add(index);
+    else conversationalIndexes.push(index);
+  });
 
-  let used = system.reduce((sum, turn) => sum + estimateTokens(turn.content), 0);
-  const kept: ChatTurn[] = [];
+  let used = 0;
+  for (const index of systemIndexes) {
+    used += estimateTokens(history[index].content);
+  }
 
-  for (let i = conversational.length - 1; i >= 0; i--) {
-    const cost = estimateTokens(conversational[i].content);
+  const kept = new Set<number>();
+  for (let i = conversationalIndexes.length - 1; i >= 0; i--) {
+    const index = conversationalIndexes[i];
+    const cost = estimateTokens(history[index].content);
     // The newest turn is always kept: dropping the question would be absurd.
-    if (kept.length > 0 && used + cost > budgetTokens) break;
-    kept.unshift(conversational[i]);
+    if (kept.size > 0 && used + cost > budgetTokens) break;
+    kept.add(index);
     used += cost;
   }
 
   return {
-    messages: [...system, ...kept],
-    omitted: conversational.length - kept.length,
+    messages: history.filter(
+      (_, index) => systemIndexes.has(index) || kept.has(index)
+    ),
+    omitted: conversationalIndexes.length - kept.size,
     usedTokens: used,
     budgetTokens
   };

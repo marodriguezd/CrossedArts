@@ -64,16 +64,17 @@ export function diversifyResults(
   const diversified: RetrievedDocument[] = [];
 
   for (const doc of documents) {
+    // Checked BEFORE the push: with the check after it, `maxTotalResults: 0`
+    // still returned one document (the cap was applied to the NEXT iteration)
+    // and every other cap overshot by exactly one.
+    if (diversified.length >= maxTotal) break;
+
     const baseSourceKey = resolveBaseSourceKey(doc);
     const currentCount = sourceCount.get(baseSourceKey) || 0;
 
     if (currentCount < maxPerSource) {
       diversified.push(doc);
       sourceCount.set(baseSourceKey, currentCount + 1);
-    }
-
-    if (diversified.length >= maxTotal) {
-      break;
     }
   }
 

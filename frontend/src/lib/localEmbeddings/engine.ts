@@ -259,6 +259,18 @@ export class LocalEmbeddingEngine {
    * `options` is the injection point for deterministic envs (tests): it can
    * replace capability detection and/or the pipeline factory without
    * downloading the model. Production omits it and uses defaults.
+   *
+   * MEMORY (2c-5): at most ONE pipeline is resident. The previously loaded
+   * instance is disposed BEFORE the replacement is created, and the
+   * WebGPU->CPU retry disposes the failed attempt first, so a swap never holds
+   * two ~300 MB models at once — the exact moment the browser is also
+   * downloading and compiling the new one. The cost is declared: a FAILED swap
+   * leaves no model loaded (`status = 'error'`, `currentModelId = null`) instead
+   * of an older pipeline that no longer matches the selection. Loading in two
+   * phases to keep the old one would require accepting that peak (or reloading
+   * the old model from scratch), and the engine already reports "no model"
+   * honestly, so the cached vectors of the old model are never served under the
+   * new identity.
    */
   public async loadModel(
     modelId: string = DEFAULT_EMBEDDING_MODEL_ID,
@@ -634,7 +646,36 @@ export class LocalEmbeddingEngine {
       await new Promise(r => setTimeout(r, 0));
     }
 
+    // A cancelled pass throws above and never reaches this sweep, so the cache
+    // is only reconciled against a corpus that was fully visited.
+    await this.pruneChunksNotInCorpus(chunks, modelId);
+
     return newlyIndexed;
+  }
+
+  /**
+   * Frees the vectors of material that no longer exists (deleted note, lesson
+   * or resource).
+   *
+   * ONE reconcile point instead of a hook on every delete path: the live
+   * fragment set is exactly what this pass indexed, and a delete path added
+   * later cannot forget to free its vectors. Runs at indexing time, never on
+   * the query path.
+   */
+  public async pruneChunksNotInCorpus(
+    chunks: SemanticChunk[],
+    modelId?: string
+  ): Promise<number> {
+    const activeModelId = modelId || this.currentModelId || DEFAULT_EMBEDDING_MODEL_ID;
+    try {
+      return await embeddingCache.pruneChunksNotIn(
+        new Set(chunks.map(chunk => chunk.chunkId)),
+        activeModelId,
+        EMBEDDING_PIPELINE_VERSION
+      );
+    } catch {
+      return 0;
+    }
   }
 
   /**

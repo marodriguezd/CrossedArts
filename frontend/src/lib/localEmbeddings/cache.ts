@@ -70,6 +70,14 @@ export function expectedDimensionsForModel(modelId: string): number | undefined 
 /**
  * Normalizes a legacy record (no `pipelineVersion`) to the current identity.
  * Idempotent: an already migrated record passes through unchanged.
+ *
+ * Decision (the one the store had left open): the seal uses the CURRENT
+ * version, and that is what makes these records reusable instead of forcing a
+ * full re-embedding. It cannot smuggle stale material in: `getEntry` also
+ * compares the `contentHash` of the fragment's current text, so a vector built
+ * by an older chunker shape fails that comparison and is recomputed. The
+ * pipeline stamp says "produced under the same code", which the hash already
+ * proves for the content it covers.
  */
 export function migrateLegacyCacheRecord(record: CachedVectorEntry): CachedVectorEntry {
   const pipelineVersion = record.pipelineVersion || EMBEDDING_PIPELINE_VERSION;
@@ -426,6 +434,92 @@ class LocalEmbeddingCache {
         tx.onerror = () => resolve();
       });
     } catch {}
+  }
+
+  /**
+   * Frees the vectors of fragments that no longer exist in the corpus.
+   *
+   * The cache has no referential integrity: deleting a note, a lesson or a
+   * resource removes its rows and never its vectors, and `indexChunks` only
+   * visits the fragments that DO exist. Without this sweep the vectors of
+   * deleted material stayed in IndexedDB forever (`deleteEntry` had no
+   * callers at all, so nothing could free them).
+   *
+   * Shape follows the rules that make a bulk IndexedDB delete safe:
+   *  - a readonly transaction reads KEYS only (`getAllKeys`, never the
+   *    vectors), and the diff is computed in JS afterwards;
+   *  - every delete is issued synchronously inside ONE readwrite transaction,
+   *    in the same stack frame that opened it. Awaiting anything in between
+   *    lets the transaction auto-commit and the remaining deletes throw.
+   * Only entries of THIS model/pipeline are considered, so another model's
+   * vectors are never touched.
+   */
+  public async pruneChunksNotIn(
+    liveChunkIds: ReadonlySet<string>,
+    modelId: string,
+    pipelineVersion: string = EMBEDDING_PIPELINE_VERSION
+  ): Promise<number> {
+    const prefix = `${modelId}::${pipelineVersion}::`;
+    const chunkIdOf = (key: string) => key.slice(prefix.length);
+    const staleChunkIds = new Set<string>();
+
+    for (const key of Array.from(this.inMemoryCache.keys())) {
+      if (!key.startsWith(prefix)) continue;
+      const chunkId = chunkIdOf(key);
+      if (liveChunkIds.has(chunkId)) continue;
+      this.inMemoryCache.delete(key);
+      staleChunkIds.add(chunkId);
+    }
+
+    if (!this.hasIndexedDB()) return staleChunkIds.size;
+
+    try {
+      const db = await this.openIDB();
+      const storeName = this.resolveStore(db);
+
+      const stored = await new Promise<IDBValidKey[]>((resolve) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        if (!store.indexNames.contains('modelPipeline')) {
+          // Legacy store (one entry per chunk, no model index): its keys are
+          // chunk ids, so it cannot tell which model an entry belongs to.
+          // Pruning here would delete ANOTHER model's vector; that case belongs
+          // to `pruneOtherModels`, which knows the active model.
+          resolve([]);
+          return;
+        }
+        const request = store
+          .index('modelPipeline')
+          .getAllKeys(IDBKeyRange.only([modelId, pipelineVersion]));
+        request.onsuccess = () => resolve((request.result as IDBValidKey[]) ?? []);
+        request.onerror = () => resolve([]);
+      });
+
+      const stale = stored
+        .map((key) => String(key))
+        .filter((key) => {
+          if (!key.startsWith(prefix)) return false;
+          const chunkId = chunkIdOf(key);
+          if (liveChunkIds.has(chunkId)) return false;
+          staleChunkIds.add(chunkId);
+          return true;
+        });
+
+      if (stale.length > 0) {
+        await new Promise<void>((resolve) => {
+          const tx = db.transaction(storeName, 'readwrite');
+          const store = tx.objectStore(storeName);
+          for (const key of stale) store.delete(key);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+          tx.onabort = () => resolve();
+        });
+      }
+
+      return staleChunkIds.size;
+    } catch {
+      return staleChunkIds.size;
+    }
   }
 
   /**

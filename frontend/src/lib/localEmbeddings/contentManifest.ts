@@ -70,7 +70,20 @@ export function computeContentSignature(text: string): string {
 class SemanticContentManifest {
   private memory = new Map<string, ManifestEntry>();
   private idbPromise: Promise<IDBDatabase> | null = null;
-  private loaded = false;
+  /**
+   * Identities already read from IndexedDB, keyed `modelId::pipelineVersion`.
+   *
+   * A single boolean loaded only the FIRST identity: once the corpus had been
+   * resolved for one model, resolving it for another returned without reading
+   * that model's stored entries, so every fragment was recomputed even though
+   * the manifest had its hash. Entry identity includes model and pipeline, so
+   * loading is per identity and never global.
+   */
+  private loadedScopes = new Set<string>();
+
+  private scopeKey(modelId: string, pipelineVersion: string): string {
+    return `${modelId}::${pipelineVersion}`;
+  }
 
   private hasIndexedDB(): boolean {
     return typeof indexedDB !== 'undefined';
@@ -100,10 +113,11 @@ class SemanticContentManifest {
     });
   }
 
-  /** Loads the manifest once; afterwards it works off the in-memory cache. */
+  /** Loads each identity once; afterwards it works off the in-memory cache. */
   private async ensureLoaded(modelId: string, pipelineVersion: string): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
+    const scope = this.scopeKey(modelId, pipelineVersion);
+    if (this.loadedScopes.has(scope)) return;
+    this.loadedScopes.add(scope);
     if (!this.hasIndexedDB()) return;
     try {
       const db = await this.openIDB();
@@ -183,10 +197,27 @@ class SemanticContentManifest {
       await new Promise<void>((resolve) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
+        const live = new Set<string>();
         for (const entry of this.memory.values()) {
           if (entry.modelId === modelId && entry.pipelineVersion === pipelineVersion) {
+            live.add(entry.key);
             store.put(entry);
           }
+        }
+        // Purging only from memory left the deleted keys in IndexedDB: the next
+        // boot loaded them again and purged them again, so the manifest never
+        // actually shrank and every session repeated the work. Every stored key
+        // of THIS identity that the corpus no longer contains is deleted in the
+        // same transaction as the writes.
+        if (store.indexNames.contains('modelPipeline')) {
+          const index = store.index('modelPipeline');
+          const cursorReq = index.openKeyCursor(IDBKeyRange.only([modelId, pipelineVersion]));
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (!cursor) return;
+            if (!live.has(String(cursor.primaryKey))) store.delete(cursor.primaryKey);
+            cursor.continue();
+          };
         }
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();
@@ -203,7 +234,17 @@ class SemanticContentManifest {
       if (pipelineVersion && entry.pipelineVersion !== pipelineVersion) continue;
       this.memory.delete(key);
     }
-    this.loaded = false;
+    // Forgetting an identity is what makes the next read reload it; clearing
+    // everything forgets every identity.
+    if (modelId && pipelineVersion) {
+      this.loadedScopes.delete(this.scopeKey(modelId, pipelineVersion));
+    } else if (modelId) {
+      for (const scope of Array.from(this.loadedScopes)) {
+        if (scope.startsWith(`${modelId}::`)) this.loadedScopes.delete(scope);
+      }
+    } else {
+      this.loadedScopes.clear();
+    }
     if (!this.hasIndexedDB()) return;
     try {
       const db = await this.openIDB();

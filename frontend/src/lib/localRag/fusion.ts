@@ -191,25 +191,46 @@ export function fuseResults(
   if (strategy === 'rrf') {
     const k = options.rrfK || 60;
     const rrfScores = new Map<string, number>();
+    // Which channels actually produced each document. RRF is a rank signal, so
+    // the mode cannot be inferred from the score: it must come from membership.
+    const channels = new Map<string, { lexical: boolean; semantic: boolean }>();
+
+    const note = (id: string, channel: 'lexical' | 'semantic') => {
+      const seen = channels.get(id) ?? { lexical: false, semantic: false };
+      seen[channel] = true;
+      channels.set(id, seen);
+    };
 
     lexicalDocs.forEach((doc, rank) => {
       const current = rrfScores.get(doc.id) || 0;
       rrfScores.set(doc.id, current + 1 / (k + rank + 1));
-      fusedMap.set(doc.id, { ...doc, retrievalMode: 'hybrid' });
+      note(doc.id, 'lexical');
+      if (!fusedMap.has(doc.id)) fusedMap.set(doc.id, { ...doc });
     });
 
     semanticDocs.forEach((doc, rank) => {
       const current = rrfScores.get(doc.id) || 0;
       rrfScores.set(doc.id, current + 1 / (k + rank + 1));
+      note(doc.id, 'semantic');
       if (!fusedMap.has(doc.id)) {
-        fusedMap.set(doc.id, { ...doc, retrievalMode: 'hybrid' });
+        fusedMap.set(doc.id, { ...doc });
       }
     });
 
-    const results = Array.from(fusedMap.values()).map(doc => ({
-      ...doc,
-      score: rrfScores.get(doc.id) || doc.score
-    }));
+    // A single-channel hit keeps ITS channel: labelling everything `hybrid`
+    // described a fusion that never happened (only one channel found it).
+    const results = Array.from(fusedMap.values()).map(doc => {
+      const seen = channels.get(doc.id) ?? { lexical: false, semantic: false };
+      return {
+        ...doc,
+        score: rrfScores.get(doc.id) || doc.score,
+        retrievalMode: seen.lexical && seen.semantic
+          ? ('hybrid' as const)
+          : seen.semantic
+            ? ('semantic' as const)
+            : ('lexical' as const)
+      };
+    });
 
     return results.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
   }
