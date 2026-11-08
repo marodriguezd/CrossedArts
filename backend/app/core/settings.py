@@ -12,8 +12,8 @@ from backend.app.core.compatibility import (
 class CrossedArtsSettings(BaseSettings):
     """
     Centralized configuration for CrossedArts.
-    Loads from ~/.crossedarts/.env or legacy ~/.domestik/.env automatically.
-    All values can be overridden via environment variables.
+    Loads the env file resolved by `core/compatibility.py` (which owns the
+    legacy fallback). All values can be overridden via environment variables.
     """
     model_config = SettingsConfigDict(
         env_file=str(resolve_legacy_env_file()),
@@ -110,12 +110,12 @@ class CrossedArtsSettings(BaseSettings):
 
     @property
     def data_dir(self) -> Path:
-        """User data directory, respecting legacy DomestiK fallback."""
+        """User data directory; the legacy fallback lives in `core/compatibility.py`."""
         return resolve_legacy_data_dir()
 
     @property
     def db_path(self) -> Path:
-        """Path to SQLite database file, respecting legacy DomestiK fallback."""
+        """SQLite database file; the legacy fallback lives in `core/compatibility.py`."""
         return resolve_legacy_db_path(self.data_dir)
 
     @property
@@ -140,10 +140,10 @@ class CrossedArtsSettings(BaseSettings):
         self.covers_dir.mkdir(parents=True, exist_ok=True)
 
 
-# Singleton instance and backward-compatibility alias
-# `DomestiKSettings` is kept for legacy imports from the DomestiK stage. Field
-# names are read AS IS by pydantic-settings: no automatic prefix applies
+# Singleton instance.
+# The legacy `DomestiKSettings` alias is NOT here: it lives in
+# `core/compatibility.py`, the only module allowed to speak the old namespace.
+# Field names are read AS IS by pydantic-settings: no automatic prefix applies
 # (see .env.example).
 settings = CrossedArtsSettings()
-DomestiKSettings = CrossedArtsSettings
 

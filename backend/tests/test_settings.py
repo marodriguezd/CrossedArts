@@ -33,7 +33,7 @@ def test_static_dir_property():
 
 
 def test_ensure_dirs_creates_directories(tmp_path, monkeypatch):
-    from backend.app.core.settings import DomestiKSettings
+    from backend.app.core.compatibility import DomestiKSettings
     test_data = tmp_path / "test_data"
     monkeypatch.setattr(Path, "home", lambda: test_data)
 
@@ -46,13 +46,13 @@ def test_ensure_dirs_creates_directories(tmp_path, monkeypatch):
 
 
 def test_default_port():
-    from backend.app.core.settings import DomestiKSettings
+    from backend.app.core.compatibility import DomestiKSettings
     s = DomestiKSettings(_env_file=None)
     assert s.port == 8080
 
 
 def test_default_host():
-    from backend.app.core.settings import DomestiKSettings
+    from backend.app.core.compatibility import DomestiKSettings
     s = DomestiKSettings(_env_file=None)
     assert s.host == "127.0.0.1"
 
@@ -69,7 +69,7 @@ def test_api_base_url_auto_computed():
 
 
 def test_default_providers():
-    from backend.app.core.settings import DomestiKSettings
+    from backend.app.core.compatibility import DomestiKSettings
     s = DomestiKSettings(_env_file=None)
     assert s.llm_provider == "mock"
     assert s.embedding_provider == "mock"

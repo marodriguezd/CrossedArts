@@ -30,7 +30,6 @@ from backend.app.schemas.note import CreateNoteRequest
 from backend.app.services.knowledge_service import KnowledgeService
 from backend.app.services.note import NoteService
 from backend.app.services.session import SessionService
-from backend.app.services.workflow import WorkflowService
 
 
 # Standalone note.
@@ -363,18 +362,18 @@ def test_dashboard_recent_activity_only_lists_finalized_sessions(db: Session, cl
 
     response = client.get("/api/v1/dashboard/recent-activity")
     assert response.status_code == 200
-    titles = [item.get("resource_title") for item in response.json()]
+    titles = [item["title"] for item in response.json()]
     assert "Libro Finalizado" in titles, "La sesión finalizada sí aparece"
     assert "Libro En Curso" not in titles, "Una sesión en curso no es actividad cerrada"
 
 
 def test_dashboard_recent_activity_lists_a_standalone_note(db: Session, client: TestClient):
-    """A note with no resource (resource_id NULL) is valid state, not a 500."""
-    from backend.app.models.activity import Note
+    """A note with no resource (resource_id NULL) is valid state, not a 500.
 
-    standalone = Note(id=uuid.uuid4(), resource_id=None, lesson_id=None, content="Idea suelta")
-    db.add(standalone)
-    db.commit()
+    Its OWN title is the headline: no placeholder resource, no invented
+    `resource_type`, no borrowed `resource_title`.
+    """
+    standalone = NoteService.create_note(db, None, "Idea suelta")
 
     response = client.get("/api/v1/dashboard/recent-activity")
     assert response.status_code == 200, response.text
@@ -383,6 +382,8 @@ def test_dashboard_recent_activity_lists_a_standalone_note(db: Session, client: 
         None,
     )
     assert item is not None, "La nota suelta aparece como actividad, no se descarta"
+    assert item["title"] == "Idea suelta", "el titular es el título real de la nota"
     assert item["resource_id"] is None, "No se inventa un recurso para colgarla"
-    assert item["resource_title"] == "Nota suelta"
-    assert item["resource_type"] == "standalone"
+    assert item["resource_title"] is None
+    assert item["resource_type"] is None
+    assert item["scope"] is None, "una nota no es una sesión: no declara ámbito"

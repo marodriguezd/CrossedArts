@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
 from backend.app.models.resource import Course
 from backend.app.schemas.course import CourseDetailResponse, ToggleLessonRequest
-from backend.app.services.progress import ProgressService
+from backend.app.services.progress import ProgressError, ProgressService
 from backend.app.api.dependencies import get_http_exception
 
 router = APIRouter(tags=["Courses"])
@@ -38,5 +38,6 @@ def toggle_lesson_completion(
             "is_completed": payload.is_completed,
             "course_progress_percentage": new_progress
         }
-    except ValueError as e:
-        raise get_http_exception("LESSON_NOT_FOUND", str(e))
+    except ProgressError as e:
+        # Map by type, not by a blanket catch: the code travels with the error.
+        raise get_http_exception(e.code, str(e), status_code=e.http_status)

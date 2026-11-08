@@ -1,11 +1,11 @@
 import uuid
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.models.resource import Book
 from backend.app.schemas.book import BookDetailResponse, UpdateBookProgressRequest
-from backend.app.services.progress import ProgressService
+from backend.app.services.progress import ProgressError, ProgressService
 from backend.app.api.dependencies import get_http_exception
 
 router = APIRouter(prefix="/books", tags=["Books"])
@@ -33,5 +33,7 @@ def update_book_progress(
     try:
         updated_book = ProgressService.update_book_progress(db, book_id, payload.reading_percentage)
         return updated_book
-    except ValueError as e:
-        raise get_http_exception("BOOK_NOT_FOUND", str(e), status_code=status.HTTP_400_BAD_REQUEST)
+    except ProgressError as e:
+        # The service decided which code this failure deserves: a percentage
+        # outside 0..100 is READING_PERCENTAGE_INVALID (422), not a missing book.
+        raise get_http_exception(e.code, str(e), status_code=e.http_status)

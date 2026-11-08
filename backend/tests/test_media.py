@@ -148,7 +148,7 @@ def test_media_api_streaming_range_requests(client: TestClient, db: Session):
 
 
 
-def test_media_playback_progress_and_completion_threshold(client: TestClient, db: Session):
+def test_media_playback_progress_records_the_mark_not_the_lesson(client: TestClient, db: Session):
     # Fixture course -> module -> lesson -> media asset.
     course = Course(id=uuid.uuid4(), title="Progress Course", status=ResourceStatus.NOT_STARTED)
     module = Module(id=uuid.uuid4(), course_id=course.id, title="Module 1")
@@ -187,11 +187,17 @@ def test_media_playback_progress_and_completion_threshold(client: TestClient, db
     db.refresh(lesson)
     assert lesson.is_completed is False
 
-    # 2. Save 91% progress (past the 90% threshold).
+    # 2. Save 91% progress (past the watched threshold).
     response_completion = client.post(f"/api/v1/media/{asset.id}/progress?position=91.0&duration=100.0")
     assert response_completion.status_code == 200
     assert response_completion.json()["is_watched"] is True
 
-    # Lesson must be auto-completed now.
+    # The medium is consumed, the lesson is NOT completed: reaching the end of
+    # a video is not the learner's statement that the lesson is done. Deriving
+    # it here made the backend the source of truth for progress and turned any
+    # replayed/partial Range request into a completion. See
+    # `test_media_progress_contract.py` for the full contract.
     db.refresh(lesson)
-    assert lesson.is_completed is True
+    assert lesson.is_completed is False
+    db.refresh(course)
+    assert course.status == ResourceStatus.NOT_STARTED

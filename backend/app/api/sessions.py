@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.schemas.session import LearningSessionResponse, StartSessionRequest
-from backend.app.services.session import SessionService
+from backend.app.services.session import SessionError, SessionService
 from backend.app.api.dependencies import get_http_exception
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
@@ -25,8 +25,10 @@ def start_session(payload: StartSessionRequest, db: Session = Depends(get_db)):
             scope=payload.scope
         )
         return session
-    except ValueError as e:
-        raise get_http_exception("RESOURCE_NOT_FOUND", str(e), status_code=status.HTTP_400_BAD_REQUEST)
+    except SessionError as e:
+        # The service already named the failure: an incoherent declared scope is
+        # a 422, a missing lesson is LESSON_NOT_FOUND, never a missing resource.
+        raise get_http_exception(e.code, str(e), status_code=e.http_status)
 
 
 @router.post("/{session_id}/heartbeat", response_model=LearningSessionResponse)
@@ -37,8 +39,8 @@ def update_session_heartbeat(session_id: uuid.UUID, db: Session = Depends(get_db
     try:
         session = SessionService.update_session_heartbeat(db, session_id)
         return session
-    except ValueError as e:
-        raise get_http_exception("SESSION_NOT_FOUND", str(e))
+    except SessionError as e:
+        raise get_http_exception(e.code, str(e), status_code=e.http_status)
 
 
 @router.post("/{session_id}/end", response_model=LearningSessionResponse)
@@ -51,5 +53,5 @@ def end_session(session_id: uuid.UUID, db: Session = Depends(get_db)):
     try:
         session = SessionService.end_session(db, session_id)
         return session
-    except ValueError as e:
-        raise get_http_exception("SESSION_NOT_FOUND", str(e))
+    except SessionError as e:
+        raise get_http_exception(e.code, str(e), status_code=e.http_status)

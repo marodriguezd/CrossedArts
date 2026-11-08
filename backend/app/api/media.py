@@ -9,11 +9,13 @@ from backend.app.core.database import get_db
 from backend.app.core.security import is_safe_path
 from backend.app.models.resource import MediaAsset
 from backend.app.models.activity import MediaProgress
-from backend.app.models.course_structure import Lesson
-from backend.app.services.progress import ProgressService
 from backend.app.api.dependencies import get_http_exception
 
 router = APIRouter(prefix="/media", tags=["Media"])
+
+#: Played fraction that marks the medium as consumed. It is a property of the
+#: PLAYBACK, not of the lesson: learning completion is never inferred from it.
+MEDIA_WATCHED_THRESHOLD = 0.90
 
 @router.get("/{media_id}")
 def get_media_info(media_id: uuid.UUID, db: Session = Depends(get_db)):
@@ -67,8 +69,15 @@ def update_media_progress(
     db: Session = Depends(get_db)
 ):
     """
-    Update a video's playback mark.
-    Past 90% watched, the linked lesson is auto-marked completed.
+    Save a playback mark: resume position, duration and the watched flag.
+
+    This endpoint is CONSUMPTION TELEMETRY ONLY. It used to mark the linked
+    lesson as completed past 90%, which made the server derive learner
+    presence from bytes served: a health-check or any other client aborting a
+    `Range` request would have completed the lesson without anyone watching
+    it. Learning state belongs to the client (AGENTS.md: the backend is never
+    the source of truth for learner progress), so this endpoint reports what
+    the player says and touches nothing else.
     """
     asset = db.get(MediaAsset, media_id)
     if not asset:
@@ -90,16 +99,8 @@ def update_media_progress(
         progress.last_position = position
         progress.duration = duration
 
-    # 90% rule for lesson auto-completion.
-    completion_threshold = 0.90
-    if duration > 0 and (position / duration) >= completion_threshold:
+    if duration > 0 and (position / duration) >= MEDIA_WATCHED_THRESHOLD:
         progress.is_watched = True
-        # When linked to a course lesson.
-        if asset.lesson_id:
-            lesson = db.get(Lesson, asset.lesson_id)
-            if lesson and not lesson.is_completed:
-                # Sync via ProgressService to recalculate overall progress.
-                ProgressService.toggle_lesson_completion(db, lesson.id, True)
 
     db.add(progress)
     db.commit()

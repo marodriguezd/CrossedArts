@@ -4,9 +4,46 @@ from backend.app.core.utils import utc_now_naive
 from typing import List, Optional, Tuple
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
+from backend.app.core.errors import DomainError
 from backend.app.models.activity import LearningSession, resolve_session_scope, SESSION_SCOPES
 from backend.app.models.resource import LearningResource
 from backend.app.models.course_structure import Lesson
+
+
+class SessionError(DomainError):
+    """A study-session operation failed for a reason the API must report verbatim."""
+
+    code = "SESSION_INVALID"
+    http_status = 422
+
+
+class SessionScopeError(SessionError):
+    """The declared scope is unknown or incoherent with its anchors."""
+
+    code = "SESSION_SCOPE_INVALID"
+    http_status = 422
+
+
+class SessionResourceNotFoundError(SessionError):
+    """The resource the session points at does not exist."""
+
+    code = "RESOURCE_NOT_FOUND"
+    http_status = 404
+
+
+class SessionLessonNotFoundError(SessionError):
+    """The lesson the session points at does not exist."""
+
+    code = "LESSON_NOT_FOUND"
+    http_status = 404
+
+
+class SessionNotFoundError(SessionError):
+    """The session id does not exist."""
+
+    code = "SESSION_NOT_FOUND"
+    http_status = 404
+
 
 class SessionService:
     @staticmethod
@@ -31,10 +68,10 @@ class SessionService:
 
         if scope is not None and scope != derived_scope:
             if scope not in SESSION_SCOPES:
-                raise ValueError(
+                raise SessionScopeError(
                     "Ámbito de sesión inválido: debe ser 'lesson', 'resource' o 'global'."
                 )
-            raise ValueError(
+            raise SessionScopeError(
                 f"Ámbito de sesión incoherente: '{scope}' no corresponde a las anclas "
                 f"declaradas (ámbito derivado: '{derived_scope}')."
             )
@@ -42,12 +79,16 @@ class SessionService:
         if resource_id is not None:
             resource = db.get(LearningResource, resource_id)
             if not resource:
-                raise ValueError(f"Recurso de aprendizaje con ID {resource_id} no encontrado.")
+                raise SessionResourceNotFoundError(
+                    f"Recurso de aprendizaje con ID {resource_id} no encontrado."
+                )
 
         if lesson_id is not None:
             lesson = db.get(Lesson, lesson_id)
             if not lesson:
-                raise ValueError(f"Lección con ID {lesson_id} no encontrada.")
+                raise SessionLessonNotFoundError(
+                    f"Lección con ID {lesson_id} no encontrada."
+                )
 
         session = LearningSession(
             resource_id=resource_id,
@@ -74,7 +115,7 @@ class SessionService:
         """
         session = db.get(LearningSession, session_id)
         if not session:
-            raise ValueError(f"Sesión con ID {session_id} no encontrada.")
+            raise SessionNotFoundError(f"Sesión con ID {session_id} no encontrada.")
 
         if session.finalized:
             return session
@@ -110,7 +151,7 @@ class SessionService:
         """
         session = db.get(LearningSession, session_id)
         if not session:
-            raise ValueError(f"Sesión con ID {session_id} no encontrada.")
+            raise SessionNotFoundError(f"Sesión con ID {session_id} no encontrada.")
 
         if session.finalized:
             # Already finalized: return the persisted result without recomputing

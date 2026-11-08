@@ -12,6 +12,22 @@ Design Rationale:
 from pathlib import Path
 
 
+def __getattr__(name: str):
+    """Legacy names are importable ONLY from this boundary.
+
+    `DomestiKSettings` is a pure alias of `CrossedArtsSettings` and used to live
+    in `core/settings.py`, which made the settings module itself speak the old
+    namespace — exactly what this module exists to prevent. The import stays
+    lazy so the dependency remains one-way (settings -> compatibility) and no
+    cycle appears.
+    """
+    if name == "DomestiKSettings":
+        from backend.app.core.settings import CrossedArtsSettings
+
+        return CrossedArtsSettings
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def resolve_legacy_env_file() -> Path:
     """
     Returns ~/.crossedarts/.env if present, otherwise falls back to ~/.domestik/.env.

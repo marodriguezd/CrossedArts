@@ -1,9 +1,45 @@
 import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from backend.app.core.errors import DomainError
 from backend.app.models.resource import Course, Book
 from backend.app.models.course_structure import Lesson
 from backend.app.models.base import ResourceStatus
+
+
+class ProgressError(DomainError):
+    """A progress operation failed for a reason the API must report verbatim.
+
+    The routers used to answer a single code for every failure: a percentage
+    outside 0..100 came back as `BOOK_NOT_FOUND` (400), telling the client the
+    book was missing when the number was the problem. Each failure now carries
+    its own code and status.
+    """
+
+    code = "PROGRESS_INVALID"
+    http_status = 422
+
+
+class LessonNotFoundError(ProgressError):
+    """The lesson being toggled does not exist."""
+
+    code = "LESSON_NOT_FOUND"
+    http_status = 404
+
+
+class BookNotFoundError(ProgressError):
+    """The book whose progress is being written does not exist."""
+
+    code = "BOOK_NOT_FOUND"
+    http_status = 404
+
+
+class ReadingPercentageInvalid(ProgressError):
+    """The requested reading percentage is outside 0..100."""
+
+    code = "READING_PERCENTAGE_INVALID"
+    http_status = 422
+
 
 class ProgressService:
     @staticmethod
@@ -51,7 +87,7 @@ class ProgressService:
         """
         lesson = db.get(Lesson, lesson_id)
         if not lesson:
-            raise ValueError(f"Lección con ID {lesson_id} no encontrada.")
+            raise LessonNotFoundError(f"Lección con ID {lesson_id} no encontrada.")
 
         lesson.is_completed = is_completed
         db.add(lesson)
@@ -73,11 +109,13 @@ class ProgressService:
         status to COMPLETED automatically.
         """
         if not (0.0 <= percentage <= 100.0):
-            raise ValueError("El porcentaje de lectura debe estar entre 0.0 y 100.0")
+            raise ReadingPercentageInvalid(
+                "El porcentaje de lectura debe estar entre 0.0 y 100.0"
+            )
 
         book = db.get(Book, book_id)
         if not book:
-            raise ValueError(f"Libro con ID {book_id} no encontrado.")
+            raise BookNotFoundError(f"Libro con ID {book_id} no encontrado.")
 
         # Remember the previous value to detect the incomplete -> completed flip.
         old_completed = book.reading_percentage >= 100.0

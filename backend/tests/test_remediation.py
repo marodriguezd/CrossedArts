@@ -1,8 +1,11 @@
 """Regression tests for the remediation of issues E, F, G and H.
 
-E. learning_session contract: nullable resource_id, optional lesson_id,
-   mandatory scope anchor (resource or lesson) across model, schema, service,
-   API and migration.
+E. learning_session contract: nullable resource_id, optional lesson_id and
+   three explicit scopes (resource / lesson / global) validated on WRITE across
+   model, schema, service and API. The database only enforces the value domain
+   and that a `global` scope carries no anchor: an anchor-requiring CHECK would
+   make `ON DELETE SET NULL` fail, so the effective scope is re-derived on read
+   (`resolve_effective_session_scope`).
 F. Alembic history coherence: no duplicated indexes, deterministic upgrade
    and downgrade, single owner per index.
 G. Transcript language: never forced to Spanish; metadata inferred, unknown
@@ -205,7 +208,12 @@ def test_scope_check_constraints_are_declared_on_model():
         "scope <> 'global' OR (resource_id IS NULL AND lesson_id IS NULL)" in text
         for text in checks.values()
     )
-    assert any("scope <> 'resource' OR resource_id IS NOT NULL" in text for text in checks.values())
+    # The `resource`-anchor CHECK is deliberately GONE: SQLite evaluates CHECK
+    # constraints on the internal UPDATE of `ON DELETE SET NULL`, so requiring
+    # `resource_id` for `scope='resource'` made deleting a resource fail instead
+    # of unlinking its session. Write paths still validate the declared scope;
+    # `resolve_effective_session_scope` reclassifies the unlinked row on read.
+    assert not any("scope <> 'resource' OR resource_id IS NOT NULL" in text for text in checks.values())
 
 
 def test_aggregations_ignore_null_resource_gracefully(db: Session):
