@@ -1,0 +1,42 @@
+{
+  "description": "Tabla ÚNICA de casos del contrato de ámbito de sesión. La leen los dos lados: frontend/tests/session_scope_parity.test.ts usa services/sessionScope.ts y backend/tests/test_session_scope_parity.py usa models/activity.py. Un caso nuevo se añade AQUÍ; una implementación que se desvíe rompe su propio test.",
+  "derivation": [
+    { "name": "sin anclas es repaso general", "resource": false, "lesson": false, "expected": "global" },
+    { "name": "solo recurso", "resource": true, "lesson": false, "expected": "resource" },
+    { "name": "solo lección", "resource": false, "lesson": true, "expected": "lesson" },
+    { "name": "lección gana al recurso", "resource": true, "lesson": true, "expected": "lesson" }
+  ],
+  "effective": [
+    { "name": "declarado nulo sin anclas", "declared": null, "resource": false, "lesson": false, "expected": "global" },
+    { "name": "declarado nulo con recurso", "declared": null, "resource": true, "lesson": false, "expected": "resource" },
+    { "name": "declarado nulo con lección", "declared": null, "resource": false, "lesson": true, "expected": "lesson" },
+    { "name": "declarado nulo con ambos", "declared": null, "resource": true, "lesson": true, "expected": "lesson" },
+
+    { "name": "global sin anclas se sostiene", "declared": "global", "resource": false, "lesson": false, "expected": "global" },
+    { "name": "global con recurso se rederiva", "declared": "global", "resource": true, "lesson": false, "expected": "resource" },
+    { "name": "global con lección se rederiva", "declared": "global", "resource": false, "lesson": true, "expected": "lesson" },
+    { "name": "global con ambos se rederiva a lección", "declared": "global", "resource": true, "lesson": true, "expected": "lesson" },
+
+    { "name": "resource sin recurso se rederiva", "declared": "resource", "resource": false, "lesson": false, "expected": "global" },
+    { "name": "resource con recurso se sostiene", "declared": "resource", "resource": true, "lesson": false, "expected": "resource" },
+    { "name": "resource con lección se rederiva", "declared": "resource", "resource": false, "lesson": true, "expected": "lesson" },
+    { "name": "resource con ambos conserva el declarado", "declared": "resource", "resource": true, "lesson": true, "expected": "resource" },
+
+    { "name": "lesson sin lección se rederiva", "declared": "lesson", "resource": false, "lesson": false, "expected": "global" },
+    { "name": "lesson con recurso se rederiva", "declared": "lesson", "resource": true, "lesson": false, "expected": "resource" },
+    { "name": "lesson con lección se sostiene", "declared": "lesson", "resource": false, "lesson": true, "expected": "lesson" },
+    { "name": "lesson con ambos se sostiene", "declared": "lesson", "resource": true, "lesson": true, "expected": "lesson" }
+  ],
+  "validation": [
+    { "name": "global sin anclas", "declared": "global", "resource": false, "lesson": false, "valid": true },
+    { "name": "global con recurso", "declared": "global", "resource": true, "lesson": false, "valid": false },
+    { "name": "global con lección", "declared": "global", "resource": false, "lesson": true, "valid": false },
+    { "name": "global con ambos", "declared": "global", "resource": true, "lesson": true, "valid": false },
+    { "name": "resource con recurso", "declared": "resource", "resource": true, "lesson": false, "valid": true },
+    { "name": "resource sin recurso", "declared": "resource", "resource": false, "lesson": false, "valid": false },
+    { "name": "resource con ambos", "declared": "resource", "resource": true, "lesson": true, "valid": false },
+    { "name": "lesson con lección", "declared": "lesson", "resource": false, "lesson": true, "valid": true },
+    { "name": "lesson con ambos", "declared": "lesson", "resource": true, "lesson": true, "valid": true },
+    { "name": "lesson sin lección", "declared": "lesson", "resource": false, "lesson": false, "valid": false }
+  ]
+}
